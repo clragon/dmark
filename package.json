@@ -1,0 +1,27 @@
+{
+  "name": "dmark",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Two-way dtext ↔ markdown parser with shared AST. Verified against the e621ng/dtext ruby renderer.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --noEmit",
+    "corpus:fetch": "tsx scripts/fetch-corpus.ts",
+    "oracle:build": "docker build -t dmark-oracle:dev oracle",
+    "oracle:smoke": "tsx scripts/oracle-smoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "parse5": "^7.2.1",
+    "testcontainers": "^11.14.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}
