@@ -29,7 +29,7 @@ interface WikiPageRow {
   id: string;
   title: string;
   body: string;
-  // The dump has more columns (created_at, updated_at, locked, etc.) — we
+  // The dump has more columns (created_at, updated_at, locked, etc.) , we
   // ignore them at parse time by reading by header name.
 }
 

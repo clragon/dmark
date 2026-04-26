@@ -1,6 +1,6 @@
 // Normalized DOM equality for comparing rendered html outputs from two parsers
 // against the same input. The two outputs are considered equal if their parsed
-// DOMs match after the normalization rules below — so insignificant
+// DOMs match after the normalization rules below. Spurious
 // differences (whitespace runs, attribute order, ignorable class names) don't
 // cause spurious failures.
 //
@@ -44,7 +44,7 @@ export interface DomEqualResult {
   equal: boolean;
   /** Short unified diff between the normalized serializations, only set when not equal. */
   diff?: string;
-  /** The normalized canonical form of the left input — handy for debugging tests. */
+  /** The normalized canonical form of the left input. Handy for debugging tests. */
   leftCanonical: string;
   /** The normalized canonical form of the right input. */
   rightCanonical: string;
@@ -113,7 +113,7 @@ function walkAndNormalize(
       if (!childPreserve) {
         const collapsed = child.value.replace(WHITESPACE_RUN, ' ');
         if (collapsed.length === 0 || /^\s*$/.test(collapsed)) {
-          // Whitespace-only text between block elements — drop it.
+          // Whitespace-only text between block elements; drop it.
           // (Between inlines a single space carries meaning, but parse5 gives
           // us the actual whitespace; if the original was whitespace-only it
           // was insignificant on the rendering side too.)

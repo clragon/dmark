@@ -8,7 +8,7 @@
 // allocations on certain nested constructs). Each is a real phase-2 bug to
 // fix; counted as failures here so the floor still has teeth.
 //
-// This isolates the dtext-side correctness of the port — markdown is not
+// This isolates the dtext-side correctness of the port. Markdown is not
 // involved yet. The pass rate here is the floor for the eventual
 // dtext → md → html target.
 //
@@ -64,7 +64,7 @@ const suite = index ? describe : describe.skip;
 
 suite('dtext baseline against ruby oracle', () => {
   if (!index) {
-    it('corpus is empty — run `yarn corpus:fetch`', () => {
+    it('corpus is empty. Run `yarn corpus:fetch`', () => {
       expect.fail('corpus/golden/index.json not found');
     });
     return;
