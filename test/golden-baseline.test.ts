@@ -38,10 +38,9 @@ interface CorpusIndex {
 
 const CORPUS_GOLDEN = resolve(process.cwd(), 'corpus', 'golden');
 const INDEX_PATH = resolve(CORPUS_GOLDEN, 'index.json');
-// Pass-rate floor. Starts at 0 — phase 1's deliverable is the honest baseline
-// + gap report, not a high pass rate. Every parser fix in phase 2 ratchets
-// this up; treat it as a one-way ratchet (regression detector).
-const PHASE_1_FLOOR = 0.0;
+// One-way pass-rate ratchet. Each parser fix bumps it up; never lower it,
+// since lowering hides regressions. Phase 1 started at 0 (honest baseline).
+const PHASE_1_FLOOR = 0.2;
 const MAX_DIFF_CHARS = 240;
 
 const SKIP_FILES: ReadonlyMap<string, string> = new Map([
@@ -90,7 +89,10 @@ suite('dtext baseline against ruby oracle', () => {
         }
 
         const dtext = readFileSync(resolve(CORPUS_GOLDEN, entry.file), 'utf8');
-        const oracleHtml = (await renderViaOracle(dtext)).html;
+        // Wiki pages render with allow_color=true on production e621
+        // (`format_text(body, allow_color: true)` in app/views/wiki_pages).
+        const oracleHtml = (await renderViaOracle(dtext, { allow_color: true }))
+          .html;
         const dmarkHtml = parseDText(dtext);
         const cmp = domEqual(dmarkHtml, oracleHtml);
 
