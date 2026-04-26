@@ -65,6 +65,21 @@ export interface ListMatch {
   content: string;
 }
 
+// Horizontal whitespace excluding line terminators. Same set that
+// peekDoubleNewline uses to skip indentation between two newlines.
+function isHorizontalWhitespace(code: number): boolean {
+  return (
+    code === 0x20 ||
+    code === 0x09 ||
+    code === 0xa0 ||
+    code === 0x1680 ||
+    (code >= 0x2000 && code <= 0x200a) ||
+    code === 0x202f ||
+    code === 0x205f ||
+    code === 0x3000
+  );
+}
+
 const BOUNDARY_CHARS = [
   0x0021, 0x0029, 0x002c, 0x002e, 0x003a, 0x003b, 0x003c, 0x003e, 0x003f,
   0x005d, 0x007d, 0x276d, 0x3000, 0x3001, 0x3002, 0x3008, 0x3009, 0x300a,
@@ -764,6 +779,13 @@ export class DTextStateMachineParser {
       this.pos < this.input.length &&
       !this.matchString(closePattern, true)
     ) {
+      // Inside an inline container, a paragraph break (\n\n+) is dropped
+      // entirely. Ruby's parser consumes the newlines without emitting
+      // anything, joining the surrounding text seamlessly.
+      if (this.peekDoubleNewline()) {
+        this.consumeBlankLines();
+        continue;
+      }
       const node = this.parseInlineElement();
       if (node) {
         children.push(node);
@@ -771,6 +793,20 @@ export class DTextStateMachineParser {
     }
 
     return { type: nodeType, children } as InlineNode;
+  }
+
+  private consumeBlankLines(): void {
+    while (this.pos < this.input.length) {
+      if (this.peekNewline()) {
+        this.consumeNewline();
+        continue;
+      }
+      if (isHorizontalWhitespace(this.input.charCodeAt(this.pos))) {
+        this.pos++;
+        continue;
+      }
+      break;
+    }
   }
 
   private parseColorContainer(color: string): ColorNode {
