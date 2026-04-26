@@ -387,7 +387,9 @@ function renderLink(node: LinkNode, context: RenderContext): string {
     href = context.options.baseUrl.replace(/\/$/, '') + href;
   }
 
-  const relAttr = ' rel="nofollow"';
+  // Ruby's dtext renderer omits rel="nofollow" on id_link anchors (post #N,
+  // comment #N etc.) but adds it on every other link type.
+  const relAttr = node.linkType === 'id_link' ? '' : ' rel="nofollow"';
 
   let dataAttr = '';
   if (node.idType === 'thumb' && node.id) {
