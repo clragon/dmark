@@ -86,4 +86,22 @@ describe('domEqual', () => {
     const r = domEqual('<p>foo <b>bar</b></p>', '<p>foo<b>bar</b></p>');
     expect(r.equal).toBe(false);
   });
+
+  it('treats leading whitespace inside a block as insignificant', () => {
+    const r = domEqual('<p> foo</p>', '<p>foo</p>');
+    expect(r.equal).toBe(true);
+  });
+
+  it('treats trailing whitespace inside a block as insignificant', () => {
+    const r = domEqual('<p>foo </p>', '<p>foo</p>');
+    expect(r.equal).toBe(true);
+  });
+
+  it('keeps a meaningful space adjacent to inline children at block edges', () => {
+    // The leading space before <b> is at the block edge, so trimmable; but
+    // the space between </b> and "bar" is between inlines, so meaningful.
+    const a = '<p> <b>foo</b> bar</p>';
+    const b = '<p><b>foo</b> bar</p>';
+    expect(domEqual(a, b).equal).toBe(true);
+  });
 });

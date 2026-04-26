@@ -134,6 +134,29 @@ function walkAndNormalize(
       dropAttrs,
     );
   }
+
+  // Browsers strip leading/trailing whitespace at block boundaries (e.g.
+  // "<p> foo </p>" renders identically to "<p>foo</p>"). After normalizing
+  // children, trim whitespace from the first/last text-node child of any
+  // block element.
+  if (!childPreserve && isElement(node) && BLOCK_TAGS.has(node.tagName.toLowerCase())) {
+    trimBlockEdges(node);
+  }
+}
+
+function trimBlockEdges(el: Element): void {
+  const kids = getChildren(el);
+  const first = kids[0];
+  if (first && isTextNode(first)) {
+    first.value = first.value.replace(/^\s+/, '');
+    if (first.value === '') detachChild(first);
+  }
+  const remaining = getChildren(el);
+  const last = remaining[remaining.length - 1];
+  if (last && isTextNode(last)) {
+    last.value = last.value.replace(/\s+$/, '');
+    if (last.value === '') detachChild(last);
+  }
 }
 
 const BLOCK_TAGS = new Set([
