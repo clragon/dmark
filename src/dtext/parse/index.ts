@@ -77,6 +77,16 @@ function isBoundaryChar(char: string): boolean {
   return BOUNDARY_CHARS.includes(char.charCodeAt(0));
 }
 
+// Match ruby's CGI.escape / URI::DEFAULT_PARSER.escape behavior: encode
+// everything outside RFC 3986 unreserved (A-Z a-z 0-9 - _ . ~). JS's
+// encodeURIComponent leaves !'()* unencoded; ruby encodes them.
+function rubyUriEscape(str: string): string {
+  return encodeURIComponent(str).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
 export class DTextStateMachineParser {
   protected input: string;
   protected pos: number;
@@ -153,10 +163,6 @@ export class DTextStateMachineParser {
       if (this.peekDoubleNewline()) {
         this.consumeNewline();
         this.consumeNewline();
-
-        if (children.length > 0) {
-          children.push({ type: 'paragraph', children: [] });
-        }
         continue;
       }
 
@@ -557,6 +563,12 @@ export class DTextStateMachineParser {
         break;
       }
 
+      // A single newline followed by a block-level marker also ends the
+      // paragraph (otherwise the newline would emit a trailing <br>).
+      if (this.peekNewline() && this.peekBlockElementAfterNewline()) {
+        break;
+      }
+
       const node = this.parseInlineElement();
       if (node) {
         // Merge consecutive text nodes
@@ -572,6 +584,15 @@ export class DTextStateMachineParser {
     }
 
     this.consumeNewline();
+
+    // Drop trailing line breaks (a final '\n' inside a paragraph buffer
+    // shouldn't render as <br></p> — ruby closes the paragraph cleanly).
+    while (
+      children.length > 0 &&
+      children[children.length - 1].type === 'line_break'
+    ) {
+      children.pop();
+    }
 
     return { type: 'paragraph', children };
   }
@@ -1173,14 +1194,15 @@ export class DTextStateMachineParser {
       return false;
     }
 
-    // Skip whitespace including Unicode spaces like EN SPACE (U+2001)
-    // Limit the lookahead to prevent infinite loops
+    // Skip horizontal whitespace between the two newlines. MUST NOT include
+    // \n or \r — \s does, and that ate the second newline and broke
+    // block-boundary detection (gating ~80% of the corpus).
     const maxLookahead = 10;
     let lookaheadCount = 0;
     while (
       tempPos < this.input.length &&
       lookaheadCount < maxLookahead &&
-      /[\s\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/.test(
+      /[ \t\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/.test(
         this.input[tempPos],
       )
     ) {
@@ -1196,6 +1218,23 @@ export class DTextStateMachineParser {
     }
 
     return false;
+  }
+
+  private peekBlockElementAfterNewline(): boolean {
+    const here = this.input[this.pos];
+    let offset = 0;
+    if (this.input.slice(this.pos, this.pos + 2) === '\r\n') {
+      offset = 2;
+    } else if (here === '\n') {
+      offset = 1;
+    } else {
+      return false;
+    }
+    const saved = this.pos;
+    this.pos += offset;
+    const result = this.peekBlockElement();
+    this.pos = saved;
+    return result;
   }
 
   private peekBlockElement(): boolean {
@@ -1324,7 +1363,7 @@ export class DTextStateMachineParser {
 
   private createPostSearchLink(match: PostSearchMatch): LinkNode {
     const normalizedTag = match.tag.toLowerCase();
-    const href = `/posts?tags=${encodeURIComponent(normalizedTag)}`;
+    const href = `/posts?tags=${rubyUriEscape(normalizedTag)}`;
     const title = match.title || match.tag;
 
     return {
@@ -1339,7 +1378,7 @@ export class DTextStateMachineParser {
   private createWikiLink(match: WikiLinkMatch): LinkNode {
     if (match.anchor && !match.tag) {
       // Internal anchor link
-      const href = `#${encodeURIComponent(match.anchor.toLowerCase())}`;
+      const href = `#${rubyUriEscape(match.anchor.toLowerCase())}`;
       const title = match.title || `#${match.anchor}`;
       return {
         type: 'link',
@@ -1351,10 +1390,10 @@ export class DTextStateMachineParser {
     }
 
     const normalizedTag = match.tag.replace(/ /g, '_').toLowerCase();
-    let href = `/wiki_pages/show_or_new?title=${encodeURIComponent(normalizedTag)}`;
+    let href = `/wiki_pages/show_or_new?title=${rubyUriEscape(normalizedTag)}`;
 
     if (match.anchor) {
-      href += `#${encodeURIComponent(match.anchor)}`;
+      href += `#${rubyUriEscape(match.anchor)}`;
     }
 
     const title =
