@@ -77,6 +77,23 @@ function isBoundaryChar(char: string): boolean {
   return BOUNDARY_CHARS.includes(char.charCodeAt(0));
 }
 
+// Strip trailing punctuation from a URL, but keep a closing paren when it's
+// balancing an opening paren in the URL. Wikipedia-style links like
+// `wiki/Foo_(disambiguation)` need the trailing `)` preserved.
+function trimUrlBoundaries(url: string): string {
+  while (url.length > 0) {
+    const last = url[url.length - 1];
+    if (!isBoundaryChar(last)) break;
+    if (last === ')') {
+      const opens = (url.match(/\(/g) ?? []).length;
+      const closes = (url.match(/\)/g) ?? []).length;
+      if (closes <= opens) break;
+    }
+    url = url.slice(0, -1);
+  }
+  return url;
+}
+
 // Parse a piece of text that's already known to be inline-only (link titles,
 // for example) and return the resulting inline children. Falls back to a
 // single text node if parsing yields nothing useful.
@@ -600,7 +617,7 @@ export class DTextStateMachineParser {
     this.consumeNewline();
 
     // Drop trailing line breaks (a final '\n' inside a paragraph buffer
-    // shouldn't render as <br></p> — ruby closes the paragraph cleanly).
+    // shouldn't render as <br></p> , ruby closes the paragraph cleanly).
     while (
       children.length > 0 &&
       children[children.length - 1].type === 'line_break'
@@ -894,34 +911,15 @@ export class DTextStateMachineParser {
   }
 
   private matchSpoilerBlockOpen(): boolean {
-    // Block spoilers require space or newline after opening tag
-    if (this.peekString('[spoiler]', true)) {
-      const afterTag = this.pos + '[spoiler]'.length;
-      const nextChar = this.input[afterTag];
-      if (
-        nextChar === ' ' ||
-        nextChar === '\t' ||
-        nextChar === '\n' ||
-        nextChar === '\r'
-      ) {
-        this.matchString('[spoiler]', true);
-        return true;
-      }
-    }
-    if (this.peekString('[spoilers]', true)) {
-      const afterTag = this.pos + '[spoilers]'.length;
-      const nextChar = this.input[afterTag];
-      if (
-        nextChar === ' ' ||
-        nextChar === '\t' ||
-        nextChar === '\n' ||
-        nextChar === '\r'
-      ) {
-        this.matchString('[spoilers]', true);
-        return true;
-      }
-    }
-    return false;
+    // A spoiler renders as a block when its body contains a newline (matches
+    // ruby's behavior in peekBlockElement and the dtext gem). Inline-only
+    // spoilers stay on a single line.
+    const remaining = this.input.slice(this.pos);
+    const blockMatch = remaining.match(/^\[(spoilers?)\]([\s\S]*?)\[\/\1\]/i);
+    if (!blockMatch) return false;
+    if (!blockMatch[2].includes('\n')) return false;
+    this.pos += blockMatch[1].length + 2; // consume only the opening tag
+    return true;
   }
 
   private matchSpoilerClose(): boolean {
@@ -1111,17 +1109,13 @@ export class DTextStateMachineParser {
     }
 
     // "title":url format. Strip trailing boundary punctuation (,.;:!?) the
-    // way matchUrl does for bare urls.
+    // way matchUrl does for bare urls , preserving balanced parens.
     const basicMatch = this.input.slice(this.pos).match(/^"([^"]+)":(\S+)/);
     if (basicMatch) {
-      let url = basicMatch[2];
-      let consumed = basicMatch[0].length;
-      while (url.length > 0 && isBoundaryChar(url[url.length - 1])) {
-        url = url.slice(0, -1);
-        consumed--;
-      }
+      const trimmed = trimUrlBoundaries(basicMatch[2]);
+      const consumed = basicMatch[0].length - (basicMatch[2].length - trimmed.length);
       this.pos += consumed;
-      return { title: basicMatch[1], url };
+      return { title: basicMatch[1], url: trimmed };
     }
 
     return null;
@@ -1133,10 +1127,7 @@ export class DTextStateMachineParser {
       const start = this.pos;
       let url = match[0];
 
-      // Remove boundary characters from the end
-      while (url.length > 0 && isBoundaryChar(url[url.length - 1])) {
-        url = url.slice(0, -1);
-      }
+      url = trimUrlBoundaries(url);
 
       this.pos = start + url.length;
 
@@ -1216,7 +1207,7 @@ export class DTextStateMachineParser {
     }
 
     // Skip horizontal whitespace between the two newlines. MUST NOT include
-    // \n or \r — \s does, and that ate the second newline and broke
+    // \n or \r , \s does, and that ate the second newline and broke
     // block-boundary detection (gating ~80% of the corpus).
     const maxLookahead = 10;
     let lookaheadCount = 0;
@@ -1267,6 +1258,7 @@ export class DTextStateMachineParser {
       /^\[code\]/i,
       /^\[section/i,
       /^\[\/section\]/i,
+      /^\[\/spoilers?\]/i,
       /^\[table\]/i,
       /^\[ltable\]/i,
       /^\*+\s/,
