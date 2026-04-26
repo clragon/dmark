@@ -1242,30 +1242,14 @@ export class DTextStateMachineParser {
       return false;
     }
 
-    // Skip horizontal whitespace between the two newlines. MUST NOT include
-    // \n or \r , \s does, and that ate the second newline and broke
-    // block-boundary detection (gating ~80% of the corpus).
-    const maxLookahead = 10;
-    let lookaheadCount = 0;
-    while (
-      tempPos < this.input.length &&
-      lookaheadCount < maxLookahead &&
-      /[ \t\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/.test(
-        this.input[tempPos],
-      )
-    ) {
-      tempPos++;
-      lookaheadCount++;
-    }
-
-    // Second newline
-    if (this.input.slice(tempPos, tempPos + 2) === '\r\n') {
-      return true;
-    } else if (this.input[tempPos] === '\n') {
-      return true;
-    }
-
-    return false;
+    // Strict: only true contiguous newlines count as a paragraph break.
+    // Ruby treats `newline + horizontal whitespace + newline` as two
+    // separate single newlines (rendered as `<br>...<br>` inside the same
+    // paragraph), not as a paragraph break.
+    return (
+      this.input.slice(tempPos, tempPos + 2) === '\r\n' ||
+      this.input[tempPos] === '\n'
+    );
   }
 
   private peekBlockElementAfterNewline(): boolean {
