@@ -77,6 +77,20 @@ function isBoundaryChar(char: string): boolean {
   return BOUNDARY_CHARS.includes(char.charCodeAt(0));
 }
 
+// Parse a piece of text that's already known to be inline-only (link titles,
+// for example) and return the resulting inline children. Falls back to a
+// single text node if parsing yields nothing useful.
+function parseInlineString(input: string): InlineNode[] {
+  if (input.length === 0) return [];
+  const sub = new DTextStateMachineParser(input, { inlineOnly: true });
+  const doc = sub.parse();
+  const first = doc.children[0];
+  if (first && first.type === 'paragraph' && first.children.length > 0) {
+    return first.children;
+  }
+  return [{ type: 'text', content: input }];
+}
+
 // Match ruby's CGI.escape / URI::DEFAULT_PARSER.escape behavior: encode
 // everything outside RFC 3986 unreserved (A-Z a-z 0-9 - _ . ~). JS's
 // encodeURIComponent leaves !'()* unencoded; ruby encodes them.
@@ -1096,11 +1110,18 @@ export class DTextStateMachineParser {
       return { title: bracketedMatch[1], url: bracketedMatch[2] };
     }
 
-    // "title":url format
+    // "title":url format. Strip trailing boundary punctuation (,.;:!?) the
+    // way matchUrl does for bare urls.
     const basicMatch = this.input.slice(this.pos).match(/^"([^"]+)":(\S+)/);
     if (basicMatch) {
-      this.pos += basicMatch[0].length;
-      return { title: basicMatch[1], url: basicMatch[2] };
+      let url = basicMatch[2];
+      let consumed = basicMatch[0].length;
+      while (url.length > 0 && isBoundaryChar(url[url.length - 1])) {
+        url = url.slice(0, -1);
+        consumed--;
+      }
+      this.pos += consumed;
+      return { title: basicMatch[1], url };
     }
 
     return null;
@@ -1337,16 +1358,25 @@ export class DTextStateMachineParser {
 
     const href = routes[match.type] + match.id;
 
+    // Ruby's renderer always uses "post #N" as the text content for
+    // thumb-type id links (the thumb-placeholder-link class lets a frontend
+    // script swap in an actual thumbnail image; "post #N" is the fallback).
+    const text =
+      match.type === 'thumb' ? `post #${match.id}` : match.text;
+
     if (match.type === 'thumb') {
       this.thumbCount++;
       if (this.options.maxThumbs && this.thumbCount > this.options.maxThumbs) {
+        // Past the per-document thumb limit ruby drops the thumb-placeholder
+        // class and emits a plain post id-link, so swap idType to 'post' to
+        // suppress the thumb-only attributes the renderer would otherwise add.
         return {
           type: 'link',
           linkType: 'id_link',
-          idType: match.type,
+          idType: 'post',
           id: match.id,
           href,
-          children: [{ type: 'text', content: match.text }],
+          children: [{ type: 'text', content: text }],
         };
       }
     }
@@ -1357,7 +1387,7 @@ export class DTextStateMachineParser {
       idType: match.type,
       id: match.id,
       href,
-      children: [{ type: 'text', content: match.text }],
+      children: [{ type: 'text', content: text }],
     };
   }
 
@@ -1414,7 +1444,7 @@ export class DTextStateMachineParser {
       type: 'link',
       linkType: 'textile',
       href: match.url,
-      children: [{ type: 'text', content: match.title }],
+      children: parseInlineString(match.title),
     };
   }
 
