@@ -350,7 +350,10 @@ function renderColor(node: ColorNode, context: RenderContext): string {
       node.color,
     )
   ) {
-    return `<span class="dtext-color-${node.color.toLowerCase()}">${content}</span>`;
+    // Preserve the original case of the color name in the class. Ruby's
+    // dtext does not normalize the case here — `[color=Character]` becomes
+    // `dtext-color-Character`, not `dtext-color-character`.
+    return `<span class="dtext-color-${node.color}">${content}</span>`;
   } else {
     return `<span class="dtext-color" style="color:${node.color}">${content}</span>`;
   }

@@ -124,6 +124,16 @@ function parseInlineString(input: string): InlineNode[] {
   return [{ type: 'text', content: input }];
 }
 
+// Lowercase ASCII letters only, leaving non-ASCII characters untouched.
+// Ruby's dtext normalizes wiki/post-search keys with `String#downcase` in a
+// way that leaves Unicode letters alone (verified against the oracle:
+// `[[Ōmukade]]` keeps the `Ō` in the URL, while `[[Foo]]` becomes `foo`).
+// JavaScript's String.prototype.toLowerCase is Unicode-aware, so we need
+// our own version.
+function asciiLowercase(s: string): string {
+  return s.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
+}
+
 // Ruby's dtext only accepts a textile-style "title":url link when the url
 // looks like an absolute path or an http(s) URL. Bare hostnames like
 // `example.com/foo` or relative paths like `users/123` are left as literal
@@ -313,12 +323,14 @@ export class DTextStateMachineParser {
   private parseQuote(): QuoteNode {
     this.skipWhitespace();
     this.consumeNewline();
+    // Strip blank lines at the very top of the container only; once content
+    // starts, a whitespace-only line becomes a real <p> </p> paragraph
+    // (verified against the oracle).
+    this.skipBlankLines();
 
     const children: BlockNode[] = [];
 
     while (this.pos < this.input.length && !this.peekString('[/quote]', true)) {
-      this.skipBlankLines();
-      if (this.peekString('[/quote]', true)) break;
       const node = this.parseBlock();
       if (node) {
         children.push(node);
@@ -336,12 +348,11 @@ export class DTextStateMachineParser {
   private parseSpoilerBlock(): SpoilerBlockNode {
     this.skipWhitespace();
     this.consumeNewline();
+    this.skipBlankLines();
 
     const children: BlockNode[] = [];
 
     while (this.pos < this.input.length && !this.peekSpoilerClose()) {
-      this.skipBlankLines();
-      if (this.peekSpoilerClose()) break;
       const node = this.parseBlock();
       if (node) {
         children.push(node);
@@ -383,6 +394,7 @@ export class DTextStateMachineParser {
   private parseSection(sectionMatch: SectionMatch): SectionNode {
     this.skipWhitespace();
     this.consumeNewline();
+    this.skipBlankLines();
 
     const children: BlockNode[] = [];
 
@@ -390,8 +402,6 @@ export class DTextStateMachineParser {
       this.pos < this.input.length &&
       !this.peekString('[/section]', true)
     ) {
-      this.skipBlankLines();
-      if (this.peekString('[/section]', true)) break;
       const node = this.parseBlock();
       if (node) {
         children.push(node);
@@ -473,6 +483,15 @@ export class DTextStateMachineParser {
 
       if (this.matchString('[tr]', true)) {
         rows.push(this.parseTableRow());
+      } else if (
+        this.peekString('[td]', true) ||
+        this.peekString('[th]', true)
+      ) {
+        // Source omitted the [tr]. Synthesize a row from the loose cells
+        // so they still render. parse5 will auto-wrap orphan <td> children
+        // of <tbody> in an implicit <tr> too, so this matches the oracle's
+        // serialized output under DOM normalization.
+        rows.push(this.parseLooseTableRow());
       } else {
         // Skip unknown content
         this.pos++;
@@ -482,6 +501,23 @@ export class DTextStateMachineParser {
     }
 
     return { type: 'table_body', rows };
+  }
+
+  private parseLooseTableRow(): TableRowNode {
+    const cells: TableCellNode[] = [];
+
+    while (this.pos < this.input.length) {
+      this.skipWhitespace();
+      if (this.matchString('[th]', true)) {
+        cells.push(this.parseTableCell('th'));
+      } else if (this.matchString('[td]', true)) {
+        cells.push(this.parseTableCell('td'));
+      } else {
+        break;
+      }
+    }
+
+    return { type: 'table_row', cells };
   }
 
   private parseTableRow(): TableRowNode {
@@ -519,6 +555,13 @@ export class DTextStateMachineParser {
         // If no inline element matched, consume one character as text
         this.pos++;
       }
+    }
+
+    while (
+      children.length > 0 &&
+      children[children.length - 1].type === 'line_break'
+    ) {
+      children.pop();
     }
 
     return { type: 'table_cell', cellType, children };
@@ -820,13 +863,34 @@ export class DTextStateMachineParser {
         this.consumeBlankLines();
         continue;
       }
+      // Block-container closes ([/section], [/quote]) act as scope killers
+      // in ruby: they close any open inline tag and the surrounding
+      // paragraph. Stop here without consuming so the outer parser sees
+      // the close tag.
+      if (this.peekContainerClose()) {
+        break;
+      }
       const node = this.parseInlineElement();
       if (node) {
         children.push(node);
       }
     }
 
+    while (
+      children.length > 0 &&
+      children[children.length - 1].type === 'line_break'
+    ) {
+      children.pop();
+    }
+
     return { type: nodeType, children } as InlineNode;
+  }
+
+  private peekContainerClose(): boolean {
+    return (
+      this.peekString('[/section]', true) ||
+      this.peekString('[/quote]', true)
+    );
   }
 
   private consumeBlankLines(): void {
@@ -908,12 +972,13 @@ export class DTextStateMachineParser {
         }
       }
 
-      // ID pattern checking.
-      // It is vitally important to only check this at word boundaries,
-      // to avoid performance issues.
+      // ID pattern checking. Only check at the start of a "word" (start of
+      // buffer or after a non-alphanumeric character) so we don't pay the
+      // cost of a regex check at every char. Ruby's parser fires id-link
+      // detection after any non-word boundary including `(`, `[`, `,`, etc.
       if (
         /[a-z]/i.test(char) &&
-        (this.pos === start || this.input[this.pos - 1] === ' ')
+        (this.pos === start || !/[a-z0-9]/i.test(this.input[this.pos - 1]))
       ) {
         if (this.looksLikeIdPattern()) {
           break;
@@ -1033,13 +1098,56 @@ export class DTextStateMachineParser {
     return null;
   }
 
+  // Find the first byte offset in `content` where a container close tag
+  // belongs to an outer block rather than the list item itself. Returns -1
+  // if no such close exists.
+  //
+  // [/section] and [/quote] always terminate (their opens are block-only;
+  // any close that appears inside an item is closing an outer container).
+  // [/spoiler] is dual-mode: inside an item it usually pairs with an inline
+  // [spoiler] open, so we track the open count and only truncate at a close
+  // that has no matching open. Verified against the oracle: a balanced
+  // inline pair stays paired, an unpaired close ends the item.
+  // [/code] and [/table] don't appear here because their open tags consume
+  // their content literally, never letting list-item parsing reach them.
+  private static findContainerCloseInItem(content: string): number {
+    const re = /\[(\/?)(section|quote|spoilers?)\b[^\]]*\]/gi;
+    let spoilerDepth = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content)) !== null) {
+      const isClose = m[1] === '/';
+      const tag = m[2].toLowerCase();
+      if (tag === 'section' || tag === 'quote') {
+        if (isClose) return m.index;
+        continue;
+      }
+      // spoiler or spoilers
+      if (isClose) {
+        if (spoilerDepth === 0) return m.index;
+        spoilerDepth--;
+      } else {
+        spoilerDepth++;
+      }
+    }
+    return -1;
+  }
+
   private matchListItem(): ListMatch | null {
     const match = this.input.slice(this.pos).match(/^(\*+)\s+([^\r\n]+)/);
-    if (match) {
-      this.pos += match[0].length;
-      return { depth: match[1].length, content: match[2] };
+    if (!match) return null;
+
+    const contentStart = match[0].length - match[2].length;
+    const closeIdx = DTextStateMachineParser.findContainerCloseInItem(match[2]);
+    if (closeIdx > 0) {
+      // The close tag belongs to the surrounding block, not this item.
+      // Truncate the item's content and rewind so the outer parser sees it.
+      const content = match[2].slice(0, closeIdx);
+      this.pos += contentStart + content.length;
+      return { depth: match[1].length, content };
     }
-    return null;
+
+    this.pos += match[0].length;
+    return { depth: match[1].length, content: match[2] };
   }
 
   private matchInternalAnchor(): string | null {
@@ -1281,20 +1389,16 @@ export class DTextStateMachineParser {
   // paragraph break before `body` instead of an empty <p></p> from the
   // leftover ` \n`.
   private consumeBlockCloseTail(): void {
-    let lookahead = this.pos;
     while (
-      lookahead < this.input.length &&
-      isHorizontalWhitespace(this.input.charCodeAt(lookahead))
+      this.pos < this.input.length &&
+      isHorizontalWhitespace(this.input.charCodeAt(this.pos))
     ) {
-      lookahead++;
+      this.pos++;
     }
-    if (this.input.slice(lookahead, lookahead + 2) === '\r\n') {
-      this.pos = lookahead + 2;
-    } else if (
-      this.input[lookahead] === '\n' ||
-      this.input[lookahead] === '\r'
-    ) {
-      this.pos = lookahead + 1;
+    if (this.input.slice(this.pos, this.pos + 2) === '\r\n') {
+      this.pos += 2;
+    } else if (this.input[this.pos] === '\n' || this.input[this.pos] === '\r') {
+      this.pos += 1;
     }
   }
 
@@ -1500,7 +1604,7 @@ export class DTextStateMachineParser {
   }
 
   private createPostSearchLink(match: PostSearchMatch): LinkNode {
-    const normalizedTag = match.tag.toLowerCase();
+    const normalizedTag = asciiLowercase(match.tag);
     const href = `/posts?tags=${rubyUriEscape(normalizedTag)}`;
     const title = match.title || match.tag;
 
@@ -1516,7 +1620,7 @@ export class DTextStateMachineParser {
   private createWikiLink(match: WikiLinkMatch): LinkNode {
     if (match.anchor && !match.tag) {
       // Internal anchor link
-      const href = `#${rubyUriEscape(match.anchor.toLowerCase())}`;
+      const href = `#${rubyUriEscape(asciiLowercase(match.anchor))}`;
       const title = match.title || `#${match.anchor}`;
       return {
         type: 'link',
@@ -1527,11 +1631,11 @@ export class DTextStateMachineParser {
       };
     }
 
-    const normalizedTag = match.tag.replace(/ /g, '_').toLowerCase();
+    const normalizedTag = asciiLowercase(match.tag.replace(/ /g, '_'));
     let href = `/wiki_pages/show_or_new?title=${rubyUriEscape(normalizedTag)}`;
 
     if (match.anchor) {
-      href += `#${rubyUriEscape(match.anchor)}`;
+      href += `#${rubyUriEscape(asciiLowercase(match.anchor))}`;
     }
 
     const title =
