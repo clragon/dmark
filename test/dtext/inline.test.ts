@@ -28,8 +28,12 @@ describe('DText Inline Formatting', () => {
     });
 
     it('parses inline spoiler', () => {
-      expect(parseDText("[spoiler]I'm a spoiler![/spoiler]"))
-        .toBe('<p><span class="spoiler">I\'m a spoiler!</span></p>');
+      // A spoiler embedded inside a paragraph stays inline. A spoiler that
+      // sits at block context (start of document, after \n\n, or after a
+      // heading) becomes a <div class="spoiler"><p>...</p></div> block,
+      // covered separately under Spoiler Block.
+      expect(parseDText("here is [spoiler]I'm a spoiler![/spoiler] hidden"))
+        .toBe('<p>here is <span class="spoiler">I\'m a spoiler!</span> hidden</p>');
     });
 
     it('parses inline code', () => {

@@ -92,19 +92,20 @@ function isBoundaryChar(char: string): boolean {
   return BOUNDARY_CHARS.includes(char.charCodeAt(0));
 }
 
-// Strip trailing punctuation from a URL, but keep a closing paren when it's
-// balancing an opening paren in the URL. Wikipedia-style links like
-// `wiki/Foo_(disambiguation)` need the trailing `)` preserved.
+// Strip a single trailing boundary character from a URL. Ruby's dtext only
+// peels one trailing punctuation off a url, regardless of paren balance:
+//
+//   https://x/a)        -> href "https://x/a", trailing ")"
+//   https://x/a).       -> href "https://x/a)", trailing "."  (kept the paren!)
+//   https://x/a)),      -> href "https://x/a))", trailing ","
+//   https://x/path...   -> href "https://x/path..", trailing "."
+//
+// Verified against the oracle.
 function trimUrlBoundaries(url: string): string {
-  while (url.length > 0) {
-    const last = url[url.length - 1];
-    if (!isBoundaryChar(last)) break;
-    if (last === ')') {
-      const opens = (url.match(/\(/g) ?? []).length;
-      const closes = (url.match(/\)/g) ?? []).length;
-      if (closes <= opens) break;
-    }
-    url = url.slice(0, -1);
+  if (url.length === 0) return url;
+  const last = url[url.length - 1];
+  if (isBoundaryChar(last)) {
+    return url.slice(0, -1);
   }
   return url;
 }
@@ -121,6 +122,16 @@ function parseInlineString(input: string): InlineNode[] {
     return first.children;
   }
   return [{ type: 'text', content: input }];
+}
+
+// Ruby's dtext only accepts a textile-style "title":url link when the url
+// looks like an absolute path or an http(s) URL. Bare hostnames like
+// `example.com/foo` or relative paths like `users/123` are left as literal
+// text. Verified against the oracle.
+function isAcceptedTextileUrl(url: string): boolean {
+  if (url.length === 0) return false;
+  if (url[0] === '/') return true;
+  return /^https?:\/\//i.test(url);
 }
 
 // Match ruby's CGI.escape / URI::DEFAULT_PARSER.escape behavior: encode
@@ -202,10 +213,12 @@ export class DTextStateMachineParser {
     const children: BlockNode[] = [];
 
     while (this.pos < this.input.length) {
-      this.skipWhitespace();
-
-      if (this.pos >= this.input.length) break;
-
+      // Don't strip leading horizontal whitespace here. Ruby treats indented
+      // lines as ordinary paragraph content, so a line like "    body" should
+      // produce <p>    body</p>, and a "blank" line that has horizontal
+      // whitespace between two newlines is two single <br>s, not a paragraph
+      // break. The only thing we collapse at the top level is a true
+      // contiguous \n\n, which is the actual paragraph-break separator.
       if (this.peekDoubleNewline()) {
         this.consumeNewline();
         this.consumeNewline();
@@ -304,6 +317,8 @@ export class DTextStateMachineParser {
     const children: BlockNode[] = [];
 
     while (this.pos < this.input.length && !this.peekString('[/quote]', true)) {
+      this.skipBlankLines();
+      if (this.peekString('[/quote]', true)) break;
       const node = this.parseBlock();
       if (node) {
         children.push(node);
@@ -312,6 +327,7 @@ export class DTextStateMachineParser {
 
     if (this.peekString('[/quote]', true)) {
       this.matchString('[/quote]', true);
+      this.consumeBlockCloseTail();
     }
 
     return { type: 'quote', children };
@@ -323,14 +339,26 @@ export class DTextStateMachineParser {
 
     const children: BlockNode[] = [];
 
-    while (this.pos < this.input.length && !this.matchSpoilerClose()) {
+    while (this.pos < this.input.length && !this.peekSpoilerClose()) {
+      this.skipBlankLines();
+      if (this.peekSpoilerClose()) break;
       const node = this.parseBlock();
       if (node) {
         children.push(node);
       }
     }
+    if (this.matchSpoilerClose()) {
+      this.consumeBlockCloseTail();
+    }
 
     return { type: 'spoiler_block', children };
+  }
+
+  private peekSpoilerClose(): boolean {
+    return (
+      this.peekString('[/spoiler]', true) ||
+      this.peekString('[/spoilers]', true)
+    );
   }
 
   private parseCodeBlock(): CodeBlockNode {
@@ -347,6 +375,7 @@ export class DTextStateMachineParser {
     }
 
     const content = this.input.slice(start, this.pos - 7);
+    this.consumeBlockCloseTail();
 
     return { type: 'code_block', content };
   }
@@ -359,12 +388,17 @@ export class DTextStateMachineParser {
 
     while (
       this.pos < this.input.length &&
-      !this.matchString('[/section]', true)
+      !this.peekString('[/section]', true)
     ) {
+      this.skipBlankLines();
+      if (this.peekString('[/section]', true)) break;
       const node = this.parseBlock();
       if (node) {
         children.push(node);
       }
+    }
+    if (this.matchString('[/section]', true)) {
+      this.consumeBlockCloseTail();
     }
 
     const result: SectionNode = { type: 'section', children };
@@ -947,13 +981,14 @@ export class DTextStateMachineParser {
   }
 
   private matchSpoilerBlockOpen(): boolean {
-    // A spoiler renders as a block when its body contains a newline (matches
-    // ruby's behavior in peekBlockElement and the dtext gem). Inline-only
-    // spoilers stay on a single line.
+    // At block context (parseBlock is only entered at document start or after
+    // a paragraph break) `[spoiler]` always opens a block spoiler, regardless
+    // of what its body contains. A spoiler embedded inside a paragraph (after
+    // a single newline or mid-line) stays inline; that case never reaches
+    // parseBlock, so the structural test here is sufficient.
     const remaining = this.input.slice(this.pos);
     const blockMatch = remaining.match(/^\[(spoilers?)\]([\s\S]*?)\[\/\1\]/i);
     if (!blockMatch) return false;
-    if (!blockMatch[2].includes('\n')) return false;
     this.pos += blockMatch[1].length + 2; // consume only the opening tag
     return true;
   }
@@ -1140,6 +1175,7 @@ export class DTextStateMachineParser {
       .slice(this.pos)
       .match(/^"([^"]+)":\[([^\]]+)\]/);
     if (bracketedMatch) {
+      if (!isAcceptedTextileUrl(bracketedMatch[2])) return null;
       this.pos += bracketedMatch[0].length;
       return { title: bracketedMatch[1], url: bracketedMatch[2] };
     }
@@ -1149,6 +1185,7 @@ export class DTextStateMachineParser {
     const basicMatch = this.input.slice(this.pos).match(/^"([^"]+)":(\S+)/);
     if (basicMatch) {
       const trimmed = trimUrlBoundaries(basicMatch[2]);
+      if (!isAcceptedTextileUrl(trimmed)) return null;
       const consumed = basicMatch[0].length - (basicMatch[2].length - trimmed.length);
       this.pos += consumed;
       return { title: basicMatch[1], url: trimmed };
@@ -1195,9 +1232,17 @@ export class DTextStateMachineParser {
   }
 
   private matchNewlines(): boolean {
+    // Consume only line terminators here. Horizontal whitespace must stay so
+    // it can be picked up as paragraph content (ruby preserves indentation).
     const start = this.pos;
-    while (this.pos < this.input.length && /\s/.test(this.input[this.pos])) {
-      this.pos++;
+    while (this.pos < this.input.length) {
+      if (this.input.slice(this.pos, this.pos + 2) === '\r\n') {
+        this.pos += 2;
+      } else if (this.input[this.pos] === '\n' || this.input[this.pos] === '\r') {
+        this.pos += 1;
+      } else {
+        break;
+      }
     }
     return this.pos > start;
   }
@@ -1227,6 +1272,57 @@ export class DTextStateMachineParser {
       this.pos += 2;
     } else if (this.input[this.pos] === '\n') {
       this.pos += 1;
+    }
+  }
+
+  // After consuming a block close tag like [/quote] or [/section], ruby
+  // also eats any horizontal whitespace remaining on the same line plus one
+  // trailing newline. This way `[/quote] \n\nbody` produces a clean
+  // paragraph break before `body` instead of an empty <p></p> from the
+  // leftover ` \n`.
+  private consumeBlockCloseTail(): void {
+    let lookahead = this.pos;
+    while (
+      lookahead < this.input.length &&
+      isHorizontalWhitespace(this.input.charCodeAt(lookahead))
+    ) {
+      lookahead++;
+    }
+    if (this.input.slice(lookahead, lookahead + 2) === '\r\n') {
+      this.pos = lookahead + 2;
+    } else if (
+      this.input[lookahead] === '\n' ||
+      this.input[lookahead] === '\r'
+    ) {
+      this.pos = lookahead + 1;
+    }
+  }
+
+  // Consume any whitespace-only lines at the current position. A line
+  // counts as whitespace-only if it contains zero or more horizontal-WS
+  // characters followed by a newline. Used inside container blocks
+  // (section, quote, spoiler block) where ruby does not preserve such lines
+  // as empty paragraphs. At document level we don't do this; ruby keeps
+  // " \n\n" as a real <p> </p>.
+  private skipBlankLines(): void {
+    while (this.pos < this.input.length) {
+      let lookahead = this.pos;
+      while (
+        lookahead < this.input.length &&
+        isHorizontalWhitespace(this.input.charCodeAt(lookahead))
+      ) {
+        lookahead++;
+      }
+      if (this.input.slice(lookahead, lookahead + 2) === '\r\n') {
+        this.pos = lookahead + 2;
+      } else if (
+        this.input[lookahead] === '\n' ||
+        this.input[lookahead] === '\r'
+      ) {
+        this.pos = lookahead + 1;
+      } else {
+        break;
+      }
     }
   }
 
