@@ -712,7 +712,9 @@ export class DTextStateMachineParser {
 
     for (const part of parts) {
       const content = part.trim();
-      const children: InlineNode[] = content ? [{ type: 'text', content }] : [];
+      const children: InlineNode[] = content
+        ? this.parseInlineText(content)
+        : [];
       cells.push({ type: 'table_cell', cellType, children });
     }
 
