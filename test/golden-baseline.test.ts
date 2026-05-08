@@ -40,19 +40,10 @@ const CORPUS_GOLDEN = resolve(process.cwd(), 'corpus', 'golden');
 const INDEX_PATH = resolve(CORPUS_GOLDEN, 'index.json');
 // One-way pass-rate ratchet. Each parser fix bumps it up; never lower it,
 // since lowering hides regressions. Phase 1 started at 0 (honest baseline).
-const PHASE_1_FLOOR = 0.96;
+const PHASE_1_FLOOR = 0.98;
 const MAX_DIFF_CHARS = 240;
 
-const SKIP_FILES: ReadonlyMap<string, string> = new Map([
-  [
-    '9169-e621_cheatsheet.dtext',
-    'parser blows the heap on nested [sup][#anchor][[#wikilink|N]][/sup] footnote constructs',
-  ],
-  [
-    '12274-titanmelon_lists.dtext',
-    'parser blows the heap on this fixture (cause not yet localized)',
-  ],
-]);
+const SKIP_FILES: ReadonlyMap<string, string> = new Map([]);
 
 function loadIndex(): CorpusIndex | null {
   if (!existsSync(INDEX_PATH)) return null;

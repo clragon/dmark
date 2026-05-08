@@ -165,6 +165,13 @@ export class DTextStateMachineParser {
   // caps this at 3; further opens are dropped (their close tags vanish too).
   private supSubDepth: number = 0;
   private static readonly SUP_SUB_MAX_DEPTH = 3;
+  // Depth of currently-open block containers. A close tag only acts as a
+  // scope killer / block break when its depth is > 0; otherwise ruby
+  // treats it as literal text. Required to avoid infinite loops on stray
+  // closes at the document root.
+  private quoteDepth: number = 0;
+  private sectionDepth: number = 0;
+  private spoilerBlockDepth: number = 0;
 
   // All link ID patterns
   private static readonly ID_PATTERNS = [
@@ -347,11 +354,19 @@ export class DTextStateMachineParser {
 
     const children: BlockNode[] = [];
 
-    while (this.pos < this.input.length && !this.peekString('[/quote]', true)) {
-      const node = this.parseBlock();
-      if (node) {
-        children.push(node);
+    this.quoteDepth++;
+    try {
+      while (
+        this.pos < this.input.length &&
+        !this.peekString('[/quote]', true)
+      ) {
+        const node = this.parseBlock();
+        if (node) {
+          children.push(node);
+        }
       }
+    } finally {
+      this.quoteDepth--;
     }
 
     if (this.peekString('[/quote]', true)) {
@@ -369,11 +384,16 @@ export class DTextStateMachineParser {
 
     const children: BlockNode[] = [];
 
-    while (this.pos < this.input.length && !this.peekSpoilerClose()) {
-      const node = this.parseBlock();
-      if (node) {
-        children.push(node);
+    this.spoilerBlockDepth++;
+    try {
+      while (this.pos < this.input.length && !this.peekSpoilerClose()) {
+        const node = this.parseBlock();
+        if (node) {
+          children.push(node);
+        }
       }
+    } finally {
+      this.spoilerBlockDepth--;
     }
     if (this.matchSpoilerClose()) {
       this.consumeBlockCloseTail();
@@ -421,14 +441,19 @@ export class DTextStateMachineParser {
 
     const children: BlockNode[] = [];
 
-    while (
-      this.pos < this.input.length &&
-      !this.peekString('[/section]', true)
-    ) {
-      const node = this.parseBlock();
-      if (node) {
-        children.push(node);
+    this.sectionDepth++;
+    try {
+      while (
+        this.pos < this.input.length &&
+        !this.peekString('[/section]', true)
+      ) {
+        const node = this.parseBlock();
+        if (node) {
+          children.push(node);
+        }
       }
+    } finally {
+      this.sectionDepth--;
     }
     if (this.matchString('[/section]', true)) {
       this.consumeBlockCloseTail();
@@ -937,8 +962,8 @@ export class DTextStateMachineParser {
 
   private peekContainerClose(): boolean {
     return (
-      this.peekString('[/section]', true) ||
-      this.peekString('[/quote]', true)
+      (this.sectionDepth > 0 && this.peekString('[/section]', true)) ||
+      (this.quoteDepth > 0 && this.peekString('[/quote]', true))
     );
   }
 
@@ -1523,12 +1548,9 @@ export class DTextStateMachineParser {
     const blockPatterns = [
       /^h[123456]\./i,
       /^\[quote\]/i,
-      /^\[\/quote\]/i,
       /^\[code\]/i,
       /^\[\/code\]/i,
       /^\[section/i,
-      /^\[\/section\]/i,
-      /^\[\/spoilers?\]/i,
       /^\[table\]/i,
       /^\[\/table\]/i,
       /^\[ltable\]/i,
@@ -1545,6 +1567,15 @@ export class DTextStateMachineParser {
       }
       return false; // Inline spoiler (single line)
     }
+
+    // Closes for block containers only count as block markers when their
+    // matching open is in scope. Outside of one, ruby treats them as
+    // ordinary inline text and so do we (otherwise we infinite-loop in
+    // parseBlock since no branch consumes them).
+    if (this.quoteDepth > 0 && /^\[\/quote\]/i.test(remaining)) return true;
+    if (this.sectionDepth > 0 && /^\[\/section\]/i.test(remaining)) return true;
+    if (this.spoilerBlockDepth > 0 && /^\[\/spoilers?\]/i.test(remaining))
+      return true;
 
     return blockPatterns.some((pattern) => pattern.test(remaining));
   }
