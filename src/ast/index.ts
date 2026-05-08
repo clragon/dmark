@@ -31,7 +31,8 @@ export type InlineNode =
   | ColorNode
   | LinkNode
   | InternalAnchorNode
-  | LineBreakNode;
+  | LineBreakNode
+  | FragmentNode;
 
 export interface HeaderNode extends ASTNode {
   type: 'header';
@@ -168,6 +169,15 @@ export interface ColorNode extends ASTNode {
 
 export interface LineBreakNode extends ASTNode {
   type: 'line_break';
+}
+
+// Transparent inline grouping. Used when the parser drops a wrapping element
+// (e.g. an over-deep [sup]/[sub] open) but still wants to bubble its parsed
+// children up to the containing inline list. The renderer emits children
+// without any surrounding markup.
+export interface FragmentNode extends ASTNode {
+  type: 'fragment';
+  children: InlineNode[];
 }
 
 export interface LinkNode extends ASTNode {

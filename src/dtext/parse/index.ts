@@ -3,6 +3,7 @@ import type {
   CodeBlockNode,
   ColorNode,
   DocumentNode,
+  FragmentNode,
   HeaderNode,
   InlineNode,
   LinkNode,
@@ -160,6 +161,10 @@ export class DTextStateMachineParser {
   protected pos: number;
   private options: ParserOptions;
   private thumbCount: number;
+  // Combined nesting depth of [sup]/[sub] containers currently open. Ruby
+  // caps this at 3; further opens are dropped (their close tags vanish too).
+  private supSubDepth: number = 0;
+  private static readonly SUP_SUB_MAX_DEPTH = 3;
 
   // All link ID patterns
   private static readonly ID_PATTERNS = [
@@ -815,12 +820,12 @@ export class DTextStateMachineParser {
 
     // Superscript
     if (this.matchString('[sup]', true)) {
-      return this.parseInlineContainer('[/sup]', 'superscript');
+      return this.parseSupSubContainer('[/sup]', 'superscript');
     }
 
     // Subscript
     if (this.matchString('[sub]', true)) {
-      return this.parseInlineContainer('[/sub]', 'subscript');
+      return this.parseSupSubContainer('[/sub]', 'subscript');
     }
 
     // Color
@@ -902,6 +907,32 @@ export class DTextStateMachineParser {
     }
 
     return { type: nodeType, children } as InlineNode;
+  }
+
+  // Ruby caps the combined [sup]/[sub] nesting depth at 3. Past that the
+  // open tag is silently dropped along with its matching close, and the
+  // body's children bubble up to the parent. We model the drop with a
+  // transparent fragment node so the renderer emits the children inline
+  // without surrounding markup.
+  private parseSupSubContainer(
+    closePattern: string,
+    nodeType: 'superscript' | 'subscript',
+  ): InlineNode {
+    const dropped =
+      this.supSubDepth >= DTextStateMachineParser.SUP_SUB_MAX_DEPTH;
+    this.supSubDepth++;
+    try {
+      const wrapped = this.parseInlineContainer(closePattern, nodeType);
+      if (!dropped) return wrapped;
+      const children =
+        'children' in wrapped && Array.isArray(wrapped.children)
+          ? (wrapped.children as InlineNode[])
+          : [];
+      const fragment: FragmentNode = { type: 'fragment', children };
+      return fragment;
+    } finally {
+      this.supSubDepth--;
+    }
   }
 
   private peekContainerClose(): boolean {

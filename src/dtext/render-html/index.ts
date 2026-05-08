@@ -5,6 +5,7 @@ import type {
   CodeBlockNode,
   ColorNode,
   DocumentNode,
+  FragmentNode,
   HeaderNode,
   InlineCodeNode,
   InlineSpoilerNode,
@@ -137,6 +138,8 @@ function renderNode(node: ASTNode, context: RenderContext): string {
       return renderColor(node as ColorNode, context);
     case 'line_break':
       return renderLineBreak(node as LineBreakNode, context);
+    case 'fragment':
+      return renderFragment(node as FragmentNode, context);
     case 'link':
       return renderLink(node as LinkNode, context);
     case 'internal_anchor':
@@ -374,6 +377,10 @@ function renderLineBreak(
   _context: RenderContext,
 ): string {
   return '<br>';
+}
+
+function renderFragment(node: FragmentNode, context: RenderContext): string {
+  return node.children.map((child) => renderNode(child, context)).join('');
 }
 
 function renderLink(node: LinkNode, context: RenderContext): string {
