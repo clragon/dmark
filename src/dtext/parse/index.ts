@@ -10,6 +10,7 @@ import type {
   ListNode,
   ParagraphNode,
   QuoteNode,
+  RawBlockTextNode,
   SectionNode,
   SpoilerBlockNode,
   TableBodyNode,
@@ -284,6 +285,17 @@ export class DTextStateMachineParser {
       return this.parseCodeBlock();
     }
 
+    // Stray block-level closes ([/code], [/table]) at block start: ruby
+    // emits the literal text without a paragraph wrap. Their open tags
+    // consume content to the matching close, so reaching one here means
+    // it has no matching open in scope.
+    if (this.peekString('[/code]', true)) {
+      return this.parseRawBlockClose('[/code]');
+    }
+    if (this.peekString('[/table]', true)) {
+      return this.parseRawBlockClose('[/table]');
+    }
+
     const sectionMatch = this.matchSection();
     if (sectionMatch) {
       return this.parseSection(sectionMatch);
@@ -389,6 +401,12 @@ export class DTextStateMachineParser {
     this.consumeBlockCloseTail();
 
     return { type: 'code_block', content };
+  }
+
+  private parseRawBlockClose(tag: string): RawBlockTextNode {
+    this.matchString(tag, true);
+    this.consumeBlockCloseTail();
+    return { type: 'raw_block_text', content: tag };
   }
 
   private parseSection(sectionMatch: SectionMatch): SectionNode {
@@ -1476,10 +1494,12 @@ export class DTextStateMachineParser {
       /^\[quote\]/i,
       /^\[\/quote\]/i,
       /^\[code\]/i,
+      /^\[\/code\]/i,
       /^\[section/i,
       /^\[\/section\]/i,
       /^\[\/spoilers?\]/i,
       /^\[table\]/i,
+      /^\[\/table\]/i,
       /^\[ltable\]/i,
       /^\*+\s/,
     ];

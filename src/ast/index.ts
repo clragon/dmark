@@ -15,7 +15,8 @@ export type BlockNode =
   | SectionNode
   | CodeBlockNode
   | TableNode
-  | ListNode;
+  | ListNode
+  | RawBlockTextNode;
 
 export type InlineNode =
   | TextNode
@@ -62,6 +63,13 @@ export interface SectionNode extends ASTNode {
 
 export interface CodeBlockNode extends ASTNode {
   type: 'code_block';
+  content: string;
+}
+
+// Stray block-level closing tags ([/code], [/table]) that ruby renders as
+// literal text without paragraph wrapping when no matching open is in scope.
+export interface RawBlockTextNode extends ASTNode {
+  type: 'raw_block_text';
   content: string;
 }
 

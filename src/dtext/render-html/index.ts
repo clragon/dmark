@@ -17,6 +17,7 @@ import type {
   ListNode,
   ParagraphNode,
   QuoteNode,
+  RawBlockTextNode,
   SectionNode,
   SpoilerBlockNode,
   StrikeoutNode,
@@ -94,6 +95,8 @@ function renderNode(node: ASTNode, context: RenderContext): string {
       return renderSection(node as SectionNode, context);
     case 'code_block':
       return renderCodeBlock(node as CodeBlockNode, context);
+    case 'raw_block_text':
+      return renderRawBlockText(node as RawBlockTextNode, context);
     case 'table':
       return renderTable(node as TableNode, context);
     case 'ltable':
@@ -192,6 +195,13 @@ function renderSection(node: SectionNode, context: RenderContext): string {
 
 function renderCodeBlock(node: CodeBlockNode, _context: RenderContext): string {
   return `<pre>${htmlEscape(node.content)}</pre>`;
+}
+
+function renderRawBlockText(
+  node: RawBlockTextNode,
+  _context: RenderContext,
+): string {
+  return htmlEscape(node.content);
 }
 
 function renderTable(node: TableNode, context: RenderContext): string {
