@@ -1584,8 +1584,13 @@ export class DTextStateMachineParser {
 
   private peekBlockElement(): boolean {
     const remaining = this.input.slice(this.pos);
+    // Some block markers (h1., * item, etc.) are only structural at the
+    // start of a line. Mid-line they are ordinary text. Bracketed tags
+    // ([code], [/code], ...) break paragraphs regardless of position.
+    const atLineStart =
+      this.pos === 0 || this.input[this.pos - 1] === '\n';
+    const lineStartPatterns = [/^h[123456]\./i, /^\*+\s/];
     const blockPatterns = [
-      /^h[123456]\./i,
       /^\[quote\]/i,
       /^\[code\]/i,
       /^\[\/code\]/i,
@@ -1593,7 +1598,6 @@ export class DTextStateMachineParser {
       /^\[table\]/i,
       /^\[\/table\]/i,
       /^\[ltable\]/i,
-      /^\*+\s/,
     ];
 
     // Special handling for spoilers - only block if multiline
@@ -1622,7 +1626,10 @@ export class DTextStateMachineParser {
     const coloredQuote = remaining.match(/^\[quote=([^\]\n]*)\]/i);
     if (coloredQuote && isValidQuoteColor(coloredQuote[1])) return true;
 
-    return blockPatterns.some((pattern) => pattern.test(remaining));
+    if (blockPatterns.some((pattern) => pattern.test(remaining))) return true;
+    if (atLineStart && lineStartPatterns.some((p) => p.test(remaining)))
+      return true;
+    return false;
   }
 
   protected looksLikeMarkup(): boolean {
