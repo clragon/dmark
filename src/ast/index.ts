@@ -48,6 +48,9 @@ export interface ParagraphNode extends ASTNode {
 export interface QuoteNode extends ASTNode {
   type: 'quote';
   children: BlockNode[];
+  // Optional color from [quote=COLOR]. The value is the raw token as typed
+  // (case preserved); the renderer chooses class/style based on shape.
+  color?: string;
 }
 
 export interface SpoilerBlockNode extends ASTNode {

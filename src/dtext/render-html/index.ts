@@ -174,6 +174,18 @@ function renderQuote(node: QuoteNode, context: RenderContext): string {
   const content = node.children
     .map((child) => renderNode(child, context))
     .join('');
+  if (node.color) {
+    if (
+      /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i.test(
+        node.color,
+      )
+    ) {
+      // Tag-category quotes get a sidebar class with the color name as
+      // typed; case is preserved (verified against the oracle).
+      return `<blockquote class="dtext-sidebar-colored-${node.color}">${content}</blockquote>`;
+    }
+    return `<blockquote class="dtext-quote-color" style="border-left-color:${node.color}">${content}</blockquote>`;
+  }
   return `<blockquote>${content}</blockquote>`;
 }
 
@@ -359,7 +371,7 @@ function renderColor(node: ColorNode, context: RenderContext): string {
     .join('');
 
   if (
-    /^(art(ist)?|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i.test(
+    /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i.test(
       node.color,
     )
   ) {

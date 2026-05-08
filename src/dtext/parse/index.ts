@@ -94,6 +94,22 @@ function isBoundaryChar(char: string): boolean {
   return BOUNDARY_CHARS.includes(char.charCodeAt(0));
 }
 
+// Quote-color validity (verified against the oracle):
+//   * #hex of exactly 3 or 6 hex digits, mixed case allowed
+//   * lowercase color word (^[a-z]+$), covers common css names like yellow
+//   * one of the tag-category aliases used elsewhere by ruby's dtext
+//     renderer; case insensitive on the match, but the original case is
+//     preserved in the rendered class name.
+const QUOTE_CATEGORY_RE =
+  /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i;
+
+function isValidQuoteColor(value: string): boolean {
+  if (QUOTE_CATEGORY_RE.test(value)) return true;
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) return true;
+  if (/^[a-z]+$/.test(value)) return true;
+  return false;
+}
+
 // Strip a single trailing boundary character from a URL. Ruby's dtext only
 // peels one trailing punctuation off a url, regardless of paren balance:
 //
@@ -289,6 +305,11 @@ export class DTextStateMachineParser {
       return this.parseQuote();
     }
 
+    const quoteColor = this.matchQuoteColorOpen();
+    if (quoteColor !== null) {
+      return this.parseQuote(quoteColor);
+    }
+
     if (this.matchSpoilerBlockOpen()) {
       return this.parseSpoilerBlock();
     }
@@ -344,7 +365,21 @@ export class DTextStateMachineParser {
     return { type: 'header', level, children };
   }
 
-  private parseQuote(): QuoteNode {
+  // Recognize a colored quote open like [quote=#00CCFF] or [quote=yellow]
+  // and consume it, returning the raw color token. Returns null and leaves
+  // pos unchanged when not a valid colored quote (so the surrounding parser
+  // can fall through to inline-text handling).
+  private matchQuoteColorOpen(): string | null {
+    const remaining = this.input.slice(this.pos);
+    const m = remaining.match(/^\[quote=([^\]\n]*)\]/i);
+    if (!m) return null;
+    const color = m[1];
+    if (!isValidQuoteColor(color)) return null;
+    this.pos += m[0].length;
+    return color;
+  }
+
+  private parseQuote(color?: string): QuoteNode {
     this.skipWhitespace();
     this.consumeNewline();
     // Strip blank lines at the very top of the container only; once content
@@ -374,7 +409,9 @@ export class DTextStateMachineParser {
       this.consumeBlockCloseTail();
     }
 
-    return { type: 'quote', children };
+    const result: QuoteNode = { type: 'quote', children };
+    if (color !== undefined) result.color = color;
+    return result;
   }
 
   private parseSpoilerBlock(): SpoilerBlockNode {
@@ -1576,6 +1613,12 @@ export class DTextStateMachineParser {
     if (this.sectionDepth > 0 && /^\[\/section\]/i.test(remaining)) return true;
     if (this.spoilerBlockDepth > 0 && /^\[\/spoilers?\]/i.test(remaining))
       return true;
+
+    // Colored quote opens like [quote=#00CCFF] count as block elements only
+    // when the color is valid; invalid color attributes (e.g. [quote=Bob])
+    // are treated as inline text by ruby and we mirror that.
+    const coloredQuote = remaining.match(/^\[quote=([^\]\n]*)\]/i);
+    if (coloredQuote && isValidQuoteColor(coloredQuote[1])) return true;
 
     return blockPatterns.some((pattern) => pattern.test(remaining));
   }
