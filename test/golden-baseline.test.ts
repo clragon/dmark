@@ -40,7 +40,7 @@ const CORPUS_GOLDEN = resolve(process.cwd(), 'corpus', 'golden');
 const INDEX_PATH = resolve(CORPUS_GOLDEN, 'index.json');
 // One-way pass-rate ratchet. Each parser fix bumps it up; never lower it,
 // since lowering hides regressions.
-const PHASE_1_FLOOR = 0.98;
+const PHASE_1_FLOOR = 1.0;
 const MAX_DIFF_CHARS = 240;
 
 const SKIP_FILES: ReadonlyMap<string, string> = new Map([]);

@@ -480,7 +480,8 @@ function appendLinkClasses(node: LinkNode, out: string[]): void {
     case 'url':
       break;
     case 'inline':
-      if (!node.href.startsWith('/')) out.push(' dtext-external-link');
+      if (!node.href.startsWith('/') && !node.href.startsWith('#'))
+        out.push(' dtext-external-link');
       break;
     case 'wiki':
       out.push(' dtext-wiki-link');

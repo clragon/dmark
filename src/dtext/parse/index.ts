@@ -192,12 +192,13 @@ function parseInlineString(input: string): InlineNode[] {
 }
 
 // Ruby's dtext only accepts a textile-style "title":url link when the URL
-// looks like an absolute path or an http(s) URL. Bare hostnames like
-// `example.com/foo` or relative paths like `users/123` are left as literal
-// text (oracle-verified).
+// looks like an absolute path, a fragment, or an http(s) URL. Bare hostnames
+// like `example.com/foo` or relative paths like `users/123` are left as
+// literal text (oracle-verified).
 function isAcceptedTextileUrl(url: string): boolean {
   if (url.length === 0) return false;
   if (url[0] === '/') return true;
+  if (url[0] === '#') return url.length > 1;
   return /^https?:\/\//i.test(url);
 }
 
