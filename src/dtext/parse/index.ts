@@ -631,9 +631,7 @@ export class DTextStateMachineParser {
 
     while (this.pos < this.input.length && !this.peekNewline()) {
       const node = this.parseInlineElement();
-      if (node) {
-        children.push(node);
-      }
+      if (node) pushInlineMergingText(children, node);
     }
 
     this.consumeNewline();
@@ -1292,9 +1290,7 @@ export class DTextStateMachineParser {
         break;
       }
       const node = this.parseInlineElement();
-      if (node) {
-        children.push(node);
-      }
+      if (node) pushInlineMergingText(children, node);
     }
 
     trimTrailingLineBreaks(children);
@@ -1363,9 +1359,7 @@ export class DTextStateMachineParser {
       !this.matchString('[/color]', true)
     ) {
       const node = this.parseInlineElement();
-      if (node) {
-        children.push(node);
-      }
+      if (node) pushInlineMergingText(children, node);
     }
     return {
       type: 'color',
@@ -1455,9 +1449,7 @@ export class DTextStateMachineParser {
     const children: InlineNode[] = [];
     while (this.pos < this.input.length) {
       const node = this.parseInlineElement();
-      if (node) {
-        children.push(node);
-      }
+      if (node) pushInlineMergingText(children, node);
     }
 
     this.input = savedInput;
