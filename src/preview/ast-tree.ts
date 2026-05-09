@@ -153,8 +153,7 @@ export function renderAST(target: HTMLElement, ast: unknown): void {
 export function renderASTError(target: HTMLElement, message: string): void {
   target.replaceChildren();
   const err = document.createElement('div');
-  err.classList.add('ast-empty');
-  err.style.color = 'var(--bad)';
+  err.classList.add('ast-error');
   err.textContent = message;
   target.appendChild(err);
 }

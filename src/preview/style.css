@@ -47,13 +47,14 @@ html, body {
   margin: 4px 0 12px;
   color: var(--text-dim);
   font-size: 13px;
+  max-width: 80ch;
 }
 
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  align-items: center;
+  align-items: end;
 }
 
 .toolbar-field {
@@ -82,78 +83,190 @@ html, body {
   letter-spacing: 0;
 }
 
-.toolbar-toggle {
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.toolbar-toggle input {
-  margin: 0;
-}
-
 .toolbar button {
   cursor: pointer;
-  align-self: end;
 }
 
 .toolbar button:hover {
   border-color: var(--border-strong);
 }
 
-.panes {
+.workbench {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.sources {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  padding: 12px;
-  align-items: start;
 }
 
-@media (max-width: 1100px) {
-  .panes {
+@media (max-width: 900px) {
+  .sources {
     grid-template-columns: 1fr;
   }
 }
 
-.pane {
+.source {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: 6px;
-  display: grid;
-  gap: 10px;
-  padding: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.1s;
 }
 
-.pane-header {
+.source.is-source {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-dim) inset;
+}
+
+.source-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.source-header h2 {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+
+.source-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+}
+
+.source.is-source .source-badge {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.source-meta {
+  display: flex;
+  justify-content: flex-end;
+}
+
+textarea {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  line-height: 1.5;
+}
+
+textarea:focus {
+  outline: 1px solid var(--accent-dim);
+  border-color: var(--accent-dim);
+}
+
+.violation-banner {
+  background: rgba(255, 139, 139, 0.08);
+  border: 1px solid var(--bad);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--text);
+}
+
+.violation-banner[hidden] {
+  display: none;
+}
+
+.violation-banner strong {
+  color: var(--bad);
+  margin-right: 6px;
+}
+
+.violation-banner details {
+  margin-top: 8px;
+}
+
+.violation-banner summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.violation-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* Grid items default to `min-width: auto` (the implicit minimum size of the
+   contents), so a wide AST line pushes the track past `1fr` and overflows
+   the banner horizontally. Forcing `min-width: 0` on the children makes the
+   tracks honour the `1fr 1fr` ratio; the inner `.ast-tree` already has
+   `overflow: auto` to scroll its own contents. */
+.violation-diff > div {
+  min-width: 0;
+}
+
+.violation-diff h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .violation-diff {
+    grid-template-columns: 1fr;
+  }
+}
+
+.output {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 6px;
+  padding-bottom: 4px;
 }
 
-.pane-header h2 {
+.output-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.output-header h3 {
   margin: 0;
-  font-size: 15px;
-  letter-spacing: 0.04em;
-}
-
-.pane-status {
-  font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--text-dim);
+  font-weight: 600;
 }
-
-.pane-status.ok { color: var(--good); }
-.pane-status.error { color: var(--bad); }
 
 .cell {
   display: grid;
   gap: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
 }
 
 .cell-header {
@@ -177,24 +290,8 @@ html, body {
   color: var(--text-dim);
 }
 
-textarea {
-  width: 100%;
-  min-height: 140px;
-  resize: vertical;
-  font-family: var(--mono);
-  font-size: 13px;
-  background: var(--bg-input);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 8px;
-  line-height: 1.5;
-}
-
-textarea:focus {
-  outline: 1px solid var(--accent-dim);
-  border-color: var(--accent-dim);
-}
+.cell-meta.error { color: var(--bad); }
+.cell-meta.ok { color: var(--good); }
 
 .html-preview {
   background: #fff;
@@ -203,7 +300,7 @@ textarea:focus {
   border-radius: 4px;
   padding: 10px 12px;
   min-height: 60px;
-  max-height: 320px;
+  max-height: 360px;
   overflow: auto;
   font-family: system-ui, sans-serif;
 }
@@ -237,6 +334,11 @@ textarea:focus {
 
 .ast-empty {
   color: var(--text-dim);
+  font-style: italic;
+}
+
+.ast-error {
+  color: var(--bad);
   font-style: italic;
 }
 
@@ -330,22 +432,12 @@ textarea:focus {
   margin-right: 6px;
 }
 
-.cross-output {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 8px;
-  font-family: var(--mono);
-  font-size: 12px;
-  margin: 0;
-  white-space: pre-wrap;
-  min-height: 40px;
-  max-height: 240px;
-  overflow: auto;
-  color: var(--text);
-}
-
-.cross-output.pending {
+.diag-origin {
+  display: inline-block;
+  min-width: 48px;
+  font-size: 10px;
   color: var(--text-dim);
-  font-style: italic;
+  text-transform: uppercase;
+  margin-right: 6px;
+  letter-spacing: 0.04em;
 }

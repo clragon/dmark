@@ -1,31 +1,71 @@
 // Stand-alone smoke driver for the preview workbench. Runs every built-in
-// sample through the same parse + renderToHTML pipeline the live page runs,
-// asserts no exceptions plus non-empty HTML output. Intended for ad-hoc
-// invocation via `tsx src/preview/smoke.ts`; not wired into vitest because
-// the project's vitest globalSetup spins up the dtext oracle docker
-// container, which is overkill for a preview-side regression check.
+// sample through the *full* round-trip pipeline the live page runs:
+//
+//   parse(source) → AST → format(AST) → parse(formatted) → AST'
+//
+// and reports whether AST equals AST' (round-trip stable) or not (violation).
+// A violation accompanied by formatter diagnostics is documented loss; a
+// violation with no diagnostics is a real round-trip-stability bug. The
+// driver is intentionally not a vitest test (the project's vitest globalSetup
+// boots the dtext oracle docker for every run, which is overkill for a
+// preview-side regression check).
 
 import { parseDTextToAST, renderToHTML } from '../dtext';
+import { formatDText } from '../dtext/render';
 import { parseMarkdown } from '../md/parse';
+import { formatMarkdown } from '../md/render';
+import type { ASTNode, DocumentNode } from '../ast';
+import type { Diagnostic } from '../diagnostics';
 import { SAMPLES } from './samples';
 
+interface SideOps {
+  parse: (s: string) => { ast: DocumentNode; diagnostics: Diagnostic[] };
+  format: (ast: ASTNode) => { output: string; diagnostics: Diagnostic[] };
+}
+
+const dtext: SideOps = {
+  parse: (s) => ({ ast: parseDTextToAST(s) as DocumentNode, diagnostics: [] }),
+  format: formatDText,
+};
+
+const md: SideOps = {
+  parse: (s) => {
+    const r = parseMarkdown(s);
+    return { ast: r.document, diagnostics: r.diagnostics };
+  },
+  format: formatMarkdown,
+};
+
+function astEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 let failures = 0;
+let violations = 0;
 for (const sample of SAMPLES) {
+  const sourceSide = sample.side === 'dtext' ? dtext : md;
+  const otherSide = sample.side === 'dtext' ? md : dtext;
   try {
-    if (sample.side === 'dtext') {
-      const ast = parseDTextToAST(sample.source);
-      const html = renderToHTML(ast);
-      if (!html.length) throw new Error('empty html');
+    const { ast } = sourceSide.parse(sample.source);
+    const html = renderToHTML(ast);
+    if (!html.length) throw new Error('empty html');
+    const formatted = otherSide.format(ast);
+    const reparsed = otherSide.parse(formatted.output);
+    const stable = astEqual(ast, reparsed.ast);
+    const diagCount =
+      formatted.diagnostics.length + reparsed.diagnostics.length;
+    if (stable) {
       process.stdout.write(
-        `  ok   ${sample.id.padEnd(20)} ${html.length} chars html\n`,
+        `  ok   ${sample.id.padEnd(20)} round-trip stable ` +
+          `(html ${html.length}, ${diagCount} diag)\n`,
       );
     } else {
-      const result = parseMarkdown(sample.source);
-      const html = renderToHTML(result.document);
-      if (!html.length) throw new Error('empty html');
-      const diags = result.diagnostics.length;
+      violations++;
+      const tag =
+        formatted.diagnostics.length > 0 ? 'documented' : 'UNDOCUMENTED';
       process.stdout.write(
-        `  ok   ${sample.id.padEnd(20)} ${html.length} chars html, ${diags} diag\n`,
+        `  ${tag === 'documented' ? 'warn' : 'BAD '} ${sample.id.padEnd(20)} ` +
+          `round-trip diverged (${tag}, ${diagCount} diag)\n`,
       );
     }
   } catch (e) {
@@ -35,8 +75,7 @@ for (const sample of SAMPLES) {
   }
 }
 
-if (failures > 0) {
-  process.stdout.write(`\n${failures} sample(s) failed.\n`);
-  process.exit(1);
-}
-process.stdout.write(`\nall ${SAMPLES.length} samples ok.\n`);
+process.stdout.write(
+  `\n${SAMPLES.length} samples · ${failures} failed · ${violations} round-trip divergences\n`,
+);
+if (failures > 0) process.exit(1);
