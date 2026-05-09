@@ -5,21 +5,32 @@
 // never throws; rejected or unsupported constructs survive as literal text
 // and surface through the diagnostics array so callers can decide policy.
 //
-// This file is the scaffold. It handles paragraph + text + line-break
-// (proves the wiring) and emits a `md.unsupported_block` /
-// `md.unsupported_inline` diagnostic for everything else. Subsequent commits
-// remove tokens from the unsupported set as each spec row lands.
+// Coverage so far: paragraph + standard inline (text, line break, bold,
+// underline, italic, strikethrough, inline code, link, autolink). Everything
+// else still routes to the `md.unsupported_*` fallback and lands in
+// follow-up commits as each spec row is implemented.
 
 import MarkdownIt from 'markdown-it';
+// The `MarkdownIt.Token` namespace pattern only exists in the CJS variant
+// of `@types/markdown-it`; the ESM `.d.mts` we resolve under `module:
+// ESNext` does not re-export `Token` at the index. The submodule path is
+// the only one that types under our ESM + `verbatimModuleSyntax` config.
+// Revisit if `@types/markdown-it` ever ships a unified ESM namespace.
 import type Token from 'markdown-it/lib/token.mjs';
 
 import type {
   BlockNode,
+  BoldNode,
   DocumentNode,
+  InlineCodeNode,
   InlineNode,
+  ItalicNode,
   LineBreakNode,
+  LinkNode,
   ParagraphNode,
+  StrikeoutNode,
   TextNode,
+  UnderlineNode,
 } from '../../ast';
 
 export interface ParserOptions {
@@ -50,6 +61,8 @@ export interface ParseResult {
 //                      in a follow-up commit; until then any HTML tag emits
 //                      `md.html_tag_rejected` and the source survives.
 //   - `linkify: false` Bare-URL autolink lands with the URL/autolink commit.
+//                      Explicit `<url>` autolinks still work via the standard
+//                      autolink rule.
 //   - `typographer: false`  Source bytes are not rewritten (no smart quotes
 //                           or ascii dashes; round-trip stays faithful).
 // `breaks` is left at the default; the AST emission treats both `softbreak`
@@ -102,12 +115,26 @@ function walkBlocks(tokens: Token[], diagnostics: Diagnostic[]): BlockNode[] {
   return out;
 }
 
+// Walk a flat inline token list (the `children` of an `inline` token).
+// Containers like `**bold**` arrive as paired `strong_open` / `strong_close`
+// markers in the same flat list with `text` tokens in between; the walker
+// matches the close, recurses on the slice, and bridges past it.
 function walkInline(
   tokens: Token[],
   diagnostics: Diagnostic[],
 ): InlineNode[] {
+  return walkInlineRange(tokens, 0, tokens.length, diagnostics);
+}
+
+function walkInlineRange(
+  tokens: Token[],
+  start: number,
+  end: number,
+  diagnostics: Diagnostic[],
+): InlineNode[] {
   const out: InlineNode[] = [];
-  for (const tok of tokens) {
+  for (let i = start; i < end; i++) {
+    const tok = tokens[i]!;
     switch (tok.type) {
       case 'text':
         if (tok.content) {
@@ -123,6 +150,89 @@ function walkInline(
         out.push(node);
         break;
       }
+      case 'strong_open': {
+        // markdown-it parses both `**` and `__` as `strong`. The two are
+        // distinguished by `markup`: `**` is bold, `__` is underline (per
+        // md-ast-mapping.md). Re-tagging at emission keeps the underlying
+        // delimiter rule shared and avoids a custom inline-rule plugin.
+        const close = findInlineClose(tokens, i, end, 'strong_close');
+        const children = walkInlineRange(tokens, i + 1, close, diagnostics);
+        if (tok.markup === '__') {
+          const node: UnderlineNode = { type: 'underline', children };
+          out.push(node);
+        } else {
+          const node: BoldNode = { type: 'bold', children };
+          out.push(node);
+        }
+        i = close;
+        break;
+      }
+      case 'em_open': {
+        // Both `*x*` and `_x_` lower to italic. markdown.md does not forbid
+        // the `_` form; the dtext side has no analogue (`[i]...[/i]` is the
+        // single dtext spelling), so AST equivalence is preserved either way.
+        const close = findInlineClose(tokens, i, end, 'em_close');
+        const children = walkInlineRange(tokens, i + 1, close, diagnostics);
+        const node: ItalicNode = { type: 'italic', children };
+        out.push(node);
+        i = close;
+        break;
+      }
+      case 's_open': {
+        const close = findInlineClose(tokens, i, end, 's_close');
+        const children = walkInlineRange(tokens, i + 1, close, diagnostics);
+        const node: StrikeoutNode = { type: 'strikeout', children };
+        out.push(node);
+        i = close;
+        break;
+      }
+      case 'code_inline': {
+        const node: InlineCodeNode = {
+          type: 'inline_code',
+          content: tok.content,
+        };
+        out.push(node);
+        break;
+      }
+      case 'link_open': {
+        // markdown-it's autolink rule sets `markup === 'autolink'` for
+        // `<url>` and email autolinks; inline links `[text](url)` set it
+        // to `''`. Spec: autolinks become `linkType: 'url'` with the href
+        // as the only TextNode child; inline links become `linkType:
+        // 'textile'` with the parsed text content as children. Reusing
+        // `'textile'` is a captain-locked decision (see Naming-debt note in
+        // md-ast-mapping.md).
+        const close = findInlineClose(tokens, i, end, 'link_close');
+        const href = tok.attrGet('href') ?? '';
+        const isAutolink = tok.markup === 'autolink';
+        if (isAutolink) {
+          const node: LinkNode = {
+            type: 'link',
+            linkType: 'url',
+            href,
+            children: [{ type: 'text', content: href }],
+          };
+          out.push(node);
+        } else {
+          const children = walkInlineRange(tokens, i + 1, close, diagnostics);
+          const node: LinkNode = {
+            type: 'link',
+            linkType: 'textile',
+            href,
+            children,
+          };
+          out.push(node);
+        }
+        i = close;
+        break;
+      }
+      case 'strong_close':
+      case 'em_close':
+      case 's_close':
+      case 'link_close':
+        // Closes are bridged by their matching open; reaching one here means
+        // the open scan failed (defensive no-op).
+        break;
       default:
         diagnostics.push({
           code: 'md.unsupported_inline',
@@ -158,6 +268,9 @@ function handleUnsupportedBlock(
 // Tracks nesting depth so nested containers of the same kind do not confuse
 // the scan. Falls back to the last token if no close is found (defensive;
 // `markdown-it` always pairs opens and closes for valid input).
+//
+// Pre-condition: `openIdx` points to a container open (`nesting === 1`).
+// Calling with a non-container token returns wrong indices silently.
 function findContainerClose(tokens: Token[], openIdx: number): number {
   let depth = 0;
   for (let j = openIdx; j < tokens.length; j++) {
@@ -169,4 +282,28 @@ function findContainerClose(tokens: Token[], openIdx: number): number {
     }
   }
   return tokens.length - 1;
+}
+
+// Forward-scan for the matching close of an inline-level open. Inline
+// emphasis runs of the same kind can nest (e.g. `**a *b* a**`), so the scan
+// counts only opens / closes of the SAME pair-kind to find the right close.
+// Bounded by `end` so the search stays inside the surrounding range when
+// recursion narrows it.
+function findInlineClose(
+  tokens: Token[],
+  openIdx: number,
+  end: number,
+  closeType: string,
+): number {
+  const openType = tokens[openIdx]!.type;
+  let depth = 0;
+  for (let j = openIdx; j < end; j++) {
+    const t = tokens[j]!.type;
+    if (t === openType) depth++;
+    else if (t === closeType) {
+      depth--;
+      if (depth === 0) return j;
+    }
+  }
+  return end - 1;
 }
