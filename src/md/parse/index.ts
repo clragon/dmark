@@ -8,9 +8,10 @@
 // Coverage so far: paragraph + standard inline (text, line break, bold,
 // underline, italic, strikethrough, inline code, link, autolink) + headers,
 // blockquote, fenced and indented code blocks + lists (ordered demoted to
-// unordered with a warning) + pipe tables. Everything else still routes to
-// the `md.unsupported_*` fallback and lands in follow-up commits as each
-// spec row is implemented.
+// unordered with a warning) + pipe tables + inline spoilers (`||...||` via
+// the spoiler plugin). Everything else still routes to the
+// `md.unsupported_*` fallback and lands in follow-up commits as each spec
+// row is implemented.
 
 import MarkdownIt from 'markdown-it';
 // The `MarkdownIt.Token` namespace pattern only exists in the CJS variant
@@ -28,6 +29,7 @@ import type {
   HeaderNode,
   InlineCodeNode,
   InlineNode,
+  InlineSpoilerNode,
   ItalicNode,
   LineBreakNode,
   LinkNode,
@@ -44,6 +46,8 @@ import type {
   TextNode,
   UnderlineNode,
 } from '../../ast';
+
+import { spoilerPlugin } from './plugins/spoiler';
 
 export interface ParserOptions {
   // Reserved for future flags (e.g. `allowColor` parity with the dtext side).
@@ -85,6 +89,7 @@ const md = new MarkdownIt({
   linkify: false,
   typographer: false,
 });
+md.use(spoilerPlugin);
 
 export function parseMarkdown(
   input: string,
@@ -317,6 +322,17 @@ function walkInlineRange(
         out.push(node);
         break;
       }
+      case 'spoiler_open': {
+        // Custom token from the spoiler plugin. Inner content is regular
+        // inline tokens that already passed through the standard rules, so
+        // emphasis / inline code inside the spoiler is parsed correctly.
+        const close = findInlineClose(tokens, i, end, 'spoiler_close');
+        const children = walkInlineRange(tokens, i + 1, close, diagnostics);
+        const node: InlineSpoilerNode = { type: 'inline_spoiler', children };
+        out.push(node);
+        i = close;
+        break;
+      }
       case 'link_open': {
         // markdown-it's autolink rule sets `markup === 'autolink'` for
         // `<url>` and email autolinks; inline links `[text](url)` set it
@@ -353,6 +369,7 @@ function walkInlineRange(
       case 'em_close':
       case 's_close':
       case 'link_close':
+      case 'spoiler_close':
         // Closes are bridged by their matching open; reaching one here means
         // the open scan failed (defensive no-op).
         break;
