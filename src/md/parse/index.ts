@@ -10,7 +10,8 @@
 // blockquote, fenced and indented code blocks + lists (ordered demoted to
 // unordered with a warning) + pipe tables + inline spoilers (`||...||`) +
 // BBCode survivors (`[sup]`, `[sub]`, `[color=x]`) + magic links
-// (`post #1234`, `pool #5`, etc.). Everything else still routes to the
+// (`post #1234`, `pool #5`, etc.) + references (`[[wikilink]]`,
+// `{{tag search}}`, `[#anchor]`). Everything else still routes to the
 // `md.unsupported_*` fallback and lands in follow-up commits as each spec
 // row is implemented.
 
@@ -51,12 +52,17 @@ import type {
   UnderlineNode,
 } from '../../ast';
 
-import { buildIdLink } from '../../ast/links';
+import {
+  buildIdLink,
+  buildPostSearchLink,
+  buildWikiLink,
+} from '../../ast/links';
 import { bbcodePlugin } from './plugins/bbcode';
 import { magicLinksPlugin } from './plugins/magic-links';
+import { referencesPlugin } from './plugins/references';
 import { spoilerPlugin } from './plugins/spoiler';
 
-import type { IdType } from '../../ast';
+import type { IdType, InternalAnchorNode } from '../../ast';
 
 export interface ParserOptions {
   // Reserved for future flags (e.g. `allowColor` parity with the dtext side).
@@ -100,6 +106,7 @@ const md = new MarkdownIt({
 });
 md.use(spoilerPlugin);
 md.use(bbcodePlugin);
+md.use(referencesPlugin);
 md.use(magicLinksPlugin);
 
 export function parseMarkdown(
@@ -370,6 +377,41 @@ function walkInlineRange(
         if (idType) {
           out.push(buildIdLink(idType, id));
         }
+        break;
+      }
+      case 'wikilink': {
+        // Atomic token from the references plugin. Pieces are pre-parsed
+        // (tag / title / anchor); shape via shared `buildWikiLink` so href
+        // normalisation exactly matches the dtext side.
+        const tag = tok.attrGet('tag') ?? '';
+        const titleAttr = tok.attrGet('title');
+        const anchorAttr = tok.attrGet('anchor');
+        out.push(
+          buildWikiLink({
+            tag,
+            ...(titleAttr !== null ? { title: titleAttr } : {}),
+            ...(anchorAttr !== null ? { anchor: anchorAttr } : {}),
+          }),
+        );
+        break;
+      }
+      case 'tag_search': {
+        const tag = tok.attrGet('tag') ?? '';
+        const titleAttr = tok.attrGet('title');
+        out.push(
+          buildPostSearchLink({
+            tag,
+            ...(titleAttr !== null ? { title: titleAttr } : {}),
+          }),
+        );
+        break;
+      }
+      case 'internal_anchor_def': {
+        const node: InternalAnchorNode = {
+          type: 'internal_anchor',
+          name: tok.attrGet('name') ?? '',
+        };
+        out.push(node);
         break;
       }
       case 'color_open': {
