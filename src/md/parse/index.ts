@@ -9,9 +9,10 @@
 // underline, italic, strikethrough, inline code, link, autolink) + headers,
 // blockquote, fenced and indented code blocks + lists (ordered demoted to
 // unordered with a warning) + pipe tables + inline spoilers (`||...||`) +
-// BBCode survivors (`[sup]`, `[sub]`, `[color=x]`). Everything else still
-// routes to the `md.unsupported_*` fallback and lands in follow-up commits
-// as each spec row is implemented.
+// BBCode survivors (`[sup]`, `[sub]`, `[color=x]`) + magic links
+// (`post #1234`, `pool #5`, etc.). Everything else still routes to the
+// `md.unsupported_*` fallback and lands in follow-up commits as each spec
+// row is implemented.
 
 import MarkdownIt from 'markdown-it';
 // The `MarkdownIt.Token` namespace pattern only exists in the CJS variant
@@ -50,8 +51,12 @@ import type {
   UnderlineNode,
 } from '../../ast';
 
+import { buildIdLink } from '../../ast/links';
 import { bbcodePlugin } from './plugins/bbcode';
+import { magicLinksPlugin } from './plugins/magic-links';
 import { spoilerPlugin } from './plugins/spoiler';
+
+import type { IdType } from '../../ast';
 
 export interface ParserOptions {
   // Reserved for future flags (e.g. `allowColor` parity with the dtext side).
@@ -95,6 +100,7 @@ const md = new MarkdownIt({
 });
 md.use(spoilerPlugin);
 md.use(bbcodePlugin);
+md.use(magicLinksPlugin);
 
 export function parseMarkdown(
   input: string,
@@ -352,6 +358,18 @@ function walkInlineRange(
         const node: SubscriptNode = { type: 'subscript', children };
         out.push(node);
         i = close;
+        break;
+      }
+      case 'id_link': {
+        // Atomic token from the magic-links core post-process. The plugin
+        // pre-resolved the type and id; the AST `LinkNode` is built via
+        // the shared `buildIdLink` helper so href / display text exactly
+        // match the dtext side's emission.
+        const idType = tok.attrGet('idType') as IdType | null;
+        const id = tok.attrGet('id') ?? '';
+        if (idType) {
+          out.push(buildIdLink(idType, id));
+        }
         break;
       }
       case 'color_open': {

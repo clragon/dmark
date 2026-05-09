@@ -99,6 +99,82 @@ describe('BBCode survivors `[sup]` / `[sub]` / `[color=x]`', () => {
   });
 });
 
+describe('magic link `post #1234`', () => {
+  it('lowers `post #1234` to a LinkNode with linkType id_link', () => {
+    expect(inlineOf('see post #1234 for context')).toEqual([
+      { type: 'text', content: 'see ' },
+      {
+        type: 'link',
+        linkType: 'id_link',
+        idType: 'post',
+        id: '1234',
+        href: '/posts/1234',
+        children: [{ type: 'text', content: 'post #1234' }],
+      },
+      { type: 'text', content: ' for context' },
+    ]);
+  });
+
+  it('produces canonical display text per ID_DISPLAY (Pool -> pool, bur -> BUR)', () => {
+    expect(inlineOf('Pool #5')[0]).toMatchObject({
+      type: 'link',
+      linkType: 'id_link',
+      idType: 'pool',
+      id: '5',
+      children: [{ type: 'text', content: 'pool #5' }],
+    });
+    expect(inlineOf('bur #99')[0]).toMatchObject({
+      type: 'link',
+      linkType: 'id_link',
+      idType: 'bur',
+      id: '99',
+      children: [{ type: 'text', content: 'BUR #99' }],
+    });
+  });
+
+  it('handles the multi-word `take down request` form, contracted to takedown', () => {
+    expect(inlineOf('take down request #7')[0]).toMatchObject({
+      type: 'link',
+      linkType: 'id_link',
+      idType: 'takedown',
+      id: '7',
+      children: [{ type: 'text', content: 'takedown #7' }],
+    });
+  });
+
+  it('does not match in the middle of a word (boundary required)', () => {
+    expect(inlineOf('hostpost #1')).toEqual([
+      { type: 'text', content: 'hostpost #1' },
+    ]);
+  });
+
+  it('matches multiple links in the same paragraph', () => {
+    const inline = inlineOf('post #1 and pool #2');
+    const links = inline.filter((n) => n.type === 'link');
+    expect(links).toHaveLength(2);
+  });
+
+  it('matches links inside emphasis containers', () => {
+    const inline = inlineOf('**see post #42**');
+    expect(inline).toEqual([
+      {
+        type: 'bold',
+        children: [
+          { type: 'text', content: 'see ' },
+          {
+            type: 'link',
+            linkType: 'id_link',
+            idType: 'post',
+            id: '42',
+            href: '/posts/42',
+            children: [{ type: 'text', content: 'post #42' }],
+          },
+        ],
+      },
+    ]);
+  });
+});
+
 describe('inline spoiler `||...||`', () => {
   it('lowers to InlineSpoilerNode', () => {
     expect(inlineOf('||secret||')).toEqual([
