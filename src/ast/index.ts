@@ -15,8 +15,10 @@ export type BlockNode =
   | SectionNode
   | CodeBlockNode
   | TableNode
+  | LTableNode
   | ListNode
-  | RawBlockTextNode;
+  | RawBlockTextNode
+  | LiteralHtmlNode;
 
 export type InlineNode =
   | TextNode
@@ -75,6 +77,17 @@ export interface CodeBlockNode extends ASTNode {
 export interface RawBlockTextNode extends ASTNode {
   type: 'raw_block_text';
   content: string;
+}
+
+// Stray-close fallout. Ruby ends the surrounding paragraph and continues
+// streaming output without re-opening one. `prefix` is verbatim HTML for the
+// inter-block whitespace plus the close tag itself; `children` is the inline
+// tail (so `Topic #1` after a stray close still becomes an `<a>`). Newlines
+// inside `children` render as `<br>` via the normal LineBreakNode path.
+export interface LiteralHtmlNode extends ASTNode {
+  type: 'literal_html';
+  prefix: string;
+  children: InlineNode[];
 }
 
 export interface TableNode extends ASTNode {

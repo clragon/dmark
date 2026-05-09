@@ -9,6 +9,8 @@ import type {
   LinkNode,
   ListItemNode,
   ListNode,
+  LiteralHtmlNode,
+  LTableNode,
   ParagraphNode,
   QuoteNode,
   RawBlockTextNode,
@@ -105,7 +107,9 @@ const QUOTE_CATEGORY_RE =
 
 function isValidQuoteColor(value: string): boolean {
   if (QUOTE_CATEGORY_RE.test(value)) return true;
-  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) return true;
+  // Oracle accepts 3 to 6 hex digits inclusive after `#`. Anything outside
+  // that range is literal text (`#abcdefab` and `#1234567` both fail).
+  if (/^#[0-9a-fA-F]{3,6}$/.test(value)) return true;
   if (/^[a-z]+$/.test(value)) return true;
   return false;
 }
@@ -216,19 +220,60 @@ export class DTextStateMachineParser {
     { pattern: 'ticket', type: 'ticket' },
   ];
 
-  // Single compiled regex for all ID patterns
+  // Single compiled regex for all ID patterns. Ruby requires exactly one
+  // ASCII space or NBSP between the prefix word and `#` (verified against
+  // the oracle: `pool#1234`, `pool  #1234`, and `pool\t#1234` all stay
+  // literal, while `pool #1234` and `pool #1234` link).
   private static readonly COMPILED_ID_PATTERN = new RegExp(
     '^(' +
       DTextStateMachineParser.ID_PATTERNS.map((p) => p.pattern).join('|') +
-      ')\\s*#(\\d+)',
+      ') #(\\d+)',
     'i',
   );
 
+  // Canonical display form per id-type. Ruby renders the link text as
+  // "<canonical> #<id>" regardless of how the prefix was typed in the source.
+  // `Pool` and `POOL` both display as `pool`, `Take Down Request` collapses
+  // to `takedown`, and `bur` always upcases to `BUR`.
+  private static readonly ID_DISPLAY: Record<string, string> = {
+    post: 'post',
+    thumb: 'post',
+    post_changes: 'post changes',
+    flag: 'flag',
+    note: 'note',
+    forum_post: 'forum',
+    topic: 'topic',
+    comment: 'comment',
+    pool: 'pool',
+    user: 'user',
+    artist: 'artist',
+    ban: 'ban',
+    bur: 'BUR',
+    alias: 'alias',
+    implication: 'implication',
+    mod_action: 'mod action',
+    record: 'record',
+    wiki: 'wiki',
+    set: 'set',
+    blip: 'blip',
+    takedown: 'takedown',
+    ticket: 'ticket',
+  };
+
+  // Build the matched-prefix to type map by collapsing each pattern's regex
+  // whitespace metachars into a single space. `take\\s?down\\s+request`
+  // becomes `take down request`; `post changes` is already a literal-space
+  // pattern. Lookup keys are lowercase, with input whitespace runs collapsed
+  // to a single space.
   private static readonly ID_TYPE_MAP = new Map(
-    DTextStateMachineParser.ID_PATTERNS.map((p) => [
-      p.pattern.replace(/\\s\?\+/g, '').replace(/\\s/g, ' '),
-      p.type,
-    ]),
+    [
+      ...DTextStateMachineParser.ID_PATTERNS.map((p) => [
+        p.pattern.replace(/\\s[?+*]?/g, ' ').replace(/\s+/g, ' '),
+        p.type,
+      ] as [string, string]),
+      // extra alias for the contracted form of takedown request
+      ['takedown request', 'takedown'],
+    ],
   );
 
   constructor(input: string, options: ParserOptions = {}) {
@@ -252,6 +297,40 @@ export class DTextStateMachineParser {
     const children: BlockNode[] = [];
 
     while (this.pos < this.input.length) {
+      // Stray spoiler close after content keeps the inter-block whitespace
+      // literal between `</p>` and `[/spoiler]`. Look past any leading WS/NL
+      // for a stray close so the literal-html node can carry that gap. Two
+      // states drop the close instead of emitting it: pristine (no block has
+      // been emitted yet) and "after a quote/section close" (oracle absorbs
+      // the stray and re-opens a paragraph for the trailing whitespace).
+      if (children.length > 0) {
+        const last = children[children.length - 1];
+        const lastIsContainerBlock =
+          last.type === 'quote' || last.type === 'section';
+        const prefix = this.peekStrayBlockCloseAfterWhitespace();
+        if (prefix !== null) {
+          if (lastIsContainerBlock) {
+            this.consumeStrayBlockCloseSilent();
+            continue;
+          }
+          children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
+          continue;
+        }
+      } else if (this.peekStrayBlockClose()) {
+        // Pristine state: drop the close silently and continue.
+        this.consumeStrayBlockCloseSilent();
+        continue;
+      }
+
+      // Stray `[/code]` / `[/table]` eat surrounding whitespace and emit a
+      // raw close tag plus an inline tail rendered without a `<p>` wrap.
+      if (this.peekStrayCodeOrTableClose()) {
+        children.push(
+          this.consumeStrayCodeTableAsLiteral(children.length === 0),
+        );
+        continue;
+      }
+
       // Don't strip leading horizontal whitespace here. Ruby treats indented
       // lines as ordinary paragraph content, so a line like "    body" should
       // produce <p>    body</p>, and a "blank" line that has horizontal
@@ -271,6 +350,167 @@ export class DTextStateMachineParser {
     }
 
     return { type: 'document', children };
+  }
+
+  // True at a `[/spoiler]` or `[/spoilers]` close tag whose matching open is
+  // NOT in scope. Such a close is a Ragel "scope killer" that ruby treats as
+  // a paragraph break plus literal-text fallout. Stray `[/quote]`, `[/ltable]`,
+  // and `[/section]` closes do NOT trigger this; they stay as plain inline
+  // text inside the paragraph (verified against the oracle).
+  private peekStrayBlockClose(): boolean {
+    if (this.spoilerBlockDepth > 0) return false;
+    return /^\[\/spoilers?\]/i.test(this.input.slice(this.pos));
+  }
+
+  // True at a stray `[/code]` or `[/table]`. Their behaviour differs from
+  // stray spoiler closes: ruby eats whitespace and newlines around the tag,
+  // emits an implicit `<p></p>` if at pristine state, and renders the
+  // following inline tail without a `<p>` wrap (verified against the oracle).
+  private peekStrayCodeOrTableClose(): boolean {
+    return /^\[\/(code|table)\]/i.test(this.input.slice(this.pos));
+  }
+
+  // Consume a stray `[/code]` or `[/table]`. `pristine` is true when the
+  // surrounding container has not emitted any block yet, in which case ruby
+  // synthesises an empty paragraph before the close.
+  private consumeStrayCodeTableAsLiteral(pristine: boolean): LiteralHtmlNode {
+    const m = this.input.slice(this.pos).match(/^\[\/(code|table)\]/i);
+    if (!m) return { type: 'literal_html', prefix: '', children: [] };
+    this.pos += m[0].length;
+    while (this.pos < this.input.length) {
+      const c = this.input[this.pos];
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+        this.pos++;
+        continue;
+      }
+      break;
+    }
+    const children: InlineNode[] = [];
+    while (this.pos < this.input.length) {
+      if (this.peekDoubleNewline()) break;
+      // Break on an in-scope container close ([/quote], [/section],
+      // [/spoiler]) so the surrounding container can pick it up. Without
+      // this the inline-tail loop would eat the close as plain text and
+      // the closing block would never render.
+      if (this.peekContainerClose()) break;
+      const node = this.parseInlineElement();
+      if (!node) continue;
+      if (node.type === 'text' && children.length > 0) {
+        const last = children[children.length - 1];
+        if (last.type === 'text') {
+          (last as TextNode).content += (node as TextNode).content;
+          continue;
+        }
+      }
+      children.push(node);
+    }
+    // Drop a trailing line break: a `\n` immediately before the container
+    // close should not render as a `<br>`, mirroring the same trim
+    // parseParagraph does when a paragraph ends.
+    while (
+      children.length > 0 &&
+      children[children.length - 1].type === 'line_break'
+    ) {
+      children.pop();
+    }
+    const prefix = (pristine ? '<p></p>' : '') + m[0];
+    return { type: 'literal_html', prefix, children };
+  }
+
+  private peekStrayBlockCloseAfterNewline(): boolean {
+    let offset = 0;
+    if (this.input.slice(this.pos, this.pos + 2) === '\r\n') {
+      offset = 2;
+    } else if (this.input[this.pos] === '\n') {
+      offset = 1;
+    } else {
+      return false;
+    }
+    const saved = this.pos;
+    this.pos += offset;
+    const result = this.peekStrayBlockClose();
+    this.pos = saved;
+    return result;
+  }
+
+  // Drop a stray block-close at the very start of a container before any
+  // block has been emitted. Verified against the oracle:
+  // `[/spoiler] alone at start` becomes `<p> alone at start</p>` and
+  // `[/spoiler]\n\nafter` becomes `<p>after</p>`.
+  private consumeStrayBlockCloseSilent(): void {
+    const m = this.input.slice(this.pos).match(/^\[\/spoilers?\]/i);
+    if (!m) return;
+    this.pos += m[0].length;
+  }
+
+  // Emit a stray block-close after content. The leading `prefix` (any inter
+  // block whitespace and the close tag itself) is rendered verbatim; the
+  // tail is parsed as inline content so id-links, wiki links, and formatting
+  // still resolve after the close. Newlines in the tail render as `<br>` via
+  // the normal LineBreakNode path. Tail collection stops at a paragraph
+  // break (`\n\n`) or at an in-scope `[/quote]` / `[/section]` so the
+  // surrounding container can resume normally.
+  private consumeStrayBlockCloseAsLiteral(prefix = ''): LiteralHtmlNode {
+    const m = this.input.slice(this.pos).match(/^\[\/spoilers?\]/i);
+    if (!m) return { type: 'literal_html', prefix, children: [] };
+    this.pos += m[0].length;
+    const fullPrefix = prefix + m[0];
+    const children: InlineNode[] = [];
+    while (this.pos < this.input.length) {
+      if (this.peekDoubleNewline()) break;
+      if (this.peekContainerClose()) break;
+      const node = this.parseInlineElement();
+      if (!node) continue;
+      if (node.type === 'text' && children.length > 0) {
+        const last = children[children.length - 1];
+        if (last.type === 'text') {
+          (last as TextNode).content += (node as TextNode).content;
+          continue;
+        }
+      }
+      children.push(node);
+    }
+    return { type: 'literal_html', prefix: fullPrefix, children };
+  }
+
+  // Read-only variant of peekStrayBlockCloseAfterWhitespace: same check, no
+  // pos mutation. Used to decide whether to consume the trailing newline at
+  // the end of a paragraph that broke on a stray close.
+  private peekStrayBlockCloseAfterAnyWs(): boolean {
+    let p = this.pos;
+    while (p < this.input.length) {
+      const c = this.input[p];
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+        p++;
+        continue;
+      }
+      break;
+    }
+    return /^\[\/spoilers?\]/i.test(this.input.slice(p));
+  }
+
+  // Look ahead through any whitespace and newlines starting at pos. If a
+  // stray spoiler close sits past them, return the literal whitespace prefix
+  // so the caller can hand it to consumeStrayBlockCloseAsLiteral. Otherwise
+  // return null and leave pos unchanged. The stray close itself is not
+  // consumed here.
+  private peekStrayBlockCloseAfterWhitespace(): string | null {
+    let p = this.pos;
+    while (p < this.input.length) {
+      const c = this.input[p];
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+        p++;
+        continue;
+      }
+      break;
+    }
+    const r = this.input.slice(p);
+    if (this.spoilerBlockDepth === 0 && /^\[\/spoilers?\]/i.test(r)) {
+      const prefix = this.input.slice(this.pos, p);
+      this.pos = p;
+      return prefix;
+    }
+    return null;
   }
 
   private parseInlineDocument(): DocumentNode {
@@ -395,6 +635,32 @@ export class DTextStateMachineParser {
         this.pos < this.input.length &&
         !this.peekString('[/quote]', true)
       ) {
+        if (children.length > 0) {
+          const last = children[children.length - 1];
+          const lastIsContainerBlock =
+            last.type === 'quote' || last.type === 'section';
+          const prefix = this.peekStrayBlockCloseAfterWhitespace();
+          if (prefix !== null) {
+            if (lastIsContainerBlock) {
+              this.consumeStrayBlockCloseSilent();
+              continue;
+            }
+            children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
+            continue;
+          }
+        } else if (this.peekStrayBlockClose()) {
+          this.consumeStrayBlockCloseSilent();
+          continue;
+        }
+        // Stray `[/code]` / `[/table]` inside a block container: capture
+        // the close + tail as a literal-html node so the tail does NOT
+        // get a fresh `<p>` wrap. Pristine-in-container does not synthesise
+        // `<p></p>` (verified: `[quote][/table] tail[/quote]` ->
+        // `<blockquote>[/table]tail</blockquote>`, no empty paragraph).
+        if (this.peekStrayCodeOrTableClose()) {
+          children.push(this.consumeStrayCodeTableAsLiteral(false));
+          continue;
+        }
         const node = this.parseBlock();
         if (node) {
           children.push(node);
@@ -418,12 +684,39 @@ export class DTextStateMachineParser {
     this.skipWhitespace();
     this.consumeNewline();
     this.skipBlankLines();
+    // Drop horizontal whitespace at the start of the first content line.
+    // Verified against the oracle: `[spoiler]\n  hi\n[/spoiler]` ->
+    // `<div class="spoiler"><p>hi</p></div>` (the two leading spaces are
+    // gone). Subsequent lines preserve indentation, so this only fires
+    // here, not inside the block loop.
+    this.skipWhitespace();
 
     const children: BlockNode[] = [];
 
     this.spoilerBlockDepth++;
     try {
       while (this.pos < this.input.length && !this.peekSpoilerClose()) {
+        if (children.length > 0) {
+          const last = children[children.length - 1];
+          const lastIsContainerBlock =
+            last.type === 'quote' || last.type === 'section';
+          const prefix = this.peekStrayBlockCloseAfterWhitespace();
+          if (prefix !== null) {
+            if (lastIsContainerBlock) {
+              this.consumeStrayBlockCloseSilent();
+              continue;
+            }
+            children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
+            continue;
+          }
+        } else if (this.peekStrayBlockClose()) {
+          this.consumeStrayBlockCloseSilent();
+          continue;
+        }
+        if (this.peekStrayCodeOrTableClose()) {
+          children.push(this.consumeStrayCodeTableAsLiteral(false));
+          continue;
+        }
         const node = this.parseBlock();
         if (node) {
           children.push(node);
@@ -451,16 +744,24 @@ export class DTextStateMachineParser {
     this.consumeNewline();
 
     const start = this.pos;
+    let closed = false;
 
     while (this.pos < this.input.length) {
       if (this.matchString('[/code]', true)) {
+        closed = true;
         break;
       }
       this.pos++;
     }
 
-    const content = this.input.slice(start, this.pos - 7);
-    this.consumeBlockCloseTail();
+    // Only trim the close-tag length if we actually consumed one. Falling off
+    // the end without seeing [/code] means everything from start..pos is the
+    // body (verified against the oracle: an unclosed [code] keeps trailing
+    // text, brackets, and newlines literal).
+    const content = closed
+      ? this.input.slice(start, this.pos - '[/code]'.length)
+      : this.input.slice(start);
+    if (closed) this.consumeBlockCloseTail();
 
     return { type: 'code_block', content };
   }
@@ -484,6 +785,27 @@ export class DTextStateMachineParser {
         this.pos < this.input.length &&
         !this.peekString('[/section]', true)
       ) {
+        if (children.length > 0) {
+          const last = children[children.length - 1];
+          const lastIsContainerBlock =
+            last.type === 'quote' || last.type === 'section';
+          const prefix = this.peekStrayBlockCloseAfterWhitespace();
+          if (prefix !== null) {
+            if (lastIsContainerBlock) {
+              this.consumeStrayBlockCloseSilent();
+              continue;
+            }
+            children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
+            continue;
+          }
+        } else if (this.peekStrayBlockClose()) {
+          this.consumeStrayBlockCloseSilent();
+          continue;
+        }
+        if (this.peekStrayCodeOrTableClose()) {
+          children.push(this.consumeStrayCodeTableAsLiteral(false));
+          continue;
+        }
         const node = this.parseBlock();
         if (node) {
           children.push(node);
@@ -652,25 +974,30 @@ export class DTextStateMachineParser {
     return { type: 'table_cell', cellType, children };
   }
 
-  private parseLTable(): TableNode {
-    const children: (TableHeadNode | TableBodyNode)[] = [];
+  private parseLTable(): LTableNode {
+    const rows: TableRowNode[] = [];
     const lines: string[] = [];
 
     this.skipWhitespace();
 
-    // Collect all lines until [/ltable]
+    // Collect lines until [/ltable]. The close tag may appear mid-line
+    // (e.g. `[ltable]a[/ltable] tail`), so scan char-by-char and break the
+    // line at it just like a newline would.
     while (
       this.pos < this.input.length &&
       !this.matchString('[/ltable]', true)
     ) {
       const lineStart = this.pos;
 
-      // Read until newline or end of input
-      while (
-        this.pos < this.input.length &&
-        this.input[this.pos] !== '\n' &&
-        this.input[this.pos] !== '\r'
-      ) {
+      while (this.pos < this.input.length) {
+        const ch = this.input[this.pos];
+        if (ch === '\n' || ch === '\r') break;
+        if (
+          ch === '[' &&
+          this.input.slice(this.pos, this.pos + 9).toLowerCase() === '[/ltable]'
+        ) {
+          break;
+        }
         this.pos++;
       }
 
@@ -679,7 +1006,7 @@ export class DTextStateMachineParser {
         lines.push(line);
       }
 
-      // Skip the newline
+      // Skip the newline (but leave [/ltable] for the outer loop to consume).
       if (this.pos < this.input.length && this.input[this.pos] === '\r') {
         this.pos++;
       }
@@ -689,21 +1016,19 @@ export class DTextStateMachineParser {
     }
 
     if (lines.length > 0) {
-      const headerCells = this.parseLTableRow(lines[0], 'th');
-      const headerRow: TableRowNode = { type: 'table_row', cells: headerCells };
-      children.push({ type: 'table_head', rows: [headerRow] });
-
-      if (lines.length > 1) {
-        const bodyRows: TableRowNode[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const bodyCells = this.parseLTableRow(lines[i], 'td');
-          bodyRows.push({ type: 'table_row', cells: bodyCells });
-        }
-        children.push({ type: 'table_body', rows: bodyRows });
+      rows.push({
+        type: 'table_row',
+        cells: this.parseLTableRow(lines[0], 'th'),
+      });
+      for (let i = 1; i < lines.length; i++) {
+        rows.push({
+          type: 'table_row',
+          cells: this.parseLTableRow(lines[i], 'td'),
+        });
       }
     }
 
-    return { type: 'table', children };
+    return { type: 'ltable', rows };
   }
 
   private parseLTableRow(line: string, cellType: 'th' | 'td'): TableCellNode[] {
@@ -711,7 +1036,15 @@ export class DTextStateMachineParser {
     const parts = line.split('|');
 
     for (const part of parts) {
-      const content = part.trim();
+      let content = part.trim();
+      // Body cells (not the header row) truncate at the first literal
+      // `[/td]` and drop everything from there to the cell's end. Verified
+      // against the oracle: `[td]body[/td]` -> `[td]body`, `body[/td]more`
+      // -> `body`, `[/td]bare` -> empty. Header cells are kept as-is.
+      if (cellType === 'td') {
+        const idx = content.toLowerCase().indexOf('[/td]');
+        if (idx >= 0) content = content.slice(0, idx).trimEnd();
+      }
       const children: InlineNode[] = content
         ? this.parseInlineText(content)
         : [];
@@ -779,6 +1112,16 @@ export class DTextStateMachineParser {
         break;
       }
 
+      // A stray block-close tag (no matching open in scope) terminates the
+      // paragraph without consuming the close itself; the surrounding block
+      // loop will pick it up as a literal-html fallout node.
+      if (this.peekStrayBlockClose()) {
+        break;
+      }
+      if (this.peekNewline() && this.peekStrayBlockCloseAfterNewline()) {
+        break;
+      }
+
       const node = this.parseInlineElement();
       if (node) {
         // Merge consecutive text nodes
@@ -793,7 +1136,12 @@ export class DTextStateMachineParser {
       }
     }
 
-    this.consumeNewline();
+    // If we broke on a stray spoiler close, leave the trailing newlines for
+    // the surrounding block loop to absorb into the literal-html prefix.
+    // Otherwise (normal paragraph end), eat one trailing newline.
+    if (!this.peekStrayBlockClose() && !this.peekStrayBlockCloseAfterAnyWs()) {
+      this.consumeNewline();
+    }
 
     // Drop trailing line breaks (a final '\n' inside a paragraph buffer
     // shouldn't render as <br></p> , ruby closes the paragraph cleanly).
@@ -809,6 +1157,28 @@ export class DTextStateMachineParser {
 
   protected parseInlineElement(): InlineNode | null {
     if (this.pos >= this.input.length) return null;
+
+    // Stray `[/code]` / `[/table]` reached as inline content (header, inline
+    // wrapper, top-level inline doc): render the close tag literal AND
+    // swallow the run of whitespace that follows it. Verified against the
+    // oracle: `h1. a [/table] b` -> `<h1>a [/table]b</h1>`,
+    // `[b]a [/table] tail[/b]` -> `<strong>a [/table]tail</strong>`.
+    // Paragraphs never reach this branch because peekBlockElement breaks
+    // them on `[/table]` first; the document/quote/section block loops
+    // intercept the same close earlier via consumeStrayCodeTableAsLiteral.
+    const inlineCT = this.input.slice(this.pos).match(/^\[\/(code|table)\]/i);
+    if (inlineCT) {
+      this.pos += inlineCT[0].length;
+      while (this.pos < this.input.length) {
+        const c = this.input[this.pos];
+        if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+          this.pos++;
+          continue;
+        }
+        break;
+      }
+      return { type: 'text', content: inlineCT[0] };
+    }
 
     // Escaped backtick
     if (this.matchString('\\`')) {
@@ -912,6 +1282,14 @@ export class DTextStateMachineParser {
       return { type: 'line_break' };
     }
 
+    // A lone CR (not part of CRLF) renders as a single space inside inline
+    // text per the oracle, e.g. `"link":[/a\rb]` becomes `[/a b]` literal.
+    // It is not a line break here; CRLF and bare LF are handled above.
+    if (this.input[this.pos] === '\r') {
+      this.pos++;
+      return { type: 'text', content: ' ' };
+    }
+
     // Regular text
     return this.parseText();
   }
@@ -1002,7 +1380,10 @@ export class DTextStateMachineParser {
   private peekContainerClose(): boolean {
     return (
       (this.sectionDepth > 0 && this.peekString('[/section]', true)) ||
-      (this.quoteDepth > 0 && this.peekString('[/quote]', true))
+      (this.quoteDepth > 0 && this.peekString('[/quote]', true)) ||
+      (this.spoilerBlockDepth > 0 &&
+        (this.peekString('[/spoiler]', true) ||
+          this.peekString('[/spoilers]', true)))
     );
   }
 
@@ -1221,17 +1602,31 @@ export class DTextStateMachineParser {
   // [spoiler] open, so we track the open count and only truncate at a close
   // that has no matching open. Verified against the oracle: a balanced
   // inline pair stays paired, an unpaired close ends the item.
-  // [/code] and [/table] don't appear here because their open tags consume
-  // their content literally, never letting list-item parsing reach them.
-  private static findContainerCloseInItem(content: string): number {
-    const re = /\[(\/?)(section|quote|spoilers?)\b[^\]]*\]/gi;
+  // [/code] and [/table] also terminate the item; their opens are block-only
+  // and a stray close inside a list item ends the list (verified against
+  // the oracle: `* a [/table] b` becomes `<ul><li>a </li></ul>[/table]b`).
+  private findContainerCloseInItem(content: string): number {
+    const re =
+      /\[(\/?)(section|quote|spoilers?|code|ltable|table)\b[^\]]*\]/gi;
     let spoilerDepth = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(content)) !== null) {
       const isClose = m[1] === '/';
       const tag = m[2].toLowerCase();
-      if (tag === 'section' || tag === 'quote') {
-        if (isClose) return m.index;
+      if (tag === 'code' || tag === 'table' || tag === 'ltable') {
+        // Always splits the item. `* [code]hi[/code]` -> empty `<li>`
+        // then the block; `* a [/code]` -> end the list at the close.
+        return m.index;
+      }
+      if (tag === 'quote' || tag === 'section') {
+        // Block opens always split. Stray closes in scope split (so the
+        // outer container can absorb them); stray closes out of scope
+        // stay literal inside the item. Verified: `* a [/quote]` stays
+        // inline literal, but `[quote]\n* a [/quote]\n[/quote]` truncates
+        // at the inner close so the outer quote ends.
+        if (!isClose) return m.index;
+        if (tag === 'quote' && this.quoteDepth > 0) return m.index;
+        if (tag === 'section' && this.sectionDepth > 0) return m.index;
         continue;
       }
       // spoiler or spoilers
@@ -1246,14 +1641,22 @@ export class DTextStateMachineParser {
   }
 
   private matchListItem(): ListMatch | null {
-    const match = this.input.slice(this.pos).match(/^(\*+)\s+([^\r\n]+)/);
+    // Separator must be horizontal whitespace only. Using `\s+` here would
+    // let a bare `*\n` line eat the next line as item content (verified
+    // failure: `* a\n*\n* b` then matched `*\n* b` as one item with text
+    // `* b`). Oracle keeps the bare `*` as a paragraph and starts a fresh
+    // list afterwards.
+    const match = this.input.slice(this.pos).match(/^(\*+)[ \t]+([^\r\n]+)/);
     if (!match) return null;
 
     const contentStart = match[0].length - match[2].length;
-    const closeIdx = DTextStateMachineParser.findContainerCloseInItem(match[2]);
-    if (closeIdx > 0) {
-      // The close tag belongs to the surrounding block, not this item.
-      // Truncate the item's content and rewind so the outer parser sees it.
+    const closeIdx = this.findContainerCloseInItem(match[2]);
+    if (closeIdx >= 0) {
+      // A block-level tag inside the item content ends the item there.
+      // Truncate the item (which may now be empty) and rewind pos so the
+      // outer parser picks the block up. `* [ltable]...` produces an
+      // empty `<li>` followed by the table; `* a [/quote]` produces a
+      // single-char item then lets the quote container see the close.
       const content = match[2].slice(0, closeIdx);
       this.pos += contentStart + content.length;
       return { depth: match[1].length, content };
@@ -1302,87 +1705,106 @@ export class DTextStateMachineParser {
   }
 
   protected matchPostSearchLink(): PostSearchMatch | null {
-    // {{tag|title}} format
-    const aliasedMatch = this.input
-      .slice(this.pos)
-      .match(/^\{\{([^}|]+)\|([^}]+)\}\}/);
-    if (aliasedMatch) {
-      this.pos += aliasedMatch[0].length;
-      return { tag: aliasedMatch[1], title: aliasedMatch[2] };
+    // Mirror of `matchWikiLink`'s pipe-counting rule, verified against the
+    // oracle for `{{...}}`:
+    //   * 0 pipes -> {{tag}} (tag must be non-empty)
+    //   * 1 pipe with both sides non-empty -> {{tag|title}}
+    //   * 1 leading pipe -> tag form, tag includes the pipe (`{{|}}` -> "|",
+    //     `{{|tag}}` -> "|tag")
+    //   * 1 trailing pipe -> literal
+    //   * 2+ pipes -> literal
+    const block = this.input.slice(this.pos).match(/^\{\{([^}]*)\}\}/);
+    if (!block) return null;
+    const content = block[1];
+    if (content.length === 0) return null;
+
+    const firstPipe = content.indexOf('|');
+    const lastPipe = content.lastIndexOf('|');
+    if (firstPipe !== lastPipe) return null;
+
+    let result: PostSearchMatch;
+    if (firstPipe < 0) {
+      result = { tag: content };
+    } else {
+      const before = content.slice(0, firstPipe);
+      const after = content.slice(firstPipe + 1);
+      if (before.length === 0) {
+        result = { tag: content };
+      } else if (after.length === 0) {
+        return null;
+      } else {
+        result = { tag: before, title: after };
+      }
     }
 
-    // {{tag}} format
-    const basicMatch = this.input.slice(this.pos).match(/^\{\{([^}]+)\}\}/);
-    if (basicMatch) {
-      this.pos += basicMatch[0].length;
-      return { tag: basicMatch[1] };
-    }
-
-    return null;
+    this.pos += block[0].length;
+    return result;
   }
 
   protected matchWikiLink(): WikiLinkMatch | null {
-    // [[tag#anchor|title]] format
-    const anchorAliasedMatch = this.input
-      .slice(this.pos)
-      .match(/^\[\[([^\]|#]+)#([^\]|]+)\|([^\]]+)\]\]/);
-    if (anchorAliasedMatch) {
-      this.pos += anchorAliasedMatch[0].length;
-      return {
-        tag: anchorAliasedMatch[1],
-        anchor: anchorAliasedMatch[2],
-        title: anchorAliasedMatch[3],
+    // Match the [[...]] block first, then validate the content as a whole.
+    // Verified against the oracle:
+    //   * 0 pipes  -> [[tag]] form (tag must be non-empty)
+    //   * 1 pipe with both sides non-empty -> [[tag|title]] form
+    //   * 1 leading pipe (empty before) -> tag form, tag includes the pipe
+    //     (e.g. `[[|]]` -> tag "|", `[[|title]]` -> tag "|title")
+    //   * 1 trailing pipe (empty after) -> literal
+    //   * 2+ pipes -> literal
+    // After tag-vs-title is decided, the tag is split on its first `#` for
+    // an anchor (anchor may be empty: `[[abc#]]` -> tag "abc", anchor "").
+    const block = this.input.slice(this.pos).match(/^\[\[([^\]]*)\]\]/);
+    if (!block) return null;
+    const content = block[1];
+    if (content.length === 0) return null;
+
+    const result = this.parseWikiContent(content);
+    if (!result) return null;
+
+    this.pos += block[0].length;
+    return result;
+  }
+
+  private parseWikiContent(content: string): WikiLinkMatch | null {
+    const firstPipe = content.indexOf('|');
+    const lastPipe = content.lastIndexOf('|');
+
+    if (firstPipe !== lastPipe) return null;
+
+    let tagPart: string;
+    let titlePart: string | undefined;
+
+    if (firstPipe < 0) {
+      tagPart = content;
+    } else {
+      const before = content.slice(0, firstPipe);
+      const after = content.slice(firstPipe + 1);
+      if (before.length === 0) {
+        // Leading-pipe form: keep the entire content (with the pipe) as the
+        // tag. Anchor splitting is skipped here.
+        return { tag: content };
+      }
+      if (after.length === 0) return null;
+      tagPart = before;
+      titlePart = after;
+    }
+
+    const hashIdx = tagPart.indexOf('#');
+    if (hashIdx === 0) {
+      const r: WikiLinkMatch = { tag: '', anchor: tagPart.slice(1) };
+      if (titlePart !== undefined) r.title = titlePart;
+      return r;
+    }
+    if (hashIdx > 0) {
+      const r: WikiLinkMatch = {
+        tag: tagPart.slice(0, hashIdx),
+        anchor: tagPart.slice(hashIdx + 1),
       };
+      if (titlePart !== undefined) r.title = titlePart;
+      return r;
     }
-
-    // [[tag#anchor]] format
-    const anchorMatch = this.input
-      .slice(this.pos)
-      .match(/^\[\[([^\]|#]+)#([^\]]+)\]\]/);
-    if (anchorMatch) {
-      this.pos += anchorMatch[0].length;
-      return { tag: anchorMatch[1], anchor: anchorMatch[2] };
-    }
-
-    // [[#anchor|title]] format
-    const internalAnchorAliasedMatch = this.input
-      .slice(this.pos)
-      .match(/^\[\[#([^\]|]+)\|([^\]]+)\]\]/);
-    if (internalAnchorAliasedMatch) {
-      this.pos += internalAnchorAliasedMatch[0].length;
-      return {
-        tag: '',
-        anchor: internalAnchorAliasedMatch[1],
-        title: internalAnchorAliasedMatch[2],
-      };
-    }
-
-    // [[#anchor]] format
-    const internalAnchorMatch = this.input
-      .slice(this.pos)
-      .match(/^\[\[#([^\]]+)\]\]/);
-    if (internalAnchorMatch) {
-      this.pos += internalAnchorMatch[0].length;
-      return { tag: '', anchor: internalAnchorMatch[1] };
-    }
-
-    // [[tag|title]] format
-    const aliasedMatch = this.input
-      .slice(this.pos)
-      .match(/^\[\[([^\]|]+)\|([^\]]+)\]\]/);
-    if (aliasedMatch) {
-      this.pos += aliasedMatch[0].length;
-      return { tag: aliasedMatch[1], title: aliasedMatch[2] };
-    }
-
-    // [[tag]] format
-    const basicMatch = this.input.slice(this.pos).match(/^\[\[([^\]]+)\]\]/);
-    if (basicMatch) {
-      this.pos += basicMatch[0].length;
-      return { tag: basicMatch[1] };
-    }
-
-    return null;
+    const r: WikiLinkMatch = { tag: tagPart };
+    if (titlePart !== undefined) r.title = titlePart;
+    return r;
   }
 
   protected matchTextileLink(): TextileLinkMatch | null {
@@ -1391,12 +1813,15 @@ export class DTextStateMachineParser {
       return null;
     }
 
-    // "title":[url] format
+    // "title":[url] format. Oracle rejects bracketed urls that contain any
+    // whitespace (space/tab/newline/CR) or are empty. The empty case is
+    // already screened by the `+` in the regex.
     const bracketedMatch = this.input
       .slice(this.pos)
       .match(/^"([^"]+)":\[([^\]]+)\]/);
     if (bracketedMatch) {
       if (!isAcceptedTextileUrl(bracketedMatch[2])) return null;
+      if (/\s/.test(bracketedMatch[2])) return null;
       this.pos += bracketedMatch[0].length;
       return { title: bracketedMatch[1], url: bracketedMatch[2] };
     }
@@ -1446,6 +1871,10 @@ export class DTextStateMachineParser {
   private matchColor(): string | null {
     const colorMatch = this.input.slice(this.pos).match(/^\[color=([^\]]+)\]/i);
     if (colorMatch) {
+      // Same validity rules as a quote-colour: hex (3 or 6), strict-lowercase
+      // word, or one of the tag-category aliases. Anything else is left as
+      // literal so [/color] also stays literal (verified against the oracle).
+      if (!isValidQuoteColor(colorMatch[1])) return null;
       this.pos += colorMatch[0].length;
       return colorMatch[1];
     }
@@ -1589,12 +2018,22 @@ export class DTextStateMachineParser {
     // ([code], [/code], ...) break paragraphs regardless of position.
     const atLineStart =
       this.pos === 0 || this.input[this.pos - 1] === '\n';
-    const lineStartPatterns = [/^h[123456]\./i, /^\*+\s/];
+    // List item pattern must require horizontal whitespace AND a content
+    // char. Using `\s` would match a bare `*\n` line; using just `[ \t]+`
+    // would match `** \n` (no content after the spaces). In both cases
+    // matchListItem would reject the same input, leaving parseBlock unable
+    // to advance and the document loop spinning forever.
+    const lineStartPatterns = [/^h[123456]\./i, /^\*+[ \t]+[^\s]/];
     const blockPatterns = [
       /^\[quote\]/i,
       /^\[code\]/i,
       /^\[\/code\]/i,
-      /^\[section/i,
+      // Match only forms matchSection accepts: `[section]`,
+      // `[section,expanded]`, `[section,expanded=title]`, `[section=title]`.
+      // A permissive `^\[section/i` matched malformed openers like
+      // `[section,]` and `[section=]`, which matchSection then rejected,
+      // causing parseBlock to spin without making progress.
+      /^\[section(?:\]|,expanded(?:=[^\]]+)?\]|=[^\]]+\])/i,
       /^\[table\]/i,
       /^\[\/table\]/i,
       /^\[ltable\]/i,
@@ -1668,7 +2107,7 @@ export class DTextStateMachineParser {
       /^set #\d+/i,
       /^blip #\d+/i,
       /^takedown #\d+/i,
-      /^take\s?down\s+request\s*#\d+/i,
+      /^take ?down request #\d+/i,
       /^ticket #\d+/i,
     ];
 
@@ -1704,11 +2143,13 @@ export class DTextStateMachineParser {
 
     const href = routes[match.type] + match.id;
 
-    // Ruby's renderer always uses "post #N" as the text content for
-    // thumb-type id links (the thumb-placeholder-link class lets a frontend
-    // script swap in an actual thumbnail image; "post #N" is the fallback).
-    const text =
-      match.type === 'thumb' ? `post #${match.id}` : match.text;
+    // Display text uses the canonical form for the id-type, not the raw
+    // source. `Pool` becomes `pool`, `bur` upcases to `BUR`, and the verbose
+    // `take down request` collapses to `takedown` (verified against the
+    // oracle). Thumbs piggyback on the post canonical name.
+    const canonical =
+      DTextStateMachineParser.ID_DISPLAY[match.type] ?? match.type;
+    const text = `${canonical} #${match.id}`;
 
     if (match.type === 'thumb') {
       this.thumbCount++;
@@ -1752,10 +2193,24 @@ export class DTextStateMachineParser {
   }
 
   private createWikiLink(match: WikiLinkMatch): LinkNode {
-    if (match.anchor && !match.tag) {
-      // Internal anchor link
-      const href = `#${rubyUriEscape(asciiLowercase(match.anchor))}`;
-      const title = match.title || `#${match.anchor}`;
+    // Anchor presence is signalled by `anchor !== undefined`; an empty-string
+    // anchor is meaningful (e.g. `[[abc#]]` -> trailing `#` in href + display,
+    // `[[#]]` -> internal anchor with empty fragment). In the href fragment,
+    // ASCII spaces become `_` before URI escaping (verified against the
+    // oracle: `[[wiki#a b c]]` -> `wiki#a_b_c`); other whitespace like tab
+    // is left for `rubyUriEscape` to encode (`\t` -> `%09`). Embedded `#`
+    // characters stay literal in the fragment (oracle does not encode them,
+    // so `[[abc#x#y#z]]` -> `abc#x#y#z`). Display text preserves the
+    // original anchor as typed.
+    const anchorHref = (anchor: string) =>
+      rubyUriEscape(asciiLowercase(anchor.replace(/ /g, '_'))).replace(
+        /%23/g,
+        '#',
+      );
+
+    if (match.tag === '' && match.anchor !== undefined) {
+      const href = `#${anchorHref(match.anchor)}`;
+      const title = match.title ?? `#${match.anchor}`;
       return {
         type: 'link',
         linkType: 'wiki',
@@ -1768,13 +2223,13 @@ export class DTextStateMachineParser {
     const normalizedTag = asciiLowercase(match.tag.replace(/ /g, '_'));
     let href = `/wiki_pages/show_or_new?title=${rubyUriEscape(normalizedTag)}`;
 
-    if (match.anchor) {
-      href += `#${rubyUriEscape(asciiLowercase(match.anchor))}`;
+    if (match.anchor !== undefined) {
+      href += `#${anchorHref(match.anchor)}`;
     }
 
     const title =
-      match.title ||
-      (match.anchor ? `${match.tag}#${match.anchor}` : match.tag);
+      match.title ??
+      (match.anchor !== undefined ? `${match.tag}#${match.anchor}` : match.tag);
 
     return {
       type: 'link',

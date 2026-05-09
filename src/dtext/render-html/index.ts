@@ -16,6 +16,7 @@ import type {
   LinkNode,
   ListItemNode,
   ListNode,
+  LiteralHtmlNode,
   ParagraphNode,
   QuoteNode,
   RawBlockTextNode,
@@ -98,6 +99,13 @@ function renderNode(node: ASTNode, context: RenderContext): string {
       return renderCodeBlock(node as CodeBlockNode, context);
     case 'raw_block_text':
       return renderRawBlockText(node as RawBlockTextNode, context);
+    case 'literal_html': {
+      const lit = node as LiteralHtmlNode;
+      return (
+        lit.prefix +
+        lit.children.map((child) => renderNode(child, context)).join('')
+      );
+    }
     case 'table':
       return renderTable(node as TableNode, context);
     case 'ltable':
@@ -227,18 +235,21 @@ function renderTable(node: TableNode, context: RenderContext): string {
 }
 
 function renderLTable(node: LTableNode, context: RenderContext): string {
+  // Oracle quirks:
+  //   * Zero rows -> emit a literal `[/tbody]` between the table tags
+  //     (verified for `[ltable][/ltable]` and `[ltable]\n\n[/ltable]`).
+  //   * Any rows -> always emit `<tbody></tbody>` after `<thead>`, even
+  //     when there are no body rows beyond the single header.
+  if (node.rows.length === 0) {
+    return `<table class="striped">[/tbody]</table>`;
+  }
   const headerRow = node.rows[0];
   const bodyRows = node.rows.slice(1);
-
-  let result = '';
-  if (headerRow) {
-    result += `<thead>${renderNode(headerRow, context)}</thead>`;
-  }
-  if (bodyRows.length > 0) {
-    result += `<tbody>${bodyRows.map((row) => renderNode(row, context)).join('')}</tbody>`;
-  }
-
-  return `<table class="striped">${result}</table>`;
+  const headHtml = `<thead>${renderNode(headerRow, context)}</thead>`;
+  const bodyHtml = `<tbody>${bodyRows
+    .map((row) => renderNode(row, context))
+    .join('')}</tbody>`;
+  return `<table class="striped">${headHtml}${bodyHtml}</table>`;
 }
 
 function renderTableHead(node: TableHeadNode, context: RenderContext): string {
