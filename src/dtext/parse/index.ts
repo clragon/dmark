@@ -145,6 +145,36 @@ function trimUrlBoundaries(url: string): string {
   return url;
 }
 
+// Append an inline node to a child list, merging into the previous text node
+// when both are text. Inline collection points emit text nodes one parse step
+// at a time, and the AST keeps adjacent text runs as a single TextNode (the
+// renderer would otherwise emit them as separate tokens). Used at every spot
+// in the parser that builds an inline child list directly from
+// `parseInlineElement` results.
+function pushInlineMergingText(children: InlineNode[], node: InlineNode): void {
+  if (node.type === 'text' && children.length > 0) {
+    const last = children[children.length - 1];
+    if (last.type === 'text') {
+      (last as TextNode).content += (node as TextNode).content;
+      return;
+    }
+  }
+  children.push(node);
+}
+
+// Drop trailing line-break nodes from an inline child list. Used at every
+// inline-collection close (paragraph end, container close, table cell end)
+// to avoid emitting a `<br>` immediately before the surrounding element's
+// own closing tag, mirroring ruby's behavior.
+function trimTrailingLineBreaks(children: InlineNode[]): void {
+  while (
+    children.length > 0 &&
+    children[children.length - 1].type === 'line_break'
+  ) {
+    children.pop();
+  }
+}
+
 // Parse a piece of text that's already known to be inline-only (link titles,
 // for example) and return the resulting inline children. Falls back to a
 // single text node if parsing yields nothing useful.
@@ -393,6 +423,35 @@ export class DTextStateMachineParser {
     ],
   );
 
+  // URL path prefix per id-type. The id is appended directly to the route
+  // string. Stays in lockstep with `ID_PATTERNS` / `ID_DISPLAY` /
+  // `ID_TYPE_MAP`: a new id type means a matching entry here, and the
+  // exhaustive `Record<IdType, ...>` makes a missing one a compile error.
+  private static readonly ID_ROUTES: Record<IdType, string> = {
+    post: '/posts/',
+    thumb: '/posts/',
+    post_changes: '/post_versions?search[post_id]=',
+    flag: '/post_flags/',
+    note: '/notes/',
+    forum_post: '/forum_posts/',
+    topic: '/forum_topics/',
+    comment: '/comments/',
+    pool: '/pools/',
+    user: '/users/',
+    artist: '/artists/',
+    ban: '/bans/',
+    bur: '/bulk_update_requests/',
+    alias: '/tag_aliases/',
+    implication: '/tag_implications/',
+    mod_action: '/mod_actions/',
+    record: '/user_feedbacks/',
+    wiki: '/wiki_pages/',
+    set: '/post_sets/',
+    blip: '/blips/',
+    takedown: '/takedowns/',
+    ticket: '/tickets/',
+  };
+
   constructor(input: string, options: ParserOptions = {}) {
     this.input = input;
     this.pos = 0;
@@ -414,46 +473,19 @@ export class DTextStateMachineParser {
     const children: BlockNode[] = [];
 
     while (this.pos < this.input.length) {
-      // Stray spoiler close after content keeps the inter-block whitespace
-      // literal between `</p>` and `[/spoiler]`. Look past any leading WS/NL
-      // for a stray close so the literal-html node can carry that gap. Two
-      // states drop the close instead of emitting it: pristine (no block has
-      // been emitted yet) and "after a quote/section close" (oracle absorbs
-      // the stray and re-opens a paragraph for the trailing whitespace).
-      if (children.length > 0) {
-        const last = children[children.length - 1];
-        const lastIsContainerBlock =
-          last.type === 'quote' || last.type === 'section';
-        const prefix = this.peekStrayBlockCloseAfterWhitespace();
-        if (prefix !== null) {
-          if (lastIsContainerBlock) {
-            this.consumeStrayBlockCloseSilent();
-            continue;
-          }
-          children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
-          continue;
-        }
-      } else if (this.peekStrayBlockClose()) {
-        // Pristine state: drop the close silently and continue.
-        this.consumeStrayBlockCloseSilent();
-        continue;
-      }
-
-      // Stray `[/code]` / `[/table]` eat surrounding whitespace and emit a
-      // raw close tag plus an inline tail rendered without a `<p>` wrap.
-      if (this.peekStrayCodeOrTableClose()) {
-        children.push(
-          this.consumeStrayCodeTableAsLiteral(children.length === 0),
-        );
+      // Pristine flag for the code/table close path is "no block has been
+      // emitted yet" at document root, so the synthesised `<p></p>` only
+      // shows up before the very first block.
+      if (this.consumeStrayCloseIfPresent(children, children.length === 0)) {
         continue;
       }
 
       // Don't strip leading horizontal whitespace here. Ruby treats indented
       // lines as ordinary paragraph content, so a line like "    body" should
-      // produce <p>    body</p>, and a "blank" line that has horizontal
-      // whitespace between two newlines is two single <br>s, not a paragraph
-      // break. The only thing we collapse at the top level is a true
-      // contiguous \n\n, which is the actual paragraph-break separator.
+      // produce `<p>    body</p>`, and a "blank" line that has horizontal
+      // whitespace between two newlines is two single `<br>`s, not a
+      // paragraph break. The only thing we collapse at the top level is a
+      // true contiguous `\n\n`, the actual paragraph-break separator.
       if (this.peekDoubleNewline()) {
         this.consumeNewline();
         this.consumeNewline();
@@ -511,25 +543,11 @@ export class DTextStateMachineParser {
       // the closing block would never render.
       if (this.peekContainerClose()) break;
       const node = this.parseInlineElement();
-      if (!node) continue;
-      if (node.type === 'text' && children.length > 0) {
-        const last = children[children.length - 1];
-        if (last.type === 'text') {
-          (last as TextNode).content += (node as TextNode).content;
-          continue;
-        }
-      }
-      children.push(node);
+      if (node) pushInlineMergingText(children, node);
     }
-    // Drop a trailing line break: a `\n` immediately before the container
-    // close should not render as a `<br>`, mirroring the same trim
-    // parseParagraph does when a paragraph ends.
-    while (
-      children.length > 0 &&
-      children[children.length - 1].type === 'line_break'
-    ) {
-      children.pop();
-    }
+    // A `\n` immediately before the container close should not render as a
+    // `<br>`; ruby closes the wrapper cleanly here too.
+    trimTrailingLineBreaks(children);
     const prefix = (pristine ? '<p></p>' : '') + m[0];
     return { type: 'literal_html', prefix, children };
   }
@@ -579,15 +597,7 @@ export class DTextStateMachineParser {
       if (this.peekDoubleNewline()) break;
       if (this.peekContainerClose()) break;
       const node = this.parseInlineElement();
-      if (!node) continue;
-      if (node.type === 'text' && children.length > 0) {
-        const last = children[children.length - 1];
-        if (last.type === 'text') {
-          (last as TextNode).content += (node as TextNode).content;
-          continue;
-        }
-      }
-      children.push(node);
+      if (node) pushInlineMergingText(children, node);
     }
     return { type: 'literal_html', prefix: fullPrefix, children };
   }
@@ -630,6 +640,49 @@ export class DTextStateMachineParser {
     const prefix = this.input.slice(this.pos, p);
     this.pos = p;
     return prefix;
+  }
+
+  // Consume a stray block close tag at the current block-loop boundary, if
+  // one is sitting there. Returns `true` when something was consumed (and
+  // the caller should `continue` its loop); `false` to let the caller proceed
+  // to `parseBlock()`. Captures the three-way dispatch shared by the document
+  // loop and every container-block parser:
+  //
+  //   - `[/spoiler]` past optional whitespace, after at least one block has
+  //     been emitted: silently dropped if the previous block was a quote /
+  //     section close (the oracle absorbs that case), otherwise emitted as
+  //     a literal-html fallout carrying the whitespace prefix.
+  //   - `[/spoiler]` at pristine state (no block emitted yet): silently
+  //     dropped.
+  //   - `[/code]` / `[/table]`: emitted as a literal-html node. `pristine`
+  //     decides whether the surrounding container synthesises a `<p></p>`
+  //     before the close (true at document root, false inside any container).
+  private consumeStrayCloseIfPresent(
+    children: BlockNode[],
+    pristineForCodeTable: boolean,
+  ): boolean {
+    if (children.length > 0) {
+      const last = children[children.length - 1];
+      const lastIsContainerBlock =
+        last.type === 'quote' || last.type === 'section';
+      const prefix = this.peekStrayBlockCloseAfterWhitespace();
+      if (prefix !== null) {
+        if (lastIsContainerBlock) {
+          this.consumeStrayBlockCloseSilent();
+        } else {
+          children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
+        }
+        return true;
+      }
+    } else if (this.peekStrayBlockClose()) {
+      this.consumeStrayBlockCloseSilent();
+      return true;
+    }
+    if (this.peekStrayCodeOrTableClose()) {
+      children.push(this.consumeStrayCodeTableAsLiteral(pristineForCodeTable));
+      return true;
+    }
+    return false;
   }
 
   private parseInlineDocument(): DocumentNode {
@@ -753,32 +806,11 @@ export class DTextStateMachineParser {
         this.pos < this.input.length &&
         !this.peekString('[/quote]', true)
       ) {
-        if (children.length > 0) {
-          const last = children[children.length - 1];
-          const lastIsContainerBlock =
-            last.type === 'quote' || last.type === 'section';
-          const prefix = this.peekStrayBlockCloseAfterWhitespace();
-          if (prefix !== null) {
-            if (lastIsContainerBlock) {
-              this.consumeStrayBlockCloseSilent();
-              continue;
-            }
-            children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
-            continue;
-          }
-        } else if (this.peekStrayBlockClose()) {
-          this.consumeStrayBlockCloseSilent();
-          continue;
-        }
-        // Stray `[/code]` / `[/table]` inside a block container: capture
-        // the close + tail as a literal-html node so the tail does NOT
-        // get a fresh `<p>` wrap. Pristine-in-container does not synthesise
-        // `<p></p>` (verified: `[quote][/table] tail[/quote]` ->
-        // `<blockquote>[/table]tail</blockquote>`, no empty paragraph).
-        if (this.peekStrayCodeOrTableClose()) {
-          children.push(this.consumeStrayCodeTableAsLiteral(false));
-          continue;
-        }
+        // Inside a block container the stray code/table close emits a
+        // literal-html node WITHOUT synthesising a `<p></p>` first
+        // (`[quote][/table] tail[/quote]` -> `<blockquote>[/table]tail
+        // </blockquote>`); hence the `false` pristine flag.
+        if (this.consumeStrayCloseIfPresent(children, false)) continue;
         const node = this.parseBlock();
         if (node) {
           children.push(node);
@@ -814,27 +846,7 @@ export class DTextStateMachineParser {
     this.spoilerBlockDepth++;
     try {
       while (this.pos < this.input.length && !this.peekSpoilerClose()) {
-        if (children.length > 0) {
-          const last = children[children.length - 1];
-          const lastIsContainerBlock =
-            last.type === 'quote' || last.type === 'section';
-          const prefix = this.peekStrayBlockCloseAfterWhitespace();
-          if (prefix !== null) {
-            if (lastIsContainerBlock) {
-              this.consumeStrayBlockCloseSilent();
-              continue;
-            }
-            children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
-            continue;
-          }
-        } else if (this.peekStrayBlockClose()) {
-          this.consumeStrayBlockCloseSilent();
-          continue;
-        }
-        if (this.peekStrayCodeOrTableClose()) {
-          children.push(this.consumeStrayCodeTableAsLiteral(false));
-          continue;
-        }
+        if (this.consumeStrayCloseIfPresent(children, false)) continue;
         const node = this.parseBlock();
         if (node) {
           children.push(node);
@@ -903,27 +915,7 @@ export class DTextStateMachineParser {
         this.pos < this.input.length &&
         !this.peekString('[/section]', true)
       ) {
-        if (children.length > 0) {
-          const last = children[children.length - 1];
-          const lastIsContainerBlock =
-            last.type === 'quote' || last.type === 'section';
-          const prefix = this.peekStrayBlockCloseAfterWhitespace();
-          if (prefix !== null) {
-            if (lastIsContainerBlock) {
-              this.consumeStrayBlockCloseSilent();
-              continue;
-            }
-            children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
-            continue;
-          }
-        } else if (this.peekStrayBlockClose()) {
-          this.consumeStrayBlockCloseSilent();
-          continue;
-        }
-        if (this.peekStrayCodeOrTableClose()) {
-          children.push(this.consumeStrayCodeTableAsLiteral(false));
-          continue;
-        }
+        if (this.consumeStrayCloseIfPresent(children, false)) continue;
         const node = this.parseBlock();
         if (node) {
           children.push(node);
@@ -1082,12 +1074,7 @@ export class DTextStateMachineParser {
       }
     }
 
-    while (
-      children.length > 0 &&
-      children[children.length - 1].type === 'line_break'
-    ) {
-      children.pop();
-    }
+    trimTrailingLineBreaks(children);
 
     return { type: 'table_cell', cellType, children };
   }
@@ -1243,17 +1230,7 @@ export class DTextStateMachineParser {
       }
 
       const node = this.parseInlineElement();
-      if (node) {
-        // Merge consecutive text nodes
-        if (node.type === 'text' && children.length > 0) {
-          const lastChild = children[children.length - 1];
-          if (lastChild.type === 'text') {
-            (lastChild as TextNode).content += (node as TextNode).content;
-            continue;
-          }
-        }
-        children.push(node);
-      }
+      if (node) pushInlineMergingText(children, node);
     }
 
     // If we broke on a stray spoiler close, leave the trailing newlines for
@@ -1263,14 +1240,9 @@ export class DTextStateMachineParser {
       this.consumeNewline();
     }
 
-    // Drop trailing line breaks (a final '\n' inside a paragraph buffer
-    // shouldn't render as <br></p> , ruby closes the paragraph cleanly).
-    while (
-      children.length > 0 &&
-      children[children.length - 1].type === 'line_break'
-    ) {
-      children.pop();
-    }
+    // A final `\n` inside a paragraph buffer shouldn't render as
+    // `<br></p>`; ruby closes the paragraph cleanly.
+    trimTrailingLineBreaks(children);
 
     return { type: 'paragraph', children };
   }
@@ -1461,12 +1433,7 @@ export class DTextStateMachineParser {
       }
     }
 
-    while (
-      children.length > 0 &&
-      children[children.length - 1].type === 'line_break'
-    ) {
-      children.pop();
-    }
+    trimTrailingLineBreaks(children);
 
     return { type: nodeType, children } as InlineNode;
   }
@@ -1522,23 +1489,11 @@ export class DTextStateMachineParser {
   }
 
   private parseColorContainer(color: string): ColorNode {
-    if (!this.options.allowColor) {
-      // Parse content without color wrapper
-      const children: InlineNode[] = [];
-      while (
-        this.pos < this.input.length &&
-        !this.matchString('[/color]', true)
-      ) {
-        const node = this.parseInlineElement();
-        if (node) {
-          children.push(node);
-        }
-      }
-      return { type: 'color', color: '', children };
-    }
-
+    // Parse the children either way; the only difference between "color
+    // allowed" and "color disabled" is whether the color value survives onto
+    // the node. Disabled mode emits an empty-string color so the renderer
+    // skips the wrapping span (see render-html's allowColor branch).
     const children: InlineNode[] = [];
-
     while (
       this.pos < this.input.length &&
       !this.matchString('[/color]', true)
@@ -1548,8 +1503,11 @@ export class DTextStateMachineParser {
         children.push(node);
       }
     }
-
-    return { type: 'color', color, children };
+    return {
+      type: 'color',
+      color: this.options.allowColor ? color : '',
+      children,
+    };
   }
 
   protected parseText(): TextNode {
@@ -2222,32 +2180,7 @@ export class DTextStateMachineParser {
 
   // Link creation methods
   private createIdLink(match: IdMatch): LinkNode {
-    const routes: Record<IdType, string> = {
-      post: '/posts/',
-      thumb: '/posts/',
-      post_changes: '/post_versions?search[post_id]=',
-      flag: '/post_flags/',
-      note: '/notes/',
-      forum_post: '/forum_posts/',
-      topic: '/forum_topics/',
-      comment: '/comments/',
-      pool: '/pools/',
-      user: '/users/',
-      artist: '/artists/',
-      ban: '/bans/',
-      bur: '/bulk_update_requests/',
-      alias: '/tag_aliases/',
-      implication: '/tag_implications/',
-      mod_action: '/mod_actions/',
-      record: '/user_feedbacks/',
-      wiki: '/wiki_pages/',
-      set: '/post_sets/',
-      blip: '/blips/',
-      takedown: '/takedowns/',
-      ticket: '/tickets/',
-    };
-
-    const href = routes[match.type] + match.id;
+    const href = DTextStateMachineParser.ID_ROUTES[match.type] + match.id;
 
     // Display text uses the canonical form for the id-type, not the raw
     // source. `Pool` becomes `pool`, `bur` upcases to `BUR`, and the verbose
