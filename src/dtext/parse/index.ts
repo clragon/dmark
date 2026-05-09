@@ -26,6 +26,7 @@ import type {
 } from '../../ast';
 import {
   buildIdLink,
+  buildPostSearchLink,
   buildWikiLink,
   ID_PATTERNS,
   ID_TYPE_MAP,
@@ -2102,17 +2103,11 @@ export class DTextStateMachineParser {
   }
 
   private createPostSearchLink(match: PostSearchMatch): LinkNode {
-    const normalizedTag = asciiLowercase(match.tag);
-    const href = `/posts?tags=${rubyUriEscape(normalizedTag)}`;
-    const title = match.title || match.tag;
-
-    return {
-      type: 'link',
-      linkType: 'post_search',
-      tags: normalizedTag,
-      href,
-      children: [{ type: 'text', content: title }],
-    };
+    // Pure construction lives in `buildPostSearchLink` so the markdown
+    // adapter produces byte-identical post-search nodes without copying
+    // the rules. `PostSearchMatch` is structurally identical to
+    // `PostSearchInput`.
+    return buildPostSearchLink(match);
   }
 
   private createWikiLink(match: WikiLinkInput): LinkNode {

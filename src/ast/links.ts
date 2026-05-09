@@ -206,3 +206,28 @@ export function buildWikiLink(input: WikiLinkInput): LinkNode {
     children: [{ type: 'text', content: title }],
   };
 }
+
+// Input shape for `buildPostSearchLink`. The dtext side's tag-search match
+// has the same fields. `tag` is the raw tag-list as typed (space-separated
+// on the dtext side); the helper lowercases it for the href and stores the
+// lowercased form in the AST node's `tags` field.
+export interface PostSearchInput {
+  tag: string;
+  title?: string;
+}
+
+// Construct a `LinkNode` for a `{{tags}}` / `post search` reference. The
+// dtext parser and the markdown adapter both call this so their AST nodes
+// for the same source string are byte-identical.
+export function buildPostSearchLink(input: PostSearchInput): LinkNode {
+  const normalizedTag = asciiLowercase(input.tag);
+  const href = `/posts?tags=${rubyUriEscape(normalizedTag)}`;
+  const title = input.title || input.tag;
+  return {
+    type: 'link',
+    linkType: 'post_search',
+    tags: normalizedTag,
+    href,
+    children: [{ type: 'text', content: title }],
+  };
+}
