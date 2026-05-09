@@ -18,7 +18,7 @@ If a feature can't be tied to one of these guarantees, it's out of scope.
 ```
 src/
   ast/              shared canonical AST (the middle of every conversion)
-  dtext/parse/      dtext string → AST (ported from Forderband)
+  dtext/parse/      dtext string → AST
   dtext/render-html/AST → html (matches ruby reference under normalization)
   dtext/render/     AST → dtext string (round-trip)
   md/parse/         markdown string → AST (wraps micromark/remark)
@@ -31,6 +31,7 @@ corpus/seed/        ~10 hand-picked dtext fixtures, committed (offline tests)
 corpus/golden/      large corpus from db_export, gitignored, fetched on demand
 test/               cross-cutting test infra (dom-equal, oracle lifecycle)
 ref/                external clones (e621ng/dtext for Ragel lookup), gitignored
+docs/               mapping spec and architecture decision records (adr/)
 ```
 
 ## Performance
@@ -71,4 +72,4 @@ Tests verify Dmark output against the actual ruby implementation by spawning a d
 
 ## Markdown ↔ dtext mapping
 
-See `markdown.md` at the repo root. Treat that doc as the design spec; deviations need justification.
+See `docs/mapping.md` for the per-construct rules and `docs/adr/` for the architecture decisions that shaped them.

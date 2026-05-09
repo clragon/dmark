@@ -1,18 +1,7 @@
-// BBCode-survivor inline plugin: `[sup]`, `[sub]`, `[color=x]`. These three
-// tags survive into the markdown flavour because there is no widely-adopted
-// markdown sigil for super/subscript / arbitrary colour, and because the
-// dtext side already supports them with the same shape. The plugin
-// produces tokens the adapter walks into `SuperscriptNode`, `SubscriptNode`,
-// and `ColorNode` respectively.
-//
-// Open / close form is BBCode-style: `[sup]...[/sup]`. Tag matching is
-// case-insensitive (`[SUP]` works the same), matching the dtext parser's
-// behaviour. Inner content is recursively tokenised so emphasis, links,
-// other BBCode survivors, and inline spoilers all compose naturally.
-//
-// `[` is already in the host text rule's terminator set, so this plugin
-// does not need to extend it; registering before the standard `link` rule
-// is enough to claim positions that begin a recognised tag.
+// BBCode-survivor inline plugin: `[sup]`, `[sub]`, `[color=x]`. Produces
+// tokens the adapter walks into `SuperscriptNode`, `SubscriptNode`, and
+// `ColorNode`. Tag matching is case-insensitive, matching the dtext parser.
+// See `docs/mapping.md` (Inline constructs).
 
 import type MarkdownIt from 'markdown-it';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
@@ -48,9 +37,8 @@ const COLOR_OPEN_RE = /^\[color=([^\]\n]+)\]/i;
 const COLOR_CLOSE = '[/color]';
 
 // Find a case-insensitive match for `needle` within `haystack` starting at
-// `from`, bounded by `end`. Returns -1 if not found in range. Avoids
-// allocating a lower-cased copy of the full source by lower-casing during
-// the scan; tag close markers are short so the per-char cost is small.
+// `from`, bounded by `end`. Returns -1 if not found in range. Lower-cases
+// during the scan to avoid allocating a copy of the source.
 function indexOfICase(
   haystack: string,
   needle: string,
@@ -108,9 +96,8 @@ function bbcodeInline(state: StateInline, silent: boolean): boolean {
     if (silent) return true;
 
     const openTok = state.push('color_open', 'span', 1);
-    // Color value preserved exactly as typed. The renderer decides class
-    // vs. inline-style on the dtext side; the markdown side reuses the same
-    // ColorNode emission so the rule lives there once.
+    // Color value preserved verbatim; the dtext side decides class vs.
+    // inline-style at render time.
     openTok.attrSet('color', colorMatch[1] ?? '');
     const oldPosMax = state.posMax;
     state.pos = innerStart;

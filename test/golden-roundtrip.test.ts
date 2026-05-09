@@ -1,16 +1,15 @@
 // Golden-corpus round-trip harness for the dtext formatter.
 //
 // For every fixture under `corpus/golden`, runs the round-trip property
-// from `dtext-formatter-spec.md`:
+// from `docs/mapping.md`:
 //
 //   parseDText(formatDText(parseDText(src)).output) ≡ parseDText(src)
 //
-// This is the corpus-scale companion to `test/dtext/round-trip.test.ts`,
-// which exercises the same property on hand-curated fixtures spanning the
-// construct surface. Hand fixtures cover the *intended* shapes; the
-// golden corpus exercises the *encountered* shapes (real wiki pages with
-// salvage paths, edge-case interactions, and constructs the spec didn't
-// anticipate as common).
+// Corpus-scale companion to `test/dtext/round-trip.test.ts`, which
+// exercises the same property on hand-curated fixtures spanning the
+// construct surface. Hand fixtures cover the intended shapes; the golden
+// corpus exercises the encountered shapes (real wiki pages with salvage
+// paths, edge-case interactions, uncommon constructs).
 //
 // Sibling pattern to `test/golden-baseline.test.ts`:
 //   - golden-baseline checks `parseDText → renderHTML` against the oracle
@@ -18,13 +17,9 @@
 //   - golden-roundtrip checks `parse → format → parse` AST stability
 //     (formatter-inverse correctness)
 //
-// Pass-rate floor uses the same ratchet discipline: start with an honest
-// baseline, bump up as fixes land, never lower. A divergence at corpus
-// scale that's *not* one of the documented Q-* skips is a real bug worth
-// chasing.
-//
-// Markdown-side equivalent is queued (md surface has more documented
-// divergences; would need a tighter divergence catalogue first).
+// Pass-rate floor uses the same ratchet discipline: bump up as fixes land,
+// never lower. A divergence at corpus scale that is not one of the
+// documented ADR skips is a real bug.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -58,9 +53,9 @@ const ROUND_TRIP_FLOOR = 0.78;
 const MAX_DIFF_CHARS = 800;
 
 // Per-fixture skip list for known-failing corpus rows where the divergence
-// is documented (Q-* citation) rather than a regression. Empty today; add
-// entries with `Q-*` codes if a corpus fixture surfaces a documented
-// asymmetry that the ratchet cannot capture.
+// is documented (ADR citation) rather than a regression. Add entries with
+// the ADR number if a corpus fixture surfaces a documented asymmetry that
+// the ratchet cannot capture.
 const SKIP_FILES: ReadonlyMap<string, string> = new Map([]);
 
 function loadIndex(): CorpusIndex | null {

@@ -71,7 +71,7 @@ function renderNode(
       scalarParts.push({ key, value: raw as Plain });
     } else {
       // Unrecognised shape — JSON-stringify as a single token. Keeps the tree
-      // honest about contents we don't have a renderer for.
+      // honest about contents that have no dedicated renderer.
       scalarParts.push({ key, value: JSON.stringify(raw) });
     }
   }

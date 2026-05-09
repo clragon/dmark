@@ -1,11 +1,11 @@
 // Spoiler-block coverage on the markdown side. The block form
 // (`[spoiler]\n...\n[/spoiler]`) is BBCode-survivor only: markdown's
-// `||...||` syntax is *inline* (per `md-formatter-spec.md`'s Spoiler-block
-// row) and cannot span block boundaries.
+// `||...||` syntax is inline (per `docs/mapping.md`'s Spoiler-block row)
+// and cannot span block boundaries.
 //
-// Block recogniser lives in `./plugins/spoiler-block`; the inline `||`
-// rule lives in `./plugins/spoiler` and produces `InlineSpoilerNode`
-// rather than `SpoilerBlockNode`.
+// Block recogniser lives in `src/md/parse/plugins/spoiler-block`; the
+// inline `||` rule lives in `src/md/parse/plugins/spoiler` and produces
+// `InlineSpoilerNode` rather than `SpoilerBlockNode`.
 
 import { describe, expect, it } from 'vitest';
 

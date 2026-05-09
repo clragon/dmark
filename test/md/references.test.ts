@@ -1,6 +1,7 @@
 // References coverage: wikilinks, tag search, internal anchors. The shape
 // these produce is shared with the dtext side via `buildWikiLink` and
-// `buildPostSearchLink`, so the AST-equivalence harness pairs trivially.
+// `buildPostSearchLink`, so the AST-equivalence harness pairs them
+// trivially.
 
 import { describe, expect, it } from 'vitest';
 

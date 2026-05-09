@@ -1,7 +1,6 @@
-// Section block coverage. BBCode form (`[section]...[/section]`) lands in
-// this commit; HTML form (`<details>...</details>`) follows. Both produce
-// the same `SectionNode` so the test rows for the HTML form will mirror
-// the BBCode rows once they land.
+// Section block coverage. BBCode form (`[section]...[/section]`) and HTML
+// form (`<details>...</details>`) both produce the same `SectionNode`; the
+// HTML-form rows mirror the BBCode rows. See ADR-0011.
 
 import { describe, expect, it } from 'vitest';
 

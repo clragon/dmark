@@ -12,8 +12,8 @@
 //      may emit `{ anchor: undefined }` versus omitting the field; both
 //      mean "no anchor present" semantically and should match.
 //   3. No other relaxations. Field values must compare exactly. Adding any
-//      relaxation here is a meaningful spec change and warrants a captain
-//      decision and a comment naming the construct that motivated it.
+//      relaxation here is a meaningful spec change and warrants a comment
+//      naming the construct that motivated it.
 //
 // On mismatch returns a unified-style diff truncated to a useful window so
 // failing assertions stay readable, mirroring `test/dom-equal.ts`.
@@ -21,9 +21,8 @@
 import type { DocumentNode } from '../../src/ast';
 
 export interface AstEqualOptions {
-  // Reserved for future relaxations (e.g. ignoring source-range fields if
-  // those land later). Empty today; the contract is full-equality minus the
-  // two normalisations above.
+  // Reserved for relaxations (e.g. ignoring source-range fields). The
+  // contract is full-equality minus the two normalisations above.
 }
 
 export interface AstEqualResult {

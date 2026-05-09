@@ -1,8 +1,7 @@
-// Built-in sample inputs for quick exploration. Used to populate the "Sample"
-// dropdown when no real fixtures exist on disk yet (corpus/seed is the
-// authoritative store, but it's empty until the captain commits hand-picked
-// fixtures). Samples here cover the breadth of the AST so a reader can poke
-// at every node type without typing.
+// Built-in sample inputs for quick exploration. Populates the "Sample"
+// dropdown so a reader can poke at every AST node type without typing;
+// `corpus/seed/` is the authoritative on-disk store for hand-picked
+// fixtures, and the picker pulls from there when populated.
 
 export interface Sample {
   id: string;

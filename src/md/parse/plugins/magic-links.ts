@@ -1,19 +1,11 @@
 // Magic-link core post-process. Free-form patterns like `post #1234`,
 // `pool #5`, `take down request #99` lower to `LinkNode { linkType:
-// "id_link", idType, id, ... }`. Implemented as a `markdown-it` core rule
-// that runs after inline tokenisation: it walks every inline `text`
-// token, splits it on magic-link matches, and replaces it with a sequence
-// of `text` and `id_link` tokens.
-//
-// Why a core rule and not an inline rule: the patterns are mid-text
-// (e.g. "see post #42 for context"), not anchored at a delimiter the
-// inline parser would yield to. Post-processing already-tokenised text is
-// the same approach `markdown-it`'s built-in `linkify` rule uses for bare
-// URLs.
-//
-// All metadata (`ID_PATTERNS`, `ID_TYPE_MAP`) is imported from
-// `@dmark/ast/links` so the dtext parser and this plugin stay in lockstep
-// on which prefixes mint links and what types they map to.
+// "id_link", ... }` (see ADR-0001, `docs/mapping.md`). Implemented as a
+// core rule rather than an inline rule because the patterns are mid-text
+// and not anchored at a delimiter the inline parser would yield to (the
+// same approach markdown-it's built-in `linkify` rule uses for bare URLs).
+// `ID_PATTERNS` / `ID_TYPE_MAP` are imported from the shared `ast/links`
+// module so the dtext parser and this plugin stay in lockstep.
 
 import type MarkdownIt from 'markdown-it';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';

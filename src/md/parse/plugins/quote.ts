@@ -1,28 +1,9 @@
-// BBCode `[quote]...[/quote]` and `[quote=COLOR]...[/quote]` block plugin.
-// Joins the BBCode-survivor set on the markdown side per captain's path-4
-// resolution of Q-MD-QUOTE-COLOR (`md-formatter-spec.md` Resolved-design-
-// decisions item 9; `md-ast-mapping.md` Resolved-design-decisions item 9).
-//
-// The plugin emits the same `blockquote_open` / `blockquote_close` token
-// shape markdown-it's `>`-syntax blockquote rule produces; the only
-// addition is an optional `color` attribute on the open token. The block
-// walker reads the attribute and lifts it into `QuoteNode.color`. The `>`
-// form continues to emit a colourless `QuoteNode` by design — markdown's
-// `>` syntax has no slot for the colour attribute.
-//
-// Block-level: open / close markers stand on their own line. Nesting works
-// (a `[quote]` inside another `[quote]` is depth-tracked). Inner content
-// is recursively tokenised through `markdown-it`'s block parser so
-// headers, paragraphs, lists, nested quotes, etc. all compose naturally.
-//
-// Colour validation: the inner value is captured verbatim, with no further
-// parsing. The dtext-side parser rejects invalid colour values (per its
-// `isValidQuoteColor` gate); the markdown side's existing `[color=...]`
-// inline plugin already accepts any value, and this plugin matches that
-// convention. A `[quote=Bob]` lands as `QuoteNode { color: "Bob" }` on
-// the markdown side; round-trip back to dtext source would produce literal
-// text via the dtext parser's invalid-colour fallback. That asymmetry
-// applies to the inline `[color]` form too and is not in scope here.
+// BBCode `[quote]...[/quote]` and `[quote=COLOR]...[/quote]` block plugin
+// (ADR-0018). Emits the same `blockquote_open` / `blockquote_close` token
+// shape as markdown-it's `>`-syntax rule, plus an optional `color` attr on
+// the open token; the block walker lifts it into `QuoteNode.color`. The
+// inner colour value is captured verbatim, mirroring the inline
+// `[color=...]` plugin's convention.
 
 import type MarkdownIt from 'markdown-it';
 import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';

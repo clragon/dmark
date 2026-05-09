@@ -1,26 +1,13 @@
-// Markdown -> shared AST adapter. Wraps `markdown-it` with the strict
-// flavour configured by `md-ast-mapping.md`. The token walk is the
-// load-bearing part: every CommonMark token produced by `markdown-it` lowers
-// either to a node type from `../../ast` or to a `Diagnostic`. The function
-// never throws; rejected or unsupported constructs survive as literal text
-// and surface through the diagnostics array so callers can decide policy.
-//
-// Coverage so far: paragraph + standard inline (text, line break, bold,
-// underline, italic, strikethrough, inline code, link, autolink) + headers,
-// blockquote, fenced and indented code blocks + lists (ordered demoted to
-// unordered with a warning) + pipe tables + inline spoilers (`||...||`) +
-// BBCode survivors (`[sup]`, `[sub]`, `[color=x]`) + magic links
-// (`post #1234`, `pool #5`, etc.) + references (`[[wikilink]]`,
-// `{{tag search}}`, `[#anchor]`). Everything else still routes to the
-// `md.unsupported_*` fallback and lands in follow-up commits as each spec
-// row is implemented.
+// Markdown -> shared AST adapter. Wraps `markdown-it` with the dmark
+// flavour. Every CommonMark token lowers either to a node type from
+// `../../ast` or to a `Diagnostic`; the function never throws, and
+// unsupported constructs surface through the diagnostics array. Per-
+// construct rules live in `docs/mapping.md`.
 
 import MarkdownIt from 'markdown-it';
-// The `MarkdownIt.Token` namespace pattern only exists in the CJS variant
-// of `@types/markdown-it`; the ESM `.d.mts` we resolve under `module:
-// ESNext` does not re-export `Token` at the index. The submodule path is
-// the only one that types under our ESM + `verbatimModuleSyntax` config.
-// Revisit if `@types/markdown-it` ever ships a unified ESM namespace.
+// `Token` only re-exports at the index in the CJS variant of
+// `@types/markdown-it`; the ESM `.d.mts` resolved under `module: ESNext`
+// requires this submodule path under `verbatimModuleSyntax`.
 import type Token from 'markdown-it/lib/token.mjs';
 
 import type {
@@ -69,9 +56,7 @@ import { spoilerBlockPlugin } from './plugins/spoiler-block';
 import type { IdType, InternalAnchorNode, SectionNode } from '../../ast';
 
 export interface ParserOptions {
-  // Reserved for future flags (e.g. `allowColor` parity with the dtext side).
-  // Kept as an explicit type so the public contract has a stable shape from
-  // day one even when no flags are present.
+  // Reserved for flags (e.g. `allowColor` parity with the dtext side).
 }
 
 // Diagnostic shape lives in `src/diagnostics/` so both parsers and
@@ -85,23 +70,20 @@ export interface ParseResult {
   diagnostics: Diagnostic[];
 }
 
-// One shared instance; per-call mutable state lives only in the visitor we
-// run after `md.parse`. Configuration matches md-ast-mapping.md:
-//   - `html: false`    The HTML allowlist (`<details>`, `<summary>`) lands
-//                      in a follow-up commit; until then any HTML tag emits
-//                      `md.html_tag_rejected` and the source survives.
-//   - `linkify: false` Bare-URL autolink lands with the URL/autolink commit.
-//                      Explicit `<url>` autolinks still work via the standard
-//                      autolink rule.
-//   - `typographer: false`  Source bytes are not rewritten (no smart quotes
-//                           or ascii dashes; round-trip stays faithful).
-// `breaks` is left at the default; the AST emission treats both `softbreak`
-// and `hardbreak` as `LineBreakNode` so every inline `\n` becomes a hard
-// break in the AST regardless of how `markdown-it` would render it.
+// One shared instance; per-call mutable state lives only in the visitor
+// run after `md.parse`. Configuration:
+//   - `html: false`    HTML tags outside the `<details>`/`<summary>` allowlist
+//                      survive as text. The section plugin handles the
+//                      allowlist at line level.
+//   - `linkify: false` Only explicit `<url>` autolinks produce a `LinkNode`;
+//                      bare-URL detection is off (see ADR-0015).
+//   - `typographer: false`  Source bytes are not rewritten.
+//   - `breaks: true`   Every paragraph-internal `\n` lowers to `LineBreakNode`.
 const md = new MarkdownIt({
   html: false,
   linkify: false,
   typographer: false,
+  breaks: true,
 });
 md.use(spoilerPlugin);
 md.use(bbcodePlugin);
@@ -153,9 +135,8 @@ function walkBlocksRange(
       case 'heading_open': {
         // `tag` is the html element name, e.g. `h3`; the digit is the level.
         // Setext-form headers (`===` / `---`) reach this case too with the
-        // same tag, so an info diagnostic flags the round-trip will pick the
-        // ATX form. Per md-ast-mapping.md only level 1..6 exist; markdown-it
-        // never emits anything else, but the clamp is cheap insurance.
+        // same tag, so an info diagnostic flags that the round-trip emits
+        // ATX form. The clamp guards against malformed `tag` values.
         const close = findContainerClose(tokens, i);
         const level = Math.min(6, Math.max(1, parseInt(tok.tag.slice(1), 10) || 1));
         const inline = tokens[i + 1];
@@ -176,15 +157,12 @@ function walkBlocksRange(
         break;
       }
       case 'blockquote_open': {
-        // Two source forms feed this case (per captain's path-4 resolution
-        // of Q-MD-QUOTE-COLOR; see `md-formatter-spec.md` /
-        // `md-ast-mapping.md` Resolved-decisions item 9):
+        // Two source forms feed this case (ADR-0018):
         //   - `>`-prefix syntax (markdown-it built-in) -> no `color` attr
         //   - `[quote]` / `[quote=COLOR]` BBCode-survivor (`./plugins/quote`)
         //     -> optional `color` attr on the open token.
         // The walker reads the attribute and lifts it into `QuoteNode.color`
-        // when present. Recursion runs the standard block walker over the
-        // inner range so nested quotes, headers, lists, etc. just work.
+        // when present.
         const close = findContainerClose(tokens, i);
         const children = walkBlocksRange(tokens, i + 1, close, diagnostics);
         const colorAttr = tok.attrGet('color');
@@ -198,9 +176,9 @@ function walkBlocksRange(
       }
       case 'fence': {
         // Triple-backtick form. `info` carries the optional language hint,
-        // which the AST has no slot for; the spec calls this an explicit
-        // (info-severity) loss so the caller knows the round-trip will drop
-        // it. Trailing newline on `content` is markdown-it's convention.
+        // which the AST has no slot for; the loss is reported as info so
+        // callers know the round-trip drops it. Trailing newline on
+        // `content` is markdown-it's convention.
         if (tok.info && tok.info.trim() !== '') {
           diagnostics.push({
             code: 'md.code_lang_dropped',
@@ -220,9 +198,8 @@ function walkBlocksRange(
         break;
       }
       case 'section_open': {
-        // BBCode `[section]` block from the sections plugin (HTML
-        // `<details>` form follows in a follow-up commit and emits the
-        // same `section_open` token, so this case will need no change).
+        // Both BBCode `[section]` and HTML `<details>` forms emit this
+        // token type from the sections plugin (see ADR-0011).
         const close = findContainerClose(tokens, i);
         const children = walkBlocksRange(
           tokens,
@@ -245,9 +222,8 @@ function walkBlocksRange(
       case 'spoiler_block_open': {
         // BBCode `[spoiler]...[/spoiler]` block from `./plugins/spoiler-block`.
         // Distinct token type from the inline `||...||` rule's
-        // `spoiler_open` (which lands in `walkInline`); keeping the names
-        // separate routes block-level openers to this case and inline
-        // openers to the inline walker without the two colliding.
+        // `spoiler_open` so block-level openers route here while inline
+        // openers route to `walkInline`.
         const close = findContainerClose(tokens, i);
         const children = walkBlocksRange(tokens, i + 1, close, diagnostics);
         const node: SpoilerBlockNode = { type: 'spoiler_block', children };
@@ -256,13 +232,11 @@ function walkBlocksRange(
         break;
       }
       case 'table_open': {
-        // Pipe tables lower to `TableNode` (not `LTableNode`; the lightweight
-        // form is dtext-only per spec). markdown-it splits the table into
-        // `thead` and `tbody` regions with `tr` rows of `th`/`td` cells; the
-        // walker mirrors that structure into the AST. Per-cell alignment from
-        // the header separator (`:---:`) is dropped without a diagnostic; the
-        // AST has no slot for it and the dtext side renders aligned cells the
-        // same way regardless.
+        // Pipe tables lower to `TableNode` (the lightweight `LTableNode` is
+        // dtext-only). markdown-it splits the table into `thead` and `tbody`
+        // regions with `tr` rows of `th`/`td` cells; the walker mirrors that
+        // structure. Per-cell alignment from the header separator (`:---:`)
+        // is dropped silently — the AST has no slot for it.
         const close = findContainerClose(tokens, i);
         const children = walkTableChildren(
           tokens,
@@ -278,9 +252,9 @@ function walkBlocksRange(
       case 'bullet_list_open':
       case 'ordered_list_open': {
         // Both lower to a flat `ListNode` whose items are depth-tagged.
-        // Ordered lists demote to unordered with a warning per spec Q5; the
-        // `ListItemNode` AST has no `ordered` field today, and marker
-        // numbers are not preserved (the markdown engine consumes them).
+        // Ordered lists demote to unordered with a warning (ADR-0016): the
+        // `ListItemNode` AST has no `ordered` field, and marker numbers are
+        // not preserved.
         if (tok.type === 'ordered_list_open') {
           emitOrderedDemoted(diagnostics);
         }
@@ -337,19 +311,16 @@ function walkInlineRange(
           out.push(node);
         }
         break;
-      case 'softbreak':
       case 'hardbreak': {
-        // Both lower to LineBreakNode per md-ast-mapping.md Q6: every inline
-        // `\n` is a hard break in the AST, matching the dtext side.
         const node: LineBreakNode = { type: 'line_break' };
         out.push(node);
         break;
       }
       case 'strong_open': {
         // markdown-it parses both `**` and `__` as `strong`. The two are
-        // distinguished by `markup`: `**` is bold, `__` is underline (per
-        // md-ast-mapping.md). Re-tagging at emission keeps the underlying
-        // delimiter rule shared and avoids a custom inline-rule plugin.
+        // distinguished by `markup`: `**` is bold, `__` is underline.
+        // Re-tagging at emission keeps the underlying delimiter rule shared
+        // and avoids a custom inline-rule plugin.
         const close = findInlineClose(tokens, i, end, 'strong_close');
         const children = walkInlineRange(tokens, i + 1, close, diagnostics);
         if (tok.markup === '__') {
@@ -363,9 +334,8 @@ function walkInlineRange(
         break;
       }
       case 'em_open': {
-        // Both `*x*` and `_x_` lower to italic. markdown.md does not forbid
-        // the `_` form; the dtext side has no analogue (`[i]...[/i]` is the
-        // single dtext spelling), so AST equivalence is preserved either way.
+        // Both `*x*` and `_x_` lower to italic. The dtext side has only
+        // `[i]...[/i]`, so AST equivalence is preserved either way.
         const close = findInlineClose(tokens, i, end, 'em_close');
         const children = walkInlineRange(tokens, i + 1, close, diagnostics);
         const node: ItalicNode = { type: 'italic', children };
@@ -391,8 +361,8 @@ function walkInlineRange(
       }
       case 'spoiler_open': {
         // Custom token from the spoiler plugin. Inner content is regular
-        // inline tokens that already passed through the standard rules, so
-        // emphasis / inline code inside the spoiler is parsed correctly.
+        // inline tokens, so emphasis / inline code inside the spoiler parse
+        // correctly.
         const close = findInlineClose(tokens, i, end, 'spoiler_close');
         const children = walkInlineRange(tokens, i + 1, close, diagnostics);
         const node: InlineSpoilerNode = { type: 'inline_spoiler', children };
@@ -417,10 +387,9 @@ function walkInlineRange(
         break;
       }
       case 'id_link': {
-        // Atomic token from the magic-links core post-process. The plugin
-        // pre-resolved the type and id; the AST `LinkNode` is built via
-        // the shared `buildIdLink` helper so href / display text exactly
-        // match the dtext side's emission.
+        // Atomic token from the magic-links core post-process. The shared
+        // `buildIdLink` helper produces an AST `LinkNode` whose href and
+        // display text match the dtext side's emission (ADR-0001).
         const idType = tok.attrGet('idType') as IdType | null;
         const id = tok.attrGet('id') ?? '';
         if (idType) {
@@ -429,9 +398,8 @@ function walkInlineRange(
         break;
       }
       case 'wikilink': {
-        // Atomic token from the references plugin. Pieces are pre-parsed
-        // (tag / title / anchor); shape via shared `buildWikiLink` so href
-        // normalisation exactly matches the dtext side.
+        // Atomic token from the references plugin. The shared `buildWikiLink`
+        // helper normalises href to match the dtext side (ADR-0004).
         const tag = tok.attrGet('tag') ?? '';
         const titleAttr = tok.attrGet('title');
         const anchorAttr = tok.attrGet('anchor');
@@ -465,10 +433,9 @@ function walkInlineRange(
       }
       case 'color_open': {
         // Color value carried on the open token's `color` attr (set by the
-        // BBCode plugin). The dtext side blanks the field when its
-        // `allowColor` parser option is off; the markdown side preserves
-        // the value as typed today and will gain the same option when
-        // `ParserOptions` grows the slot.
+        // BBCode plugin) and preserved verbatim. The dtext side blanks the
+        // field when its `allowColor` parser option is off; the markdown
+        // side does not yet expose an equivalent flag.
         const close = findInlineClose(tokens, i, end, 'color_close');
         const children = walkInlineRange(tokens, i + 1, close, diagnostics);
         const color = tok.attrGet('color') ?? '';
@@ -480,11 +447,9 @@ function walkInlineRange(
       case 'link_open': {
         // markdown-it's autolink rule sets `markup === 'autolink'` for
         // `<url>` and email autolinks; inline links `[text](url)` set it
-        // to `''`. Spec: autolinks become `linkType: 'url'` with the href
-        // as the only TextNode child; inline links become `linkType:
-        // 'inline'` with the parsed text content as children. The `inline`
-        // tag is shared with dtext's `"text":url` syntax (same render
-        // rules, same AST shape).
+        // to `''`. Autolinks become `linkType: 'url'` with the href as the
+        // only TextNode child; inline links become `linkType: 'inline'`
+        // with the parsed text content as children.
         const close = findInlineClose(tokens, i, end, 'link_close');
         const href = tok.attrGet('href') ?? '';
         const isAutolink = tok.markup === 'autolink';
@@ -524,7 +489,7 @@ function walkInlineRange(
         diagnostics.push({
           code: 'md.unsupported_inline',
           severity: 'fatal',
-          message: `Unsupported inline token \`${tok.type}\`: scaffold does not yet implement this construct; the offending span is dropped. See md-ast-mapping.md.`,
+          message: `Unsupported inline token \`${tok.type}\`: the offending span is dropped. See docs/mapping.md.`,
         });
     }
   }
@@ -545,7 +510,7 @@ function handleUnsupportedBlock(
   diagnostics.push({
     code: 'md.unsupported_block',
     severity: 'fatal',
-    message: `Unsupported block token \`${tok.type}\`: scaffold does not yet implement this construct; the offending span is dropped. See md-ast-mapping.md.`,
+    message: `Unsupported block token \`${tok.type}\`: the offending span is dropped. See docs/mapping.md.`,
   });
   if (tok.nesting === 1) return findContainerClose(tokens, i);
   return i;
@@ -697,15 +662,14 @@ function emitOrderedDemoted(diagnostics: Diagnostic[]): void {
     code: 'md.ordered_list_demoted',
     severity: 'warning',
     message:
-      'Ordered list demoted to unordered: the AST has no ordered/unordered slot today and marker numbers are not preserved.',
+      'Ordered list demoted to unordered: the AST has no ordered/unordered slot and marker numbers are not preserved.',
   });
 }
 
 // Walk the `thead` / `tbody` regions of a table. The AST shape allows bare
 // `TableRowNode`s alongside the head/body wrappers, but markdown-it always
 // emits both wrappers around at least one row, so the bare-row branch is
-// not reached in practice (the union slot stays available for future
-// dtext-side parsers that may emit it).
+// not reached from this path (the union slot exists for dtext-side parsers).
 function walkTableChildren(
   tokens: Token[],
   start: number,

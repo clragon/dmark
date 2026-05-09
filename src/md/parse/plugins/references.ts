@@ -1,12 +1,8 @@
 // Reference plugins: `[[wikilink]]`, `{{tag search}}`, `[#anchor]`.
-// Three small inline rules in one file because all three are atomic
-// references (no inner content to recursively tokenise) and each rule's
-// implementation is short.
-//
-// All three emit a single self-closing token whose attrs carry the
-// already-parsed pieces (tag, title, anchor, name). The adapter walker
-// hands off to the shared builders in `@dmark/ast/links` so the produced
-// AST nodes are byte-identical to the dtext side's emission.
+// Three atomic reference rules sharing one file. Each emits a single
+// self-closing token whose attrs carry the already-parsed pieces; the
+// adapter walker hands off to shared builders in `ast/links` so the
+// produced AST matches the dtext side. See `docs/mapping.md`.
 
 import type MarkdownIt from 'markdown-it';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';

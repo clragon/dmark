@@ -71,7 +71,7 @@ async function main() {
     for (let i = 0; i < 5; i++) await timeRender(oracle.url, 'a');
 
     // HTTP+ruby floor: the cost of rendering a 1-char input is dominated by
-    // HTTP round-trip and ruby/sinatra dispatch. We use this as the baseline
+    // HTTP round-trip and ruby/sinatra dispatch. This serves as the baseline
     // overhead that every render call pays regardless of input.
     const floorSamples: number[] = [];
     for (let i = 0; i < 30; i++) floorSamples.push(await timeRender(oracle.url, 'a'));

@@ -1,8 +1,8 @@
 // Standard markdown inline coverage. One describe block per spec row in
-// md-ast-mapping.md so a regression bisects to the offending construct.
+// `docs/mapping.md` so a regression bisects to the offending construct.
 // AST-equivalence with the dtext side is the contract these assertions
-// pin down; see test/md/ast-equivalence.test.ts (forthcoming) for the
-// paired-fixture verification.
+// pin down; see `test/md/ast-equivalence.test.ts` for the paired-fixture
+// verification.
 
 import { describe, expect, it } from 'vitest';
 

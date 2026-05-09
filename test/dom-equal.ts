@@ -1,8 +1,8 @@
 // Normalized DOM equality for comparing rendered html outputs from two parsers
 // against the same input. The two outputs are considered equal if their parsed
-// DOMs match after the normalization rules below. Spurious
-// differences (whitespace runs, attribute order, ignorable class names) don't
-// cause spurious failures.
+// DOMs match after the normalization rules below. Spurious differences
+// (whitespace runs, attribute order, ignorable class names) do not cause
+// spurious failures.
 //
 // Normalization rules (applied to both sides before comparing):
 //   1. Tag names lowercased (parse5 default).
@@ -106,7 +106,7 @@ function walkAndNormalize(
     preserveWhitespace ||
     (isElement(node) && preserveTags.has(node.tagName.toLowerCase()));
 
-  // Snapshot children since we mutate during iteration.
+  // Snapshot children since the loop mutates during iteration.
   const children = [...getChildren(node)];
   for (const child of children) {
     if (isTextNode(child)) {
@@ -114,9 +114,9 @@ function walkAndNormalize(
         const collapsed = child.value.replace(WHITESPACE_RUN, ' ');
         if (collapsed.length === 0 || /^\s*$/.test(collapsed)) {
           // Whitespace-only text between block elements; drop it.
-          // (Between inlines a single space carries meaning, but parse5 gives
-          // us the actual whitespace; if the original was whitespace-only it
-          // was insignificant on the rendering side too.)
+          // (Between inlines a single space carries meaning, but parse5
+          // returns the actual whitespace; if the original was
+          // whitespace-only it was insignificant on the rendering side too.)
           if (collapsed.trim().length === 0 && !isInlineBoundary(node, child)) {
             detachChild(child);
             continue;
@@ -212,8 +212,8 @@ const BLOCK_TAGS = new Set([
 
 function isInlineBoundary(parent: Node, _child: Node): boolean {
   // True when the parent is an inline-context element where a single space
-  // between children carries meaning. We err on the side of preserving spaces
-  // when the parent is not a known block container.
+  // between children carries meaning. Defaults to preserving spaces when the
+  // parent is not a known block container.
   if (!isElement(parent)) return true;
   return !BLOCK_TAGS.has(parent.tagName.toLowerCase());
 }

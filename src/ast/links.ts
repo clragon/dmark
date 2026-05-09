@@ -1,27 +1,26 @@
-// Link construction helpers shared by every pipeline that produces AST
-// link nodes. The dtext parser and the markdown adapter both feed the same
-// rendered HTML, so they have to agree on link-node shape down to the byte.
-// Centralising the constructors here is what guarantees that.
+// Link construction helpers shared by the dtext parser and the markdown
+// adapter. Both pipelines feed the same rendered HTML and must agree on
+// link-node shape down to the byte; the constructors here are the single
+// source.
 //
-// Id-link metadata (`ID_PATTERNS`, `ID_DISPLAY`, `ID_ROUTES`, `ID_TYPE_MAP`,
-// `ID_SOURCE`) stays in lockstep with the renderer's `ID_TYPE_CLASSES` and
-// the `IdType` union in `./index`. Adding a new id type means a matching
-// entry in all six places; the exhaustive `Record<IdType, ...>` type makes
-// a missing one a compile error on this side, and the parser-side regex /
-// map derive from `ID_PATTERNS` so they pick the new type up automatically.
+// Id-link metadata tables (`ID_PATTERNS`, `ID_DISPLAY`, `ID_ROUTES`,
+// `ID_TYPE_MAP`, `ID_SOURCE`, plus the renderer's `ID_TYPE_CLASSES` and the
+// `IdType` union in `./index`) are all keyed against `IdType`. Adding a new
+// id type means an entry in each one; the exhaustive `Record<IdType, ...>`
+// types make a missing entry a compile error, and the parser-side regex /
+// map derive from `ID_PATTERNS`.
 //
 // `ID_SOURCE` is the canonical source spelling each `IdType` round-trips to
-// via the formatters (see `dtext-formatter-spec.md` Q-MAGIC-LINK-CANONICAL).
-// It diverges from `ID_DISPLAY` for `thumb` (display says `post` but source
-// is `thumb` so the parser preserves `idType: 'thumb'` on round-trip) and
-// `bur` (display upcases to `BUR`, source stays `bur` because `ID_TYPE_MAP`
-// is case-insensitive).
+// via the formatters (see ADR-0001). It diverges from `ID_DISPLAY` for
+// `thumb` (display says `post`, source is `thumb` so the parser preserves
+// `idType: 'thumb'` on round-trip) and `bur` (display upcases to `BUR`,
+// source stays `bur` because `ID_TYPE_MAP` is case-insensitive).
 
 import type { IdType, LinkNode } from './index';
 import { asciiLowercase, rubyUriEscape } from './text';
 
-// All link-id prefix patterns and the canonical type each maps to. Patterns
-// are the regex source fragments (still escaped, e.g. `take\\s?down\\s+request`)
+// Link-id prefix patterns and the canonical type each maps to. Patterns
+// are regex source fragments (still escaped, e.g. `take\\s?down\\s+request`)
 // the parser stitches together into a single alternation.
 export const ID_PATTERNS: ReadonlyArray<{
   pattern: string;
@@ -112,8 +111,7 @@ export const ID_ROUTES: Record<IdType, string> = {
 // Keys are lowercase with whitespace runs collapsed to a single space, so the
 // regex metachars in `ID_PATTERNS` resolve to literal forms (`take\\s?down\\s+
 // request` becomes `take down request`). The contracted "takedown request"
-// alias is added explicitly because the regex normalisation only touches
-// patterns, not aliases.
+// alias is added explicitly; regex normalisation only touches patterns.
 export const ID_TYPE_MAP: ReadonlyMap<string, IdType> = new Map(
   [
     ...ID_PATTERNS.map(
@@ -123,7 +121,7 @@ export const ID_TYPE_MAP: ReadonlyMap<string, IdType> = new Map(
           p.type,
         ] as [string, IdType],
     ),
-    // extra alias for the contracted form of takedown request
+    // alias for the contracted form of takedown request
     ['takedown request', 'takedown'],
   ],
 );
@@ -131,9 +129,9 @@ export const ID_TYPE_MAP: ReadonlyMap<string, IdType> = new Map(
 // Canonical source spelling per id-type, derived from `ID_PATTERNS` by
 // taking the first pattern per type and literalising the regex-source
 // escapes the same way `ID_TYPE_MAP` keys are normalised. Diverges from
-// `ID_DISPLAY` for `thumb` and `bur`; see the lockstep comment at the top.
+// `ID_DISPLAY` for `thumb` and `bur`; see the header lockstep comment.
 // Used by the formatters to reverse-emit `<source-prefix> #<id>` for
-// `LinkNode { linkType: 'id_link' }`.
+// `LinkNode { linkType: 'id_link' }`. See ADR-0001.
 export const ID_SOURCE: Record<IdType, string> = (() => {
   const out = {} as Record<IdType, string>;
   for (const { pattern, type } of ID_PATTERNS) {
@@ -144,9 +142,9 @@ export const ID_SOURCE: Record<IdType, string> = (() => {
 })();
 
 // Construct an id-link `LinkNode` from a resolved id type and a numeric id.
-// Pure function: no parser state, no thumb-budget logic. Callers that want
-// the over-limit thumb-rewrite (`thumb` past `maxThumbs` lowers to `post`)
-// pass `'post'` themselves; this builder just shapes the node.
+// Pure: no parser state, no thumb-budget logic. Callers that want the
+// over-limit thumb-rewrite (`thumb` past `maxThumbs` lowers to `post`) pass
+// `'post'` themselves; this builder shapes the node only.
 export function buildIdLink(type: IdType, id: string): LinkNode {
   const href = ID_ROUTES[type] + id;
   // Display text uses the canonical form for the id-type, not the raw

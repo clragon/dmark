@@ -1,14 +1,13 @@
 // Stand-alone smoke driver for the preview workbench. Runs every built-in
-// sample through the *full* round-trip pipeline the live page runs:
+// sample through the full round-trip pipeline the live page runs:
 //
 //   parse(source) → AST → format(AST) → parse(formatted) → AST'
 //
 // and reports whether AST equals AST' (round-trip stable) or not (violation).
 // A violation accompanied by formatter diagnostics is documented loss; a
-// violation with no diagnostics is a real round-trip-stability bug. The
-// driver is intentionally not a vitest test (the project's vitest globalSetup
-// boots the dtext oracle docker for every run, which is overkill for a
-// preview-side regression check).
+// violation with no diagnostics is a real round-trip-stability bug. Not a
+// vitest test by design: the project's vitest globalSetup boots the dtext
+// oracle docker, which is overkill for a preview-side regression check.
 
 import { parseDTextToAST, renderToHTML } from '../dtext';
 import { formatDText } from '../dtext/render';

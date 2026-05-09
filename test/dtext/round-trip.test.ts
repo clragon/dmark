@@ -1,6 +1,6 @@
 // Round-trip verification for the dtext formatter: parse a canonical dtext
 // source, format it back, re-parse, and assert the two ASTs are deep-equal.
-// Pins the load-bearing guarantee from `dtext-formatter-spec.md`:
+// Pins the round-trip guarantee from `docs/mapping.md`:
 //
 //   parseDText(formatDText(parseDText(src)).output) ≡ parseDText(src)
 //
@@ -9,9 +9,9 @@
 // parser correctness, while this file pins the formatter's inverse property
 // for the same constructs.
 //
-// Documented divergences are catalogued at the bottom (skipped fixtures with
-// the `Q-*` reference that justifies the skip), mirroring falcon's
-// `ast-equivalence.test.ts` shape.
+// Documented divergences are catalogued at the bottom (skipped fixtures
+// with the ADR reference that justifies the skip), mirroring
+// `ast-equivalence.test.ts`.
 
 import { describe, expect, it } from 'vitest';
 
@@ -148,25 +148,24 @@ describe('dtext round-trip — blocks', () => {
   }
 });
 
-// Documented divergences. Each skipped entry names the `Q-*` resolution
-// that justifies why the round-trip is *expected* to break for this
-// construct on the dtext surface. Adding a row here is a meaningful spec
-// statement and warrants a captain decision.
+// Documented divergences. Each skipped entry names the ADR that justifies
+// why the round-trip is expected to break for this construct on the dtext
+// surface.
 describe('dtext round-trip — documented divergences (skipped)', () => {
-  // Q-INLINE-CODE-BACKTICK: an `InlineCodeNode` whose content contains a
-  // backtick is unrepresentable in dtext source. The dtext parser cannot
-  // produce such a node from any source string, so this divergence is
-  // unreachable from a parser-side test fixture; surfaces only when an AST
-  // is fed to `formatDText` from the markdown side (CommonMark's multi-
-  // backtick fence rule). The markdown round-trip harness pins this case.
-  it.skip('inline code with backtick (Q-INLINE-CODE-BACKTICK; markdown-only producer)', () => {});
+  // ADR-0010: an `InlineCodeNode` whose content contains a backtick is
+  // unrepresentable in dtext source. The dtext parser cannot produce such
+  // a node from any source string, so this divergence is unreachable from
+  // a parser-side test fixture; surfaces only when an AST is fed to
+  // `formatDText` from the markdown side (CommonMark's multi-backtick
+  // fence rule). The markdown round-trip harness pins this case.
+  it.skip('inline code with backtick (ADR-0010; markdown-only producer)', () => {});
 
   // `LiteralHtmlNode` and `RawBlockTextNode` are dtext salvage artifacts.
   // The formatter emits `prefix` / `content` verbatim; re-parsing through
   // `parseDText` may not produce the same node shape because the salvage
   // path is triggered by stray-close fallout, not by the verbatim text the
-  // formatter emits. This is the explicit "salvage paths are passthrough,
-  // not canonical dtext" admission in `dtext-formatter-spec.md`.
+  // formatter emits. Salvage paths are passthrough, not canonical dtext;
+  // see `docs/mapping.md`.
   it.skip('literal_html salvage (passthrough; not AST-stable)', () => {});
   it.skip('raw_block_text salvage (passthrough; not AST-stable)', () => {});
 });

@@ -101,37 +101,36 @@ function isHorizontalWhitespace(code: number): boolean {
   );
 }
 
-// `BOUNDARY_CHARS` and `isBoundaryChar` live in `../url` so the formatter can
-// import the same data; the lockstep comment there names the cross-module
+// `BOUNDARY_CHARS` and `isBoundaryChar` live in `../url` so the formatter
+// shares the same data; the lockstep comment there names the cross-module
 // contract.
 
-// Quote-color validity (verified against the oracle):
-//   * #hex of exactly 3 or 6 hex digits, mixed case allowed
-//   * lowercase color word (^[a-z]+$), covers common css names like yellow
+// Quote-color validity (oracle-verified):
+//   * `#` followed by 3 to 6 hex digits, mixed case allowed
+//   * lowercase color word (`^[a-z]+$`), covers common css names like yellow
 //   * one of the tag-category aliases used elsewhere by ruby's dtext
-//     renderer; case insensitive on the match, but the original case is
-//     preserved in the rendered class name.
+//     renderer; matched case-insensitively, but original case is preserved
+//     in the rendered class name.
 const QUOTE_CATEGORY_RE =
   /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i;
 
 function isValidQuoteColor(value: string): boolean {
   if (QUOTE_CATEGORY_RE.test(value)) return true;
-  // Oracle accepts 3 to 6 hex digits inclusive after `#`. Anything outside
-  // that range is literal text (`#abcdefab` and `#1234567` both fail).
+  // 3 to 6 hex digits inclusive after `#`; anything outside that range is
+  // literal text (`#abcdefab` and `#1234567` both fail; oracle-verified).
   if (/^#[0-9a-fA-F]{3,6}$/.test(value)) return true;
   if (/^[a-z]+$/.test(value)) return true;
   return false;
 }
 
 // Strip a single trailing boundary character from a URL. Ruby's dtext only
-// peels one trailing punctuation off a url, regardless of paren balance:
+// peels one trailing punctuation off a URL, regardless of paren balance
+// (oracle-verified):
 //
 //   https://x/a)        -> href "https://x/a", trailing ")"
-//   https://x/a).       -> href "https://x/a)", trailing "."  (kept the paren!)
+//   https://x/a).       -> href "https://x/a)", trailing "."  (kept the paren)
 //   https://x/a)),      -> href "https://x/a))", trailing ","
 //   https://x/path...   -> href "https://x/path..", trailing "."
-//
-// Verified against the oracle.
 function trimUrlBoundaries(url: string): string {
   if (url.length === 0) return url;
   if (isBoundaryChar(url.charCodeAt(url.length - 1))) {
@@ -142,9 +141,8 @@ function trimUrlBoundaries(url: string): string {
 
 // Append an inline node to a child list, merging into the previous text node
 // when both are text. Inline collection points emit text nodes one parse step
-// at a time, and the AST keeps adjacent text runs as a single TextNode (the
-// renderer would otherwise emit them as separate tokens). Used at every spot
-// in the parser that builds an inline child list directly from
+// at a time, and the AST keeps adjacent text runs as a single TextNode.
+// Used at every spot that builds an inline child list directly from
 // `parseInlineElement` results.
 function pushInlineMergingText(children: InlineNode[], node: InlineNode): void {
   if (node.type === 'text' && children.length > 0) {
@@ -160,7 +158,7 @@ function pushInlineMergingText(children: InlineNode[], node: InlineNode): void {
 // Drop trailing line-break nodes from an inline child list. Used at every
 // inline-collection close (paragraph end, container close, table cell end)
 // to avoid emitting a `<br>` immediately before the surrounding element's
-// own closing tag, mirroring ruby's behavior.
+// own closing tag, mirroring ruby.
 function trimTrailingLineBreaks(children: InlineNode[]): void {
   while (
     children.length > 0 &&
@@ -178,7 +176,7 @@ function trimTrailingLineBreaks(children: InlineNode[]): void {
 // total. The fresh parser instance reflects that isolation.
 //
 // Compare `parseInlineText` (method on the class), which does the opposite:
-// it shares the surrounding parser's depth counters and thumb count so list
+// shares the surrounding parser's depth counters and thumb count so list
 // item / ltable cell content stays aware of its outer block context.
 //
 // Falls back to a single text node if parsing yields nothing useful.
@@ -193,21 +191,20 @@ function parseInlineString(input: string): InlineNode[] {
   return [{ type: 'text', content: input }];
 }
 
-// Ruby's dtext only accepts a textile-style "title":url link when the url
+// Ruby's dtext only accepts a textile-style "title":url link when the URL
 // looks like an absolute path or an http(s) URL. Bare hostnames like
 // `example.com/foo` or relative paths like `users/123` are left as literal
-// text. Verified against the oracle.
+// text (oracle-verified).
 function isAcceptedTextileUrl(url: string): boolean {
   if (url.length === 0) return false;
   if (url[0] === '/') return true;
   return /^https?:\/\//i.test(url);
 }
 
-// Sticky-flag (`/y`) variants of the regexes the parser anchors at `this.pos`.
-// Sticky regexes match starting exactly at `lastIndex`, so a leading `^` is
-// implicit and `this.input.slice(this.pos)` allocations vanish. Patterns are
-// hoisted to module scope so they compile once for the whole process instead
-// of per call site.
+// Sticky-flag (`/y`) regexes anchored at `this.pos`. Sticky regexes match
+// only when their start equals `lastIndex`, so a leading `^` is implicit and
+// the `this.input.slice(this.pos)` allocations vanish. Hoisted to module
+// scope so each pattern compiles once per process.
 const RE_STRAY_SPOILER_CLOSE = /\[\/spoilers?\]/iy;
 const RE_STRAY_CODE_TABLE_CLOSE = /\[\/(code|table)\]/iy;
 const RE_QUOTE_COLOR_OPEN = /\[quote=([^\]\n]*)\]/iy;
@@ -226,7 +223,7 @@ const RE_SECTION_TITLE = /\[section=([^\]]+)\]/iy;
 const RE_SPOILER_BLOCK = /\[(spoilers?)\]([\s\S]*?)\[\/\1\]/iy;
 // Peek-only variant: matches `[spoiler]...[/spoiler...]` with the close form
 // independent of the open form (used by peekBlockElement, which only cares
-// whether *some* close exists, matching the prior `(.*?)\[\/spoilers?\]` rule).
+// whether some close exists ahead).
 const RE_SPOILER_BLOCK_LOOSE = /\[spoilers?\]([\s\S]*?)\[\/spoilers?\]/iy;
 const RE_SPOILER_OPEN = /\[spoilers?\]/iy;
 const RE_QUOTE_CLOSE = /\[\/quote\]/iy;
@@ -236,12 +233,12 @@ const RE_TEXTILE_TITLE = /"[^"]+":/y;
 // Block-context patterns shared by `peekBlockElement`. Hoisted so the array
 // isn't rebuilt and the regexes aren't recompiled on every paragraph step.
 //
-// The `[section...]` pattern is intentionally restrictive: it matches only the
-// four forms `matchSection` will commit to (`[section]`, `[section,expanded]`,
-// `[section,expanded=title]`, `[section=title]`). A permissive `\[section/i`
-// would peek-true on malformed openers like `[section,]` / `[section=]`,
-// which `matchSection` would then reject, leaving `parseBlock` unable to
-// advance and the document loop spinning forever.
+// The `[section...]` pattern is intentionally restrictive: it matches only
+// the four forms `matchSection` will commit to (`[section]`,
+// `[section,expanded]`, `[section,expanded=title]`, `[section=title]`). A
+// permissive `\[section/i` would peek-true on malformed openers like
+// `[section,]` / `[section=]`, which `matchSection` would then reject,
+// leaving `parseBlock` unable to advance and the document loop spinning.
 const BLOCK_PATTERNS_STICKY: readonly RegExp[] = [
   /\[quote\]/iy,
   /\[code\]/iy,
@@ -258,9 +255,9 @@ const RE_LTABLE_TD_CLOSE = /\[\/td\]/i;
 
 // Container-tag scanner used by `findContainerCloseInItem` to walk a
 // list-item's text body looking for opens/closes that should truncate the
-// item at the offset of a matching close. Hoisted to module scope so V8
-// keeps a single compiled regex across all calls; `lastIndex` is reset at
-// the call site since this is the only `/g`-style scanner here.
+// item at the offset of a matching close. Hoisted so V8 keeps a single
+// compiled regex across all calls; `lastIndex` is reset at the call site
+// since this is the only `/g`-style scanner here.
 const RE_CONTAINER_TAG_GLOBAL =
   /\[(\/?)(section|quote|spoilers?|code|ltable|table)\b[^\]]*\]/gi;
 
@@ -272,7 +269,7 @@ const RE_CONTAINER_TAG_GLOBAL =
 // item content (matchListItem would then disagree, looping forever); a bare
 // `[ \t]+` without the trailing `\S` would peek-true on `** \n` (spaces but
 // no content after), which matchListItem would also reject. Both failure
-// modes were observed against the oracle before the narrowing landed.
+// modes are oracle-observed.
 const LINE_START_PATTERNS_STICKY: readonly RegExp[] = [
   /h[123456]\./iy,
   /\*+[ \t]+\S/y,
@@ -283,23 +280,23 @@ export class DTextStateMachineParser {
   protected pos: number;
   private options: ParserOptions;
   private thumbCount: number;
-  // Combined nesting depth of [sup]/[sub] containers currently open. Ruby
-  // caps this at 3; further opens are dropped (their close tags vanish too).
+  // Combined nesting depth of open [sup]/[sub] containers. Ruby caps this
+  // at 3; further opens are dropped (their close tags vanish too).
   private supSubDepth: number = 0;
   private static readonly SUP_SUB_MAX_DEPTH = 3;
-  // Depth of currently-open block containers. A close tag only acts as a
-  // scope killer / block break when its depth is > 0; otherwise ruby
-  // treats it as literal text. Required to avoid infinite loops on stray
-  // closes at the document root.
+  // Depth of open block containers. A close tag only acts as a scope killer
+  // / block break when its depth is > 0; otherwise ruby treats it as literal
+  // text. Required to avoid infinite loops on stray closes at the document
+  // root.
   private quoteDepth: number = 0;
   private sectionDepth: number = 0;
   private spoilerBlockDepth: number = 0;
 
 
   // Single compiled regex for all ID patterns. Ruby requires exactly one
-  // ASCII space or NBSP between the prefix word and `#` (verified against
-  // the oracle: `pool#1234`, `pool  #1234`, and `pool\t#1234` all stay
-  // literal, while `pool #1234` and `pool #1234` link).
+  // ASCII space or NBSP between the prefix word and `#` (oracle-verified:
+  // `pool#1234`, `pool  #1234`, and `pool\t#1234` all stay literal, while
+  // `pool #1234` and `pool #1234` link).
   private static readonly COMPILED_ID_PATTERN = new RegExp(
     '^(' +
       ID_PATTERNS.map((p) => p.pattern).join('|') +
@@ -309,8 +306,8 @@ export class DTextStateMachineParser {
 
   // Sticky-flag twin of `COMPILED_ID_PATTERN`. Used by `matchIdLink` and
   // `looksLikeIdPattern` so the precheck and the actual match share one
-  // alternation regex (was 23 separate compiled regexes rebuilt per call).
-  // `^` is dropped since sticky already anchors to `lastIndex`.
+  // alternation regex. `^` is dropped since sticky already anchors to
+  // `lastIndex`.
   private static readonly COMPILED_ID_PATTERN_STICKY = new RegExp(
     '(' +
       ID_PATTERNS.map((p) => p.pattern).join('|') +
@@ -339,7 +336,7 @@ export class DTextStateMachineParser {
     const children: BlockNode[] = [];
 
     while (this.pos < this.input.length) {
-      // Pristine flag for the code/table close path is "no block has been
+      // Pristine flag for the code/table close path means "no block has been
       // emitted yet" at document root, so the synthesised `<p></p>` only
       // shows up before the very first block.
       if (this.consumeStrayCloseIfPresent(children, children.length === 0)) {
@@ -350,8 +347,8 @@ export class DTextStateMachineParser {
       // lines as ordinary paragraph content, so a line like "    body" should
       // produce `<p>    body</p>`, and a "blank" line that has horizontal
       // whitespace between two newlines is two single `<br>`s, not a
-      // paragraph break. The only thing we collapse at the top level is a
-      // true contiguous `\n\n`, the actual paragraph-break separator.
+      // paragraph break. Only a true contiguous `\n\n` collapses at the top
+      // level (the actual paragraph-break separator).
       if (this.peekDoubleNewline()) {
         this.consumeNewline();
         this.consumeNewline();
@@ -369,9 +366,9 @@ export class DTextStateMachineParser {
 
   // True at a `[/spoiler]` or `[/spoilers]` close tag whose matching open is
   // NOT in scope. Such a close is a Ragel "scope killer" that ruby treats as
-  // a paragraph break plus literal-text fallout. Stray `[/quote]`, `[/ltable]`,
-  // and `[/section]` closes do NOT trigger this; they stay as plain inline
-  // text inside the paragraph (verified against the oracle).
+  // a paragraph break plus literal-text fallout. Stray `[/quote]`,
+  // `[/ltable]`, and `[/section]` closes do NOT trigger this; they stay as
+  // plain inline text inside the paragraph (oracle-verified).
   private peekStrayBlockClose(): boolean {
     if (this.spoilerBlockDepth > 0) return false;
     return this.testSticky(RE_STRAY_SPOILER_CLOSE);
@@ -379,8 +376,8 @@ export class DTextStateMachineParser {
 
   // True at a stray `[/code]` or `[/table]`. Their behaviour differs from
   // stray spoiler closes: ruby eats whitespace and newlines around the tag,
-  // emits an implicit `<p></p>` if at pristine state, and renders the
-  // following inline tail without a `<p>` wrap (verified against the oracle).
+  // emits an implicit `<p></p>` at pristine state, and renders the following
+  // inline tail without a `<p>` wrap (oracle-verified).
   private peekStrayCodeOrTableClose(): boolean {
     return this.testSticky(RE_STRAY_CODE_TABLE_CLOSE);
   }
@@ -437,7 +434,7 @@ export class DTextStateMachineParser {
   }
 
   // Drop a stray block-close at the very start of a container before any
-  // block has been emitted. Verified against the oracle:
+  // block has been emitted. Oracle-verified:
   // `[/spoiler] alone at start` becomes `<p> alone at start</p>` and
   // `[/spoiler]\n\nafter` becomes `<p>after</p>`.
   private consumeStrayBlockCloseSilent(): void {
@@ -509,9 +506,9 @@ export class DTextStateMachineParser {
   }
 
   // Consume a stray block close tag at the current block-loop boundary, if
-  // one is sitting there. Returns `true` when something was consumed (and
-  // the caller should `continue` its loop); `false` to let the caller proceed
-  // to `parseBlock()`. Captures the three-way dispatch shared by the document
+  // one is sitting there. Returns `true` when something was consumed (the
+  // caller should `continue` its loop); `false` to let the caller proceed to
+  // `parseBlock()`. Captures the three-way dispatch shared by the document
   // loop and every container-block parser:
   //
   //   - `[/spoiler]` past optional whitespace, after at least one block has
@@ -643,10 +640,10 @@ export class DTextStateMachineParser {
     return { type: 'header', level, children };
   }
 
-  // Recognize a colored quote open like [quote=#00CCFF] or [quote=yellow]
-  // and consume it, returning the raw color token. Returns null and leaves
-  // pos unchanged when not a valid colored quote (so the surrounding parser
-  // can fall through to inline-text handling).
+  // Recognise a coloured quote open like [quote=#00CCFF] or [quote=yellow]
+  // and consume it, returning the raw colour token. Returns null and leaves
+  // pos unchanged when the colour is invalid, so the surrounding parser can
+  // fall through to inline-text handling.
   private matchQuoteColorOpen(): string | null {
     const m = this.matchSticky(RE_QUOTE_COLOR_OPEN);
     if (!m) return null;
@@ -659,9 +656,9 @@ export class DTextStateMachineParser {
   private parseQuote(color?: string): QuoteNode {
     this.skipWhitespace();
     this.consumeNewline();
-    // Strip blank lines at the very top of the container only; once content
+    // Strip blank lines only at the very top of the container; once content
     // starts, a whitespace-only line becomes a real <p> </p> paragraph
-    // (verified against the oracle).
+    // (oracle-verified).
     this.skipBlankLines();
 
     const children: BlockNode[] = [];
@@ -701,10 +698,10 @@ export class DTextStateMachineParser {
     this.consumeNewline();
     this.skipBlankLines();
     // Drop horizontal whitespace at the start of the first content line.
-    // Verified against the oracle: `[spoiler]\n  hi\n[/spoiler]` ->
+    // Oracle-verified: `[spoiler]\n  hi\n[/spoiler]` ->
     // `<div class="spoiler"><p>hi</p></div>` (the two leading spaces are
-    // gone). Subsequent lines preserve indentation, so this only fires
-    // here, not inside the block loop.
+    // gone). Subsequent lines preserve indentation, so this only fires here,
+    // not inside the block loop.
     this.skipWhitespace();
 
     const children: BlockNode[] = [];
@@ -750,10 +747,10 @@ export class DTextStateMachineParser {
       this.pos++;
     }
 
-    // Only trim the close-tag length if we actually consumed one. Falling off
-    // the end without seeing [/code] means everything from start..pos is the
-    // body (verified against the oracle: an unclosed [code] keeps trailing
-    // text, brackets, and newlines literal).
+    // Only trim the close-tag length when one was actually consumed. Falling
+    // off the end without seeing [/code] means everything from start..pos is
+    // the body (oracle-verified: an unclosed [code] keeps trailing text,
+    // brackets, and newlines literal).
     const content = closed
       ? this.input.slice(start, this.pos - '[/code]'.length)
       : this.input.slice(start);
@@ -870,10 +867,10 @@ export class DTextStateMachineParser {
         this.peekString('[td]', true) ||
         this.peekString('[th]', true)
       ) {
-        // Source omitted the [tr]. Synthesize a row from the loose cells
-        // so they still render. parse5 will auto-wrap orphan <td> children
-        // of <tbody> in an implicit <tr> too, so this matches the oracle's
-        // serialized output under DOM normalization.
+        // Source omitted the [tr]. Synthesise a row from the loose cells so
+        // they still render. parse5 also auto-wraps orphan <td> children of
+        // <tbody> in an implicit <tr>, so this matches the oracle's
+        // serialised output under DOM normalisation.
         rows.push(this.parseLooseTableRow());
       } else {
         // Skip unknown content
@@ -1006,14 +1003,14 @@ export class DTextStateMachineParser {
     for (const part of parts) {
       let content = part.trim();
       // Body cells (not the header row) truncate at the first literal
-      // `[/td]` and drop everything from there to the cell's end. Verified
-      // against the oracle: `[td]body[/td]` -> `[td]body`, `body[/td]more`
-      // -> `body`, `[/td]bare` -> empty. Header cells are kept as-is.
+      // `[/td]` and drop everything from there to the cell's end
+      // (oracle-verified: `[td]body[/td]` -> `[td]body`, `body[/td]more` ->
+      // `body`, `[/td]bare` -> empty). Header cells are kept as-is.
       //
       // Fast path: most body cells contain no `[` at all, in which case
-      // `[/td]` cannot appear. Probe with `indexOf('[')` before allocating
-      // a lowercased copy. When present, a CI regex finds the close in a
-      // single pass without the eager `toLowerCase()` allocation.
+      // `[/td]` cannot appear. Probe with `indexOf('[')` before allocating a
+      // lowercased copy. When present, a CI regex finds the close in a single
+      // pass without the eager `toLowerCase()` allocation.
       if (cellType === 'td' && content.indexOf('[') >= 0) {
         const m = RE_LTABLE_TD_CLOSE.exec(content);
         if (m) content = content.slice(0, m.index).trimEnd();
@@ -1055,7 +1052,7 @@ export class DTextStateMachineParser {
 
       const nextListMatch = this.matchListItem();
       if (!nextListMatch) {
-        // Put back the newline we consumed and any whitespace
+        // Put back the consumed newline and any whitespace
         this.pos = savedPos;
         break;
       }
@@ -1099,7 +1096,7 @@ export class DTextStateMachineParser {
       if (node) pushInlineMergingText(children, node);
     }
 
-    // If we broke on a stray spoiler close, leave the trailing newlines for
+    // After breaking on a stray spoiler close, leave trailing newlines for
     // the surrounding block loop to absorb into the literal-html prefix.
     // Otherwise (normal paragraph end), eat one trailing newline.
     if (!this.peekStrayBlockClose() && !this.peekStrayBlockCloseAfterAnyWs()) {
@@ -1118,8 +1115,8 @@ export class DTextStateMachineParser {
 
     // Stray `[/code]` / `[/table]` reached as inline content (header, inline
     // wrapper, top-level inline doc): render the close tag literal AND
-    // swallow the run of whitespace that follows it. Verified against the
-    // oracle: `h1. a [/table] b` -> `<h1>a [/table]b</h1>`,
+    // swallow the whitespace run that follows it. Oracle-verified:
+    // `h1. a [/table] b` -> `<h1>a [/table]b</h1>`,
     // `[b]a [/table] tail[/b]` -> `<strong>a [/table]tail</strong>`.
     // Paragraphs never reach this branch because peekBlockElement breaks
     // them on `[/table]` first; the document/quote/section block loops
@@ -1280,8 +1277,8 @@ export class DTextStateMachineParser {
       !this.matchString(closePattern, true)
     ) {
       // Inside an inline container, a paragraph break (\n\n+) is dropped
-      // entirely. Ruby's parser consumes the newlines without emitting
-      // anything, joining the surrounding text seamlessly.
+      // entirely. Ruby's parser consumes the newlines without emitting any
+      // node, joining the surrounding text seamlessly.
       if (this.peekDoubleNewline()) {
         this.consumeBlankLines();
         continue;
@@ -1306,7 +1303,7 @@ export class DTextStateMachineParser {
 
   // Ruby caps the combined [sup]/[sub] nesting depth at 3. Past that the
   // open tag is silently dropped along with its matching close, and the
-  // body's children bubble up to the parent. We model the drop with a
+  // body's children bubble up to the parent. The drop is modelled with a
   // transparent fragment node so the renderer emits the children inline
   // without surrounding markup.
   private parseSupSubContainer(
@@ -1355,10 +1352,10 @@ export class DTextStateMachineParser {
   }
 
   private parseColorContainer(color: string): ColorNode {
-    // Parse the children either way; the only difference between "color
-    // allowed" and "color disabled" is whether the color value survives onto
-    // the node. Disabled mode emits an empty-string color so the renderer
-    // skips the wrapping span (see render-html's allowColor branch).
+    // Parse the children either way; the only difference between "colour
+    // allowed" and "colour disabled" is whether the colour value survives
+    // onto the node. Disabled mode emits an empty-string colour so the
+    // renderer skips the wrapping span (see render-html's allowColor branch).
     const children: InlineNode[] = [];
     while (
       this.pos < this.input.length &&
@@ -1412,9 +1409,9 @@ export class DTextStateMachineParser {
       }
 
       // ID pattern checking. Only check at the start of a "word" (start of
-      // buffer or after a non-alphanumeric character) so we don't pay the
-      // cost of a regex check at every char. Ruby's parser fires id-link
-      // detection after any non-word boundary including `(`, `[`, `,`, etc.
+      // buffer or after a non-alphanumeric character) to avoid a regex check
+      // at every char. Ruby's parser fires id-link detection after any
+      // non-word boundary including `(`, `[`, `,`, etc.
       if (isAsciiAlpha(code)) {
         const prevIsAlnum =
           this.pos !== start &&
@@ -1435,19 +1432,18 @@ export class DTextStateMachineParser {
 
   // Parse a string of inline content while sharing the outer parser's state
   // (depth counters, thumb count). Used for list-item bodies and ltable cell
-  // contents, which sit inside an outer block context that they need to stay
-  // aware of: a `[/quote]` inside a list item that's nested in a quote should
-  // close the outer quote (not show up as literal text), and thumbs inside a
-  // list item should count toward the document-wide `maxThumbs` budget.
+  // contents, which sit inside an outer block context they must stay aware
+  // of: a `[/quote]` inside a list item that's nested in a quote should
+  // close the outer quote (not show up as literal text), and thumbs inside
+  // a list item should count toward the document-wide `maxThumbs` budget.
   //
-  // Compare the free function `parseInlineString` near the top of the file,
-  // which does the opposite: fresh parser instance, own budget, container
-  // closes stay literal. That one is for genuinely isolated contexts like
-  // textile link titles.
+  // Compare the free function `parseInlineString` near the top of the file:
+  // fresh parser instance, own budget, container closes stay literal. That
+  // one is for genuinely isolated contexts like textile link titles.
   //
   // The save/restore of `input` and `pos` lets the caller stage a substring
   // through the existing matcher infrastructure without leaking position
-  // state back to the caller.
+  // state back.
   private parseInlineText(text: string): InlineNode[] {
     const savedPos = this.pos;
     const savedInput = this.input;
@@ -1479,13 +1475,11 @@ export class DTextStateMachineParser {
   // Compare `pattern` against the input at `this.pos` without allocating.
   // CS path delegates to `String.prototype.startsWith(pattern, pos)`.
   //
-  // Precondition for the CI path: `pattern` MUST be ASCII. Every current
-  // caller passes a hardcoded bracketed tag (`[/quote]`, `[code]`, etc.).
-  // Non-ASCII letters that JS's `String#toLowerCase` *would* fold (e.g. the
-  // Kelvin sign U+212A folds to ASCII `k`) will NOT fold here. The manual
-  // loop only case-folds A-Z. Closer to ruby's `String#downcase` behavior
-  // than the prior implementation, but the contract narrowed: do not call
-  // with a non-ASCII pattern unless you've thought about the fold rules.
+  // Precondition for the CI path: `pattern` MUST be ASCII. The manual loop
+  // only case-folds A-Z; non-ASCII letters that JS's `String#toLowerCase`
+  // would fold (e.g. the Kelvin sign U+212A folds to ASCII `k`) will NOT
+  // fold here. Every current caller passes a hardcoded bracketed tag
+  // (`[/quote]`, `[code]`, etc.).
   private compareAtPos(pattern: string, caseInsensitive: boolean): boolean {
     const input = this.input;
     const pos = this.pos;
@@ -1506,15 +1500,15 @@ export class DTextStateMachineParser {
   // Run a sticky regex anchored at `this.pos`. Sticky regexes (`/y` flag)
   // match only when their start equals `lastIndex`, so this is the in-place
   // equivalent of `this.input.slice(this.pos).match(/^.../)` minus the
-  // O(n - pos) allocation per call. Returns the match or null; does not
-  // advance `this.pos` (callers do, the same way the slice form did).
+  // O(n - pos) allocation. Returns the match or null; does not advance
+  // `this.pos` (callers do).
   private matchSticky(re: RegExp): RegExpExecArray | null {
     re.lastIndex = this.pos;
     return re.exec(this.input);
   }
 
-  // Boolean variant of `matchSticky`. Identical contract; just avoids
-  // allocating a match object when callers only need a yes/no.
+  // Boolean variant of `matchSticky`. Identical contract; avoids allocating
+  // a match object when callers only need a yes/no.
   private testSticky(re: RegExp): boolean {
     re.lastIndex = this.pos;
     return re.test(this.input);
@@ -1544,11 +1538,10 @@ export class DTextStateMachineParser {
     // reaches parseBlock, so the structural test here is sufficient.
     //
     // Known faithfulness gap: this regex pairs the close form with the open
-    // form via `\1`, so `[spoiler]x[/spoilers]` does NOT match here and
-    // falls through to inline parsing. The oracle is more permissive and
-    // treats either close form as block when at block context (probed
-    // against the live oracle 2026-05-09). Fixing this requires both this
-    // matcher and `getSpoilerClosePattern` to be reworked together; the
+    // form via `\1`, so `[spoiler]x[/spoilers]` does NOT match here and falls
+    // through to inline parsing. The oracle is more permissive and treats
+    // either close form as block at block context. Fixing this requires both
+    // this matcher and `getSpoilerClosePattern` to be reworked together; the
     // close-form picking and the open-form pairing interact.
     const blockMatch = this.matchSticky(RE_SPOILER_BLOCK);
     if (!blockMatch) return false;
@@ -1565,19 +1558,17 @@ export class DTextStateMachineParser {
 
   private getSpoilerClosePattern(): string {
     // Pick which close form `parseInlineContainer` should look for. Prefer
-    // `[/spoilers]` whenever one appears anywhere ahead, otherwise fall
-    // back to `[/spoiler]`. The `/g` flag lets us walk forward from
-    // `this.pos` without allocating a lower-cased copy of the rest of the
-    // buffer.
+    // `[/spoilers]` whenever one appears anywhere ahead, otherwise fall back
+    // to `[/spoiler]`. The `/g` flag walks forward from `this.pos` without
+    // allocating a lower-cased copy of the buffer remainder.
     //
     // Known faithfulness gap: ruby pair-matches by depth, not by form, so
-    // `[spoiler]a [spoiler]b[/spoiler] c[/spoilers]` correctly nests with
-    // the outer `[spoiler]` paired against the trailing `[/spoilers]`.
-    // Our naive "first `[/spoilers]` ahead wins" picker loses that
-    // structure when nested inline spoilers appear, and is also coupled
-    // to the block-vs-inline decision in `matchSpoilerBlockOpen` which
-    // has its own gap. Fix the two together. Probed against the live
-    // oracle 2026-05-09.
+    // `[spoiler]a [spoiler]b[/spoiler] c[/spoilers]` correctly nests the
+    // outer `[spoiler]` against the trailing `[/spoilers]`. The naive "first
+    // `[/spoilers]` ahead wins" picker loses that structure when nested
+    // inline spoilers appear, and is also coupled to the block-vs-inline
+    // decision in `matchSpoilerBlockOpen` which has its own gap. Fix the
+    // two together.
     const re = /\[\/spoilers\]/gi;
     re.lastIndex = this.pos;
     return re.test(this.input) ? '[/spoilers]' : '[/spoiler]';
@@ -1613,12 +1604,12 @@ export class DTextStateMachineParser {
   // [/section] and [/quote] always terminate (their opens are block-only;
   // any close that appears inside an item is closing an outer container).
   // [/spoiler] is dual-mode: inside an item it usually pairs with an inline
-  // [spoiler] open, so we track the open count and only truncate at a close
-  // that has no matching open. Verified against the oracle: a balanced
-  // inline pair stays paired, an unpaired close ends the item.
+  // [spoiler] open, so the open count is tracked and truncation only fires
+  // at a close with no matching open (oracle-verified: a balanced inline
+  // pair stays paired, an unpaired close ends the item).
   // [/code] and [/table] also terminate the item; their opens are block-only
-  // and a stray close inside a list item ends the list (verified against
-  // the oracle: `* a [/table] b` becomes `<ul><li>a </li></ul>[/table]b`).
+  // and a stray close inside a list item ends the list (oracle-verified:
+  // `* a [/table] b` becomes `<ul><li>a </li></ul>[/table]b`).
   private findContainerCloseInItem(content: string): number {
     // Fast path: most list items are pure prose with no `[` at all. Skip
     // the regex setup entirely; `indexOf` lowers to a tight machine-code
@@ -1639,9 +1630,9 @@ export class DTextStateMachineParser {
       if (tag === 'quote' || tag === 'section') {
         // Block opens always split. Stray closes in scope split (so the
         // outer container can absorb them); stray closes out of scope
-        // stay literal inside the item. Verified: `* a [/quote]` stays
-        // inline literal, but `[quote]\n* a [/quote]\n[/quote]` truncates
-        // at the inner close so the outer quote ends.
+        // stay literal inside the item. Oracle-verified: `* a [/quote]`
+        // stays inline literal, but `[quote]\n* a [/quote]\n[/quote]`
+        // truncates at the inner close so the outer quote ends.
         if (!isClose) return m.index;
         if (tag === 'quote' && this.quoteDepth > 0) return m.index;
         if (tag === 'section' && this.sectionDepth > 0) return m.index;
@@ -1660,10 +1651,10 @@ export class DTextStateMachineParser {
 
   private matchListItem(): ListMatch | null {
     // Separator must be horizontal whitespace only. Using `\s+` here would
-    // let a bare `*\n` line eat the next line as item content (verified
-    // failure: `* a\n*\n* b` then matched `*\n* b` as one item with text
-    // `* b`). Oracle keeps the bare `*` as a paragraph and starts a fresh
-    // list afterwards.
+    // let a bare `*\n` line eat the next line as item content (oracle-
+    // verified failure: `* a\n*\n* b` then matched `*\n* b` as one item
+    // with text `* b`). Oracle keeps the bare `*` as a paragraph and starts
+    // a fresh list afterwards.
     const match = this.matchSticky(RE_LIST_ITEM);
     if (!match) return null;
 
@@ -1702,8 +1693,8 @@ export class DTextStateMachineParser {
     // Lookup keys are stored lowercase with whitespace collapsed; the input
     // pattern is normalised to match. The map is built from the same source
     // list as the regex alternation, so any successful regex match has a
-    // corresponding entry here. The null guard is paranoia for a future
-    // edit that adds a regex pattern without a map entry.
+    // corresponding entry here. The null guard exists in case an edit adds a
+    // regex pattern without a map entry.
     const matchedPattern = match[1].toLowerCase().replace(/\s+/g, ' ');
     const type = ID_TYPE_MAP.get(matchedPattern);
     if (type === undefined) return null;
@@ -1713,8 +1704,8 @@ export class DTextStateMachineParser {
   }
 
   protected matchPostSearchLink(): PostSearchMatch | null {
-    // Mirror of `matchWikiLink`'s pipe-counting rule, verified against the
-    // oracle for `{{...}}`:
+    // Mirror of `matchWikiLink`'s pipe-counting rule, oracle-verified for
+    // `{{...}}`:
     //   * 0 pipes -> {{tag}} (tag must be non-empty)
     //   * 1 pipe with both sides non-empty -> {{tag|title}}
     //   * 1 leading pipe -> tag form, tag includes the pipe (`{{|}}` -> "|",
@@ -1751,7 +1742,7 @@ export class DTextStateMachineParser {
 
   protected matchWikiLink(): WikiLinkInput | null {
     // Match the [[...]] block first, then validate the content as a whole.
-    // Verified against the oracle:
+    // Oracle-verified:
     //   * 0 pipes  -> [[tag]] form (tag must be non-empty)
     //   * 1 pipe with both sides non-empty -> [[tag|title]] form
     //   * 1 leading pipe (empty before) -> tag form, tag includes the pipe
@@ -1821,7 +1812,7 @@ export class DTextStateMachineParser {
       return null;
     }
 
-    // "title":[url] format. Oracle rejects bracketed urls that contain any
+    // "title":[url] format. Oracle rejects bracketed URLs that contain any
     // whitespace (space/tab/newline/CR) or are empty. The empty case is
     // already screened by the `+` in the regex.
     const bracketedMatch = this.matchSticky(RE_TEXTILE_BRACKETED);
@@ -1833,7 +1824,7 @@ export class DTextStateMachineParser {
     }
 
     // "title":url format. Strip trailing boundary punctuation (,.;:!?) the
-    // way matchUrl does for bare urls , preserving balanced parens.
+    // way matchUrl does for bare URLs, preserving balanced parens.
     const basicMatch = this.matchSticky(RE_TEXTILE_BASIC);
     if (basicMatch) {
       const trimmed = trimUrlBoundaries(basicMatch[2]);
@@ -1868,9 +1859,9 @@ export class DTextStateMachineParser {
   private matchColor(): string | null {
     const colorMatch = this.matchSticky(RE_COLOR_OPEN);
     if (colorMatch) {
-      // Same validity rules as a quote-colour: hex (3 or 6), strict-lowercase
-      // word, or one of the tag-category aliases. Anything else is left as
-      // literal so [/color] also stays literal (verified against the oracle).
+      // Same validity rules as a quote-colour: hex (3 to 6), strict-lowercase
+      // word, or one of the tag-category aliases. Anything else stays literal
+      // so [/color] also stays literal (oracle-verified).
       if (!isValidQuoteColor(colorMatch[1])) return null;
       this.pos += colorMatch[0].length;
       return colorMatch[1];
@@ -1926,8 +1917,8 @@ export class DTextStateMachineParser {
     }
   }
 
-  // After consuming a block close tag like [/quote] or [/section], ruby
-  // also eats any horizontal whitespace remaining on the same line plus one
+  // After consuming a block close tag like [/quote] or [/section], ruby also
+  // eats any horizontal whitespace remaining on the same line plus one
   // trailing newline. This way `[/quote] \n\nbody` produces a clean
   // paragraph break before `body` instead of an empty <p></p> from the
   // leftover ` \n`.
@@ -1945,12 +1936,12 @@ export class DTextStateMachineParser {
     }
   }
 
-  // Consume any whitespace-only lines at the current position. A line
-  // counts as whitespace-only if it contains zero or more horizontal-WS
-  // characters followed by a newline. Used inside container blocks
-  // (section, quote, spoiler block) where ruby does not preserve such lines
-  // as empty paragraphs. At document level we don't do this; ruby keeps
-  // " \n\n" as a real <p> </p>.
+  // Consume whitespace-only lines at the current position. A line counts as
+  // whitespace-only if it contains zero or more horizontal-WS characters
+  // followed by a newline. Used inside container blocks (section, quote,
+  // spoiler block) where ruby does not preserve such lines as empty
+  // paragraphs. Document level skips this; ruby keeps " \n\n" there as a
+  // real <p> </p>.
   private skipBlankLines(): void {
     const input = this.input;
     const len = input.length;
@@ -2020,7 +2011,7 @@ export class DTextStateMachineParser {
     const atLineStart =
       this.pos === 0 || this.input[this.pos - 1] === '\n';
 
-    // Special handling for spoilers - only block if multiline
+    // Spoilers only count as block when multiline.
     if (this.testSticky(RE_SPOILER_OPEN)) {
       const spoilerMatch = this.matchSticky(RE_SPOILER_BLOCK_LOOSE);
       return spoilerMatch !== null && spoilerMatch[1].includes('\n');
@@ -2028,8 +2019,8 @@ export class DTextStateMachineParser {
 
     // Closes for block containers only count as block markers when their
     // matching open is in scope. Outside of one, ruby treats them as
-    // ordinary inline text and so do we (otherwise we infinite-loop in
-    // parseBlock since no branch consumes them).
+    // ordinary inline text; otherwise parseBlock would infinite-loop since
+    // no branch consumes them.
     if (this.quoteDepth > 0 && this.testSticky(RE_QUOTE_CLOSE))
       return true;
     if (this.sectionDepth > 0 && this.testSticky(RE_SECTION_CLOSE))
@@ -2037,9 +2028,9 @@ export class DTextStateMachineParser {
     if (this.spoilerBlockDepth > 0 && this.testSticky(RE_STRAY_SPOILER_CLOSE))
       return true;
 
-    // Colored quote opens like [quote=#00CCFF] count as block elements only
-    // when the color is valid; invalid color attributes (e.g. [quote=Bob])
-    // are treated as inline text by ruby and we mirror that.
+    // Coloured quote opens like [quote=#00CCFF] count as block elements only
+    // when the colour is valid; invalid colour attributes (e.g. [quote=Bob])
+    // are treated as inline text by ruby, and mirrored here.
     const coloredQuote = this.matchSticky(RE_QUOTE_COLOR_OPEN);
     if (coloredQuote && isValidQuoteColor(coloredQuote[1])) return true;
 
@@ -2070,10 +2061,8 @@ export class DTextStateMachineParser {
   }
 
   protected looksLikeIdPattern(): boolean {
-    // `COMPILED_ID_PATTERN_STICKY` is exactly the same alternation that
-    // `matchIdLink` uses to commit. Sharing it keeps the precheck and the
-    // commit in lockstep (no drift) and replaces 23 freshly-allocated
-    // RegExp objects per call with a single pre-compiled regex.
+    // Same alternation `matchIdLink` uses to commit. Sharing keeps the
+    // precheck and the commit in lockstep (no drift).
     return this.testSticky(DTextStateMachineParser.COMPILED_ID_PATTERN_STICKY);
   }
 
@@ -2082,8 +2071,8 @@ export class DTextStateMachineParser {
     // Past the per-document thumb limit ruby drops the thumb-placeholder
     // class and emits a plain post id-link, so swap idType to 'post' to
     // suppress the thumb-only attributes the renderer would otherwise add.
-    // The actual node shape lives in `buildIdLink`; this wrapper just
-    // resolves the budget question and delegates.
+    // The node shape lives in `buildIdLink`; this wrapper resolves the
+    // budget question and delegates.
     let type = match.type;
     if (type === 'thumb') {
       this.thumbCount++;
@@ -2096,8 +2085,8 @@ export class DTextStateMachineParser {
 
   private createPostSearchLink(match: PostSearchMatch): LinkNode {
     // Pure construction lives in `buildPostSearchLink` so the markdown
-    // adapter produces byte-identical post-search nodes without copying
-    // the rules. `PostSearchMatch` is structurally identical to
+    // adapter produces byte-identical post-search nodes without copying the
+    // rules. `PostSearchMatch` is structurally identical to
     // `PostSearchInput`.
     return buildPostSearchLink(match);
   }
@@ -2109,8 +2098,8 @@ export class DTextStateMachineParser {
   }
 
   // Builds a `LinkNode` for the dtext textile-style syntax (`"text":url` and
-  // `"text":[url]`). The function's name describes its input shape, but the
-  // AST tag it produces is the flavor-neutral `linkType: 'inline'` (shared
+  // `"text":[url]`). The function name describes the input shape, but the
+  // AST tag it produces is the flavour-neutral `linkType: 'inline'` (shared
   // with the markdown adapter's `[text](url)` form).
   private createTextileLink(match: TextileLinkMatch): LinkNode {
     return {

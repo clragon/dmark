@@ -2,15 +2,14 @@
 //
 // Closes the loop: the markdown adapter produces the same AST shape as
 // the dtext side (verified by `ast-equivalence.test.ts`), and that AST
-// rendered through the existing `renderToHTML` produces html that is
-// dom-equal to what the ruby reference emits for the equivalent dtext
-// source. This is the verification that any markdown payload reaching
-// production rendering matches what users expect from the dtext gem.
+// rendered through `renderToHTML` produces html that is dom-equal to what
+// the ruby reference emits for the equivalent dtext source. Verification
+// that any markdown payload reaching production rendering matches what
+// users expect from the dtext gem.
 //
-// Pairs are kept small and hand-curated. The big dtext-side coverage
-// already lives in `golden-baseline.test.ts`; this file only verifies that
-// the new markdown entry point composes with the renderer + oracle the
-// same way.
+// Pairs are small and hand-curated. The dtext-side coverage lives in
+// `golden-baseline.test.ts`; this file verifies that the markdown entry
+// point composes with the renderer + oracle the same way.
 
 import { describe, expect, it } from 'vitest';
 

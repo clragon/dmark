@@ -1,19 +1,13 @@
-// Inline `||spoiler||` plugin. Registers two pieces with the host
-// `markdown-it` instance:
+// Inline `||spoiler||` plugin. See `docs/mapping.md` (Inline spoiler).
+// Registers two pieces:
 //
 // 1. A replacement for the `text` rule that adds `|` to the terminator set
-//    so the inline parser hands control to other rules at `|` positions.
-//    Without this, the default text rule would gobble `||...||` as plain
-//    text and the spoiler rule would never see its opener.
+//    so the inline parser yields at `|` positions. Without this, the
+//    default text rule gobbles `||...||` as plain text.
 //
-// 2. A `spoiler` inline rule registered ahead of `emphasis` that scans for
-//    a `||` opener, locates the matching `||` close, and recursively
-//    tokenises the inner content so emphasis / inline code / autolinks
-//    inside the spoiler still parse normally.
-//
-// Output tokens: `spoiler_open` (nesting +1) and `spoiler_close` (nesting
-// -1) bracketing the inner inline tokens. The adapter walker maps these
-// to `InlineSpoilerNode`.
+// 2. A `spoiler` rule registered ahead of `emphasis` that pairs `||...||`
+//    and recursively tokenises the inner content. Output is
+//    `spoiler_open` / `spoiler_close` (mapped to `InlineSpoilerNode`).
 
 import type MarkdownIt from 'markdown-it';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
@@ -22,8 +16,8 @@ const PIPE = 0x7c;
 
 // Mirror of `markdown-it/lib/rules_inline/text.mjs`'s terminator set, with
 // `|` (0x7C) added so the text rule yields at spoiler-opener positions.
-// Keep this in lockstep with markdown-it major-version bumps; if the
-// upstream terminator set changes, copy the new set and re-add `|`.
+// Precondition: keep in lockstep with markdown-it major-version bumps; if
+// the upstream terminator set changes, copy the new set and re-add `|`.
 function isTerminator(ch: number): boolean {
   switch (ch) {
     case 0x0a:
@@ -81,8 +75,8 @@ function spoilerInline(state: StateInline, silent: boolean): boolean {
   }
 
   // Find the matching `||` close. Scan greedily: the first `||` after the
-  // opener wins. Empty spoilers (`||||`) are rejected; the spec calls for
-  // at least one inner character so the rendered span is meaningful.
+  // opener wins. Empty spoilers (`||||`) are rejected; at least one inner
+  // character is required.
   let closePos = -1;
   for (let scan = start + 2; scan + 1 < max; scan++) {
     if (
@@ -98,9 +92,9 @@ function spoilerInline(state: StateInline, silent: boolean): boolean {
   if (silent) return true;
 
   state.push('spoiler_open', 'span', 1);
-  // Tokenise inner content recursively so `||x **y** z||` parses bold
-  // inside the spoiler. `posMax` is bounded so the inner tokeniser stops
-  // at the close marker; both pointers are restored after.
+  // Tokenise inner content recursively so emphasis / inline code parse
+  // inside the spoiler. `posMax` is bounded so the inner tokeniser stops at
+  // the close marker; both pointers are restored after.
   const oldPosMax = state.posMax;
   state.pos = start + 2;
   state.posMax = closePos;

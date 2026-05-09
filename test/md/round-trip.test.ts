@@ -1,6 +1,6 @@
 // Round-trip verification for the markdown formatter: parse a canonical
 // markdown source, format it back, re-parse, and assert the two ASTs are
-// deep-equal. Pins the load-bearing guarantee from `md-formatter-spec.md`:
+// deep-equal. Pins the round-trip guarantee from `docs/mapping.md`:
 //
 //   parseMarkdown(formatMarkdown(parseMarkdown(src).document).output).document
 //   ≡ parseMarkdown(src).document
@@ -11,8 +11,8 @@
 // formatter's inverse property for the same constructs.
 //
 // Documented divergences are catalogued at the bottom (skipped fixtures
-// with the `Q-MD-*` reference that justifies the skip), mirroring the
-// dtext-side round-trip harness and falcon's `ast-equivalence.test.ts`.
+// with the ADR reference that justifies the skip), mirroring the
+// dtext-side round-trip harness and `ast-equivalence.test.ts`.
 
 import { describe, it } from 'vitest';
 
@@ -152,39 +152,38 @@ describe('markdown round-trip — blocks', () => {
   }
 });
 
-// Documented divergences. Each skipped entry names the `Q-MD-*` resolution
-// (or the markdown-it / parser-side root cause) that justifies why the
-// round-trip is *expected* to break for this construct.
+// Documented divergences. Each skipped entry names the ADR (or the
+// markdown-it / parser-side root cause) that justifies why the round-trip
+// is expected to break for this construct.
 describe('markdown round-trip — documented divergences (skipped)', () => {
-  // Q-MD-TABLE-MULTILINE: a `LineBreakNode` inside a `TableCellNode`
-  // collapses to a single space on emit (`md.table_cell_linebreak_collapsed`
-  // warning). Round-trip is intrinsically lossy on the source-form side.
-  it.skip('table cell with line break (Q-MD-TABLE-MULTILINE)', () => {});
+  // ADR-0019: a `LineBreakNode` inside a `TableCellNode` collapses to a
+  // single space on emit (`md.table_cell_linebreak_collapsed` warning).
+  // Round-trip is intrinsically lossy on the source-form side.
+  it.skip('table cell with line break (ADR-0019)', () => {});
 
-  // Q-MD-LTABLE-EMIT: `LTableNode` is dtext-only on the parser side; no
-  // markdown surface produces it. The formatter approximates as a pipe
-  // table with `md.ltable_approximated` warning. Unreachable from a
-  // markdown-source fixture; surfaces in cross-pipeline tests.
-  it.skip('ltable on markdown side (Q-MD-LTABLE-EMIT; dtext-only producer)', () => {});
+  // ADR-0012: `LTableNode` is dtext-only on the parser side; no markdown
+  // surface produces it. The formatter approximates as a pipe table with
+  // `md.ltable_approximated` warning. Unreachable from a markdown-source
+  // fixture; surfaces in cross-pipeline tests.
+  it.skip('ltable on markdown side (ADR-0012; dtext-only producer)', () => {});
 
-  // Q-MD-DTEXT-SALVAGE: `LiteralHtmlNode` / `RawBlockTextNode` originate
-  // from dtext salvage paths and never appear in markdown-parsed ASTs.
-  it.skip('literal_html / raw_block_text (Q-MD-DTEXT-SALVAGE; dtext-only producer)', () => {});
+  // ADR-0013: `LiteralHtmlNode` / `RawBlockTextNode` originate from dtext
+  // salvage paths and never appear in markdown-parsed ASTs.
+  it.skip('literal_html / raw_block_text (ADR-0013; dtext-only producer)', () => {});
 
   // CodeBlockNode trailing-newline divergence: markdown-it appends `\n` to
   // fenced code-block content; the dtext side does not. Documented in
-  // falcon's `ast-equivalence.test.ts` "Documented divergences" section.
-  // Round-trip on a markdown-source `CodeBlockNode` produces a fixed
-  // point on the second pass (the appended `\n` is already there), so this
-  // entry exists only to flag the asymmetry to a future reader.
+  // `ast-equivalence.test.ts`. Round-trip on a markdown-source
+  // `CodeBlockNode` produces a fixed point on the second pass (the
+  // appended `\n` is already there); this entry flags the asymmetry.
   it.skip('code block trailing newline (markdown-it convention)', () => {});
 
-  // Q-INLINE-CODE-BACKTICK: an `InlineCodeNode` whose content contains a
-  // backtick is unrepresentable in dtext source; the markdown side can
-  // produce one via CommonMark's multi-backtick fence rule. Round-trip on
-  // the markdown surface itself is stable for double-backtick fences, but
-  // the formatter's verbatim emit drops the multi-backtick fence wrapping
-  // — a focused fixture would need to assert the documented divergence
-  // rather than equality. Skipping for now.
-  it.skip('inline code with backtick (Q-INLINE-CODE-BACKTICK)', () => {});
+  // ADR-0010: an `InlineCodeNode` whose content contains a backtick is
+  // unrepresentable in dtext source; the markdown side can produce one via
+  // CommonMark's multi-backtick fence rule. Round-trip on the markdown
+  // surface itself is stable for double-backtick fences, but the
+  // formatter's verbatim emit drops the multi-backtick fence wrapping — a
+  // focused fixture would need to assert the documented divergence rather
+  // than equality.
+  it.skip('inline code with backtick (ADR-0010)', () => {});
 });

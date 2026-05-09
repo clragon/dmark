@@ -50,7 +50,7 @@ export interface ParagraphNode extends ASTNode {
 export interface QuoteNode extends ASTNode {
   type: 'quote';
   children: BlockNode[];
-  // Optional color from [quote=COLOR]. The value is the raw token as typed
+  // Optional color from [quote=COLOR]. Value is the raw token as typed
   // (case preserved); the renderer chooses class/style based on shape.
   color?: string;
 }
@@ -83,7 +83,7 @@ export interface RawBlockTextNode extends ASTNode {
 // streaming output without re-opening one. `prefix` is verbatim HTML for the
 // inter-block whitespace plus the close tag itself; `children` is the inline
 // tail (so `Topic #1` after a stray close still becomes an `<a>`). Newlines
-// inside `children` render as `<br>` via the normal LineBreakNode path.
+// inside `children` render as `<br>` via the LineBreakNode path.
 export interface LiteralHtmlNode extends ASTNode {
   type: 'literal_html';
   prefix: string;
@@ -188,19 +188,19 @@ export interface LineBreakNode extends ASTNode {
 }
 
 // Transparent inline grouping. Used when the parser drops a wrapping element
-// (e.g. an over-deep [sup]/[sub] open) but still wants to bubble its parsed
-// children up to the containing inline list. The renderer emits children
-// without any surrounding markup.
+// (e.g. an over-deep [sup]/[sub] open) and bubbles its parsed children up
+// to the containing inline list. The renderer emits children without any
+// surrounding markup.
 export interface FragmentNode extends ASTNode {
   type: 'fragment';
   children: InlineNode[];
 }
 
 // id-link kinds the parser emits via `[prefix #N]` syntax (post #123,
-// pool #45, etc.). The set is kept in lockstep with `ID_PATTERNS` in
-// `parse/index.ts` and with `ID_TYPE_CLASSES` in `render-html/index.ts`;
-// adding a new id type means a new entry in all three places, and the
-// union here makes the renderer's Record exhaustive against it.
+// pool #45, etc.). Metadata tables keyed against this union live in
+// `./links` (parser side) and `render-html/index.ts` (renderer side);
+// every table is exhaustive over `IdType`, so adding a new id type
+// surfaces the missing entry as a compile error. See ADR-0001.
 export type IdType =
   | 'post'
   | 'thumb'

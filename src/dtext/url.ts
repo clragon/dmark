@@ -1,17 +1,10 @@
-// URL boundary semantics shared by the dtext parser (`./parse/`) and the
-// dtext formatter (`./render/`). `BOUNDARY_CHARS` is the set of code points
-// ruby's dtext peels off as a single trailing punctuation from a captured
-// bare URL match (verified against the oracle; see `trimUrlBoundaries` in
-// `parse/index.ts`).
-//
-// Lockstep across two callers:
-//   - parser uses these to *strip* trailing chars from captured URLs
-//     (`trimUrlBoundaries` callers around `matchUrl` / `matchTextileLink`).
-//   - formatter uses these to decide bare-vs-delimited emit
-//     (Q-URL-DELIMITER / Q-TEXTILE-BRACKET in `dtext-formatter-spec.md`).
-//
-// Adding or removing a code touches both pipelines' round-trip behaviour,
-// so the data lives in one place rather than as twin copies prone to drift.
+// URL boundary code points shared by the dtext parser and formatter.
+// Ruby's dtext peels exactly one of these off as trailing punctuation from a
+// captured bare URL (verified against the oracle; see `trimUrlBoundaries` in
+// `parse/index.ts`). The parser strips them from captured URLs; the formatter
+// uses the same set to decide bare-vs-delimited emit (see ADR-0006 and
+// ADR-0005). Both callers must agree on the set or round-trip breaks for any
+// URL ending in a CJK or full-width bracket.
 
 export const BOUNDARY_CHARS: readonly number[] = [
   0x0021, 0x0029, 0x002c, 0x002e, 0x003a, 0x003b, 0x003c, 0x003e, 0x003f,

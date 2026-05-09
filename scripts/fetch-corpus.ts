@@ -29,8 +29,8 @@ interface WikiPageRow {
   id: string;
   title: string;
   body: string;
-  // The dump has more columns (created_at, updated_at, locked, etc.) , we
-  // ignore them at parse time by reading by header name.
+  // The dump has more columns (created_at, updated_at, locked, etc.).
+  // Reading by header name ignores them at parse time.
 }
 
 interface CorpusEntry {
@@ -113,7 +113,7 @@ async function selectAndWrite(dumpPath: string): Promise<CorpusEntry[]> {
           title: row.title ?? "",
           body,
         });
-        // Keep memory bounded: we only ever need the top SAMPLE_SIZE.
+        // Keep memory bounded: only the top SAMPLE_SIZE entries are needed.
         if (all.length > SAMPLE_SIZE * 50) {
           all.sort(
             (a, b) =>

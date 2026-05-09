@@ -46,24 +46,23 @@ interface RenderContext {
 }
 
 // Tag-category aliases that get a class-name treatment instead of an inline
-// style. Both `renderQuote` and `renderColor` dispatch on this same set: a
+// style. Both `renderQuote` and `renderColor` dispatch on this set: a
 // category match emits a `dtext-sidebar-colored-*` or `dtext-color-*` class
 // with the original case preserved, otherwise the inline-style path runs.
-// The parser keeps the same alternation under `QUOTE_CATEGORY_RE` (used by
-// `isValidQuoteColor`) as the upstream gate; the two literals must stay in
-// lockstep until the ID-metadata consolidation collapses them.
+// Lockstep: the parser keeps the same alternation under `QUOTE_CATEGORY_RE`
+// (used by `isValidQuoteColor`) as the upstream gate; both literals must
+// agree until the ID-metadata consolidation collapses them.
 const TAG_CATEGORY_RE =
   /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i;
 
 // Class names for `id_link` anchors keyed by the parser-emitted `idType`.
-// Multi-class entries (today only `thumb`) carry the full ordered list, so
-// the consumer is one indexed lookup and one push. The set must stay in
-// lockstep with `ID_PATTERNS` in `parse/index.ts`: the parser produces an
-// `idType` that this table must recognise, otherwise the rendered link
-// silently loses its type-specific class. The `thumb` entry is load-bearing:
-// a thumb that exceeds `maxThumbs` gets rewritten by the parser to
-// `idType: 'post'`, so the over-limit case picks up `dtext-post-id-link`
-// alone (no `thumb-placeholder-link`) without any special path here.
+// Multi-class entries (only `thumb`) carry the full ordered list, so the
+// consumer is one indexed lookup and one push. Lockstep with `ID_PATTERNS`
+// in `parse/index.ts`: every `idType` the parser produces must have an entry
+// here, or the rendered link silently loses its type-specific class. A thumb
+// over `maxThumbs` is rewritten by the parser to `idType: 'post'`, so the
+// over-limit case picks up `dtext-post-id-link` alone (no
+// `thumb-placeholder-link`) without any special path here.
 const ID_TYPE_CLASSES: Record<IdType, readonly string[]> = {
   post: ['dtext-post-id-link'],
   thumb: ['dtext-post-id-link', 'thumb-placeholder-link'],
@@ -89,13 +88,10 @@ const ID_TYPE_CLASSES: Record<IdType, readonly string[]> = {
   ticket: ['dtext-ticket-id-link'],
 };
 
-// Single-pass HTML escape with a no-alloc fast path. The previous
-// implementation chained four `.replace()` calls (one per char), each
-// allocating a fresh string even when the input was already clean. The
-// regex first pass tests whether *any* escape is needed; clean strings
-// (the common case for plain prose text nodes) return as-is. When an
-// escape is needed, one regex walk + a small lookup yields the result in
-// a single allocation.
+// Single-pass HTML escape with a no-alloc fast path. The probe regex first
+// tests whether any escape is needed; clean strings (the common case for
+// plain prose text nodes) return as-is. When an escape is needed, one regex
+// walk plus a small lookup yields the result in a single allocation.
 const HTML_ESCAPE_RE = /[&<>"]/;
 const HTML_ESCAPE_RE_G = /[&<>"]/g;
 const HTML_ESCAPES: Record<string, string> = {
@@ -109,13 +105,12 @@ function htmlEscape(str: string): string {
   return str.replace(HTML_ESCAPE_RE_G, (c) => HTML_ESCAPES[c]);
 }
 
-// Single-pass URI percent-escape with a no-alloc fast path. Mirrors the
-// shape of `htmlEscape`: a cheap probe regex decides whether any char
-// needs escaping and clean strings (e.g. plain ASCII anchor names like
-// `rangesyntax`) skip both the regex walk and the per-char `+=` chain.
-// `whitelist` lets a caller exempt one extra char from escaping; it
-// passes through the slow path so the fast-path probe stays correct
-// regardless of the whitelist value.
+// Single-pass URI percent-escape with a no-alloc fast path. Mirrors
+// `htmlEscape`: a cheap probe regex decides whether any char needs escaping;
+// clean strings (e.g. plain ASCII anchor names like `rangesyntax`) skip both
+// the regex walk and the per-char `+=` chain. `whitelist` exempts one extra
+// char from escaping and runs through the slow path so the probe stays
+// correct regardless of its value.
 const URI_NEEDS_ESCAPE_RE = /[^a-zA-Z0-9\-_.~]/;
 const URI_NEEDS_ESCAPE_RE_G = /[^a-zA-Z0-9\-_.~]/g;
 
@@ -127,20 +122,10 @@ function uriEscape(str: string, whitelist = ''): string {
   });
 }
 
-// Buffer-pattern renderer.
-//
-// Each `renderXxx(node, out, ctx)` pushes its HTML fragments into the shared
-// `out` array; the recursion never builds intermediate strings. A single
-// `out.join('')` at `renderToHTML`'s exit produces the final output. This
-// turns the cost from O(depth × size) (every parent re-concatenated all
-// children) into O(size), and removes the per-level transient array that
-// `children.map(renderNode).join('')` used to allocate.
-//
-// Load-bearing rule: `out` is created fresh inside `renderToHTML` and never
-// reused across calls. Do not promote it to a module-level singleton or
-// reuse it between invocations: concurrent renders would interleave and the
-// caller's HTML would be mangled. The signature passing it explicitly keeps
-// that boundary visible.
+// Buffer-pattern renderer. Each `renderXxx(node, out, ctx)` pushes HTML
+// fragments into a shared `out` array; one `out.join('')` at exit produces
+// the result. The buffer is created fresh per call; promoting it to a
+// module-level singleton would interleave concurrent renders.
 export function renderToHTML(
   node: ASTNode,
   options: DTextRenderOptions = {},
@@ -304,9 +289,9 @@ function renderNode(
 }
 
 // Walk an array of AST nodes in order, pushing each one's HTML fragments
-// into the shared `out` buffer. Used by every container arm (anything with
-// `.children`, plus the table arms with `.rows`); the field name is an
-// implementation detail, the contract is just "render each element."
+// into the shared `out` buffer. Used by every container arm; the contract
+// is "render each element" regardless of the field name (`.children`,
+// `.rows`, etc.).
 function renderNodes(
   nodes: readonly ASTNode[],
   out: string[],
@@ -343,7 +328,7 @@ function renderQuote(
   if (node.color) {
     if (TAG_CATEGORY_RE.test(node.color)) {
       // Tag-category quotes get a sidebar class with the color name as
-      // typed; case is preserved (verified against the oracle).
+      // typed; case is preserved (oracle-verified).
       out.push('<blockquote class="dtext-sidebar-colored-', node.color, '">');
     } else {
       out.push(
@@ -386,7 +371,7 @@ function renderLTable(
   out: string[],
   context: RenderContext,
 ): void {
-  // Oracle quirks:
+  // Oracle-verified quirks:
   //   * Zero rows -> emit a literal `[/tbody]` between the table tags
   //     (verified for `[ltable][/ltable]` and `[ltable]\n\n[/ltable]`).
   //   * Any rows -> always emit `<tbody></tbody>` after `<thead>`, even
@@ -433,9 +418,9 @@ function renderColor(
   }
 
   if (TAG_CATEGORY_RE.test(node.color)) {
-    // Preserve the original case of the color name in the class. Ruby's
-    // dtext does not normalize the case here: `[color=Character]` becomes
-    // `dtext-color-Character`, not `dtext-color-character`.
+    // Preserve original case in the class name. Ruby's dtext does not
+    // normalize case here: `[color=Character]` becomes `dtext-color-Character`,
+    // not `dtext-color-character`.
     out.push('<span class="dtext-color-', node.color, '">');
   } else {
     out.push('<span class="dtext-color" style="color:', node.color, '">');
@@ -462,7 +447,7 @@ function renderLink(
   }
 
   // Ruby's dtext renderer omits rel="nofollow" on id_link anchors (post #N,
-  // comment #N etc.) but adds it on every other link type.
+  // comment #N, etc.) but adds it on every other link type.
   out.push(node.linkType === 'id_link' ? '<a class="' : '<a rel="nofollow" class="');
   appendLinkClasses(node, out);
   out.push('"');

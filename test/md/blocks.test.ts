@@ -1,7 +1,7 @@
 // Standard markdown block coverage. One describe block per spec row in
-// md-ast-mapping.md. Pairs naturally with `inline.test.ts`; together they
-// cover the whole CommonMark surface the adapter needs before the custom
-// extensions land.
+// `docs/mapping.md`. Pairs naturally with `inline.test.ts`; together they
+// cover the CommonMark surface the adapter relies on before the custom
+// extensions.
 
 import { describe, expect, it } from 'vitest';
 

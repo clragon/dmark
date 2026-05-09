@@ -1,16 +1,16 @@
-// Baseline golden test for the dtext side of Dmark.
+// Baseline golden test for the dtext side of dmark.
 //
-// For every fixture under corpus/golden, renders the dtext via Dmark
+// For every fixture under corpus/golden, renders the dtext via dmark
 // (parse → AST → render-html) and via the ruby oracle (DText.parse), and
-// checks the two outputs are dom-equal under our normalization rules.
+// checks the two outputs are dom-equal under the normalization rules in
+// `test/dom-equal.ts`.
 //
 // SKIP_FILES holds fixtures known to blow the parser's heap (unbounded
-// allocations on certain nested constructs). Each is a real phase-2 bug to
-// fix; counted as failures here so the floor still has teeth.
+// allocations on certain nested constructs). Each is a parser bug; counted
+// as failures here so the floor still has teeth.
 //
-// This isolates the dtext-side correctness of the port. Markdown is not
-// involved yet. The pass rate here is the floor for the eventual
-// dtext → md → html target.
+// Isolates the dtext-side correctness of the port. The pass rate here is
+// the floor for the dtext → md → html target.
 //
 // If corpus/golden is missing, the suite is skipped with a clear message.
 // Run `yarn corpus:fetch` to populate it.
@@ -39,7 +39,7 @@ interface CorpusIndex {
 const CORPUS_GOLDEN = resolve(process.cwd(), 'corpus', 'golden');
 const INDEX_PATH = resolve(CORPUS_GOLDEN, 'index.json');
 // One-way pass-rate ratchet. Each parser fix bumps it up; never lower it,
-// since lowering hides regressions. Phase 1 started at 0 (honest baseline).
+// since lowering hides regressions.
 const PHASE_1_FLOOR = 0.98;
 const MAX_DIFF_CHARS = 240;
 
@@ -82,7 +82,7 @@ suite('dtext baseline against ruby oracle', () => {
         const dtext = readFileSync(resolve(CORPUS_GOLDEN, entry.file), 'utf8');
         // Wiki pages render with these options on production e621:
         //   format_text(body, allow_color: true, max_thumbs: 75)
-        // (app/views/wiki_pages/show.html.erb). Match both sides to that.
+        // (app/views/wiki_pages/show.html.erb). Both sides match that.
         const renderOpts = { allow_color: true, max_thumbs: 75 };
         const oracleHtml = (await renderViaOracle(dtext, renderOpts)).html;
         const dmarkHtml = parseDText(dtext, {

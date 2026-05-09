@@ -1,25 +1,9 @@
-// BBCode `[spoiler]...[/spoiler]` block plugin. Sibling of the inline
-// `||...||` rule (`./spoiler.ts`); produces `SpoilerBlockNode` rather than
-// `InlineSpoilerNode` when the markers stand on their own lines and the
-// inner range is block content.
-//
-// Per `md-formatter-spec.md`'s Spoiler-block row, the markdown surface for
-// block spoilers is the BBCode-survivor form (`||...||` cannot span block
-// boundaries by design). Until this plugin landed, the markdown parser had
-// no block-spoiler recogniser — a `[spoiler]\n...\n[/spoiler]` block parsed
-// as paragraph text and the formatter's spec-compliant emit round-tripped
-// lossy without any diagnostic flagging it. The Painter's workbench
-// surfaced this on the `dtext-section` round-trip sample.
-//
-// Block-level: open / close markers stand on their own line. Nesting works
-// (a `[spoiler]` inside another `[spoiler]` is depth-tracked). Inner
-// content is recursively tokenised through `markdown-it`'s block parser so
-// headers, paragraphs, lists, nested spoilers, etc. compose naturally.
-//
-// Token type: `spoiler_block_open` / `spoiler_block_close`. Distinct from
-// the inline `spoiler_open` / `spoiler_close` so the block walker reaches
-// the correct case (block walks land on `walkBlocks` rather than
-// `walkInline`).
+// BBCode `[spoiler]...[/spoiler]` block plugin (`docs/mapping.md`,
+// Spoiler block). Sibling of the inline `||...||` rule (`./spoiler.ts`);
+// produces `SpoilerBlockNode` when the markers stand on their own lines.
+// Token type is `spoiler_block_open` / `spoiler_block_close` — distinct
+// from the inline `spoiler_open` / `spoiler_close` so block walks route
+// to `walkBlocks` rather than `walkInline`.
 
 import type MarkdownIt from 'markdown-it';
 import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';

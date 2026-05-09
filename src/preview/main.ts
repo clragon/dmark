@@ -1,10 +1,10 @@
 /// <reference types="vite/client" />
 
-// Workbench bootstrapping. The architecture is "focused field is source of
-// truth": typing in a textarea parses that side, drives the unified output
-// surface (HTML, AST, diagnostics), and live-translates into the unfocused
-// textarea. Switching focus to the other side retranslates from the current
-// AST so the newly-focused field never holds stale text.
+// Workbench bootstrapping. The focused field is the source of truth: typing
+// in a textarea parses that side, drives the unified output surface (HTML,
+// AST, diagnostics), and live-translates into the unfocused textarea.
+// Switching focus to the other side retranslates from the current AST so
+// the newly-focused field never holds stale text.
 //
 // One AST flows through the workbench at a time. The round-trip violation
 // detector reparses the formatted output and deep-equals it against the
@@ -24,11 +24,10 @@ import { SAMPLES } from './samples';
 
 const DEBOUNCE_MS = 80;
 
-// `corpus/seed/` is the small hand-picked set (currently empty save for
-// `.gitkeep`); load eagerly because the bytes are negligible. `corpus/golden/`
-// is the large db_export-derived set (51 entries today, real wiki pages,
-// can be tens of KB each); load lazily so the dev bundle stays slim and the
-// fetch only happens when a viewer picks one.
+// `corpus/seed/` is the small hand-picked set; load eagerly because the
+// bytes are negligible. `corpus/golden/` is the large db_export-derived set
+// of real wiki pages (tens of KB each); load lazily so the dev bundle stays
+// slim and the fetch only happens when a viewer picks one.
 const seedFixtures = import.meta.glob<string>(
   '../../corpus/seed/*.{dtext,txt,md}',
   { query: '?raw', import: 'default', eager: true },
@@ -168,8 +167,8 @@ function tagDiagnostics(
   return diagnostics.map((diagnostic) => ({ origin, diagnostic }));
 }
 
-// Parse one side. Both sides share the AST shape (DocumentNode), so callers
-// downstream don't need to know which parser produced it.
+// Parse one side. Both sides share the AST shape (DocumentNode); downstream
+// callers do not need to know which parser produced it.
 function parseSide(
   side: Side,
   input: string,
@@ -193,8 +192,8 @@ function formatTo(
 
 // Stable structural compare. JSON.stringify is sufficient because every AST
 // node is a plain object with a stable property set per `src/ast/index.ts`;
-// we don't need referential equality and we're never comparing across
-// serialisation boundaries.
+// referential equality is not required, and the comparison never crosses a
+// serialisation boundary.
 function astEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -212,8 +211,8 @@ interface PipelineRun {
 }
 
 // Run the full source-side → AST → outputs → other-side pipeline on a piece
-// of input. Throws only if the source-side parser throws (which `parseMarkdown`
-// promises not to do, and `parseDTextToAST` does for malformed UTF or bugs).
+// of input. Throws only if the source-side parser throws (`parseMarkdown`
+// promises not to; `parseDTextToAST` does for malformed UTF or bugs).
 function runPipeline(side: Side, input: string): PipelineRun {
   const t0 = timeMs();
   const { ast, diagnostics: parseDiagnostics } = parseSide(side, input);
@@ -334,10 +333,8 @@ function applyRun(side: Side, run: PipelineRun): void {
   //
   //   1. Reparse threw — the formatter produced output the inverse parser
   //      could not consume. Always a real bug.
-  //   2. ASTs differ. If the formatter emitted *any* warning/info diagnostic,
-  //      the divergence is documented (per Q-MD-LTABLE-EMIT,
-  //      Q-MD-DTEXT-SALVAGE, Q-MD-TABLE-MULTILINE, Q-MD-QUOTE-COLOR's
-  //      future md.quote_color_dropped — though path 4 retired that one).
+  //   2. ASTs differ. If the formatter emitted any warning/info diagnostic,
+  //      the divergence is documented (see ADR-0012, ADR-0013, ADR-0019).
   //      A divergence without a diagnostic is the real-bug case.
   //
   // Either case pops the banner; the message names the kind so the reader
@@ -412,14 +409,14 @@ function adoptFocus(side: Side): void {
   state.currentSide = side;
   setSourceBadges();
   if (state.lastAST === null) {
-    // No previous truth — just process whatever the user has typed so far,
-    // which the input handler will do anyway. Nothing to retranslate.
+    // No previous truth — process whatever the user has typed so far, which
+    // the input handler does anyway. Nothing to retranslate.
     processSourceInput(side, sideEls[side].input.value);
     return;
   }
   // Format the latest AST onto the newly-focused side and replace its text.
   // The formatter throws only on programmer error; a thrown formatter is a
-  // real bug and we surface it as a parse-error-style state.
+  // real bug surfaced as a parse-error-style state.
   let text: string;
   try {
     text = formatTo(side, state.lastAST).output;
@@ -436,7 +433,7 @@ function adoptFocus(side: Side): void {
 // resulting height to its sibling. The early-exit when heights already match
 // breaks the otherwise-symmetric A→B→A→… update cycle. CSS-only mirrors via
 // `flex: 1` fight the resize handle (the flex basis preempts the inline
-// height set by the drag), so the JS mirror is the cleaner path.
+// height set by the drag), so the JS mirror is required.
 function syncTextareaHeights(
   a: HTMLTextAreaElement,
   b: HTMLTextAreaElement,
@@ -541,10 +538,9 @@ function init(): void {
 
   // Browsers restore textarea contents across reloads. If either side has
   // content from a previous session, treat it as the source and render
-  // immediately so the viewer doesn't see a blank output column on a
-  // restored-state reload. Prefer dtext if both sides have content (they
-  // should be translation-equivalent, so the choice is cosmetic — the
-  // unfocused side will retranslate on focus switch anyway).
+  // immediately so the viewer does not see a blank output column on a
+  // restored-state reload. Prefer dtext if both sides have content; the
+  // unfocused side retranslates on focus switch anyway.
   const restoredSide: Side | null = sideEls.dtext.input.value
     ? 'dtext'
     : sideEls.md.input.value

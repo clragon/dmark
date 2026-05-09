@@ -1,16 +1,16 @@
 // Paired-fixture verification: for every supported construct in
-// md-ast-mapping.md, parse the dtext form with `parseDText` and the
+// `docs/mapping.md`, parse the dtext form with `parseDText` and the
 // markdown form with `parseMarkdown` and assert the two ASTs are equal
-// after normalisation. This is the load-bearing test that closes the
-// AST-equivalence promise the project rests on.
+// after normalisation. Closes the AST-equivalence promise the project
+// rests on.
 //
 // Pairs are organised by category. Add a row when a construct lands in the
-// markdown adapter; remove a row only after consulting the spec doc.
+// markdown adapter; remove a row only after consulting `docs/mapping.md`.
 //
 // The "dtext-only" section at the bottom inventories constructs that the
-// markdown side cannot produce by design (per the captain's calls in
-// md-ast-mapping.md). Those rows do not run an equivalence assertion;
-// they exist so future readers see the boundary explicitly.
+// markdown side cannot produce by design (per `docs/mapping.md`). Those
+// rows do not run an equivalence assertion; they exist so the boundary is
+// explicit.
 
 import { describe, expect, it } from 'vitest';
 
@@ -162,21 +162,13 @@ runPairs('block equivalence', BLOCK_PAIRS);
 runPairs('composition equivalence', COMPOSITION_PAIRS);
 
 // -------------------------------------------------------------------------
-// Constructs the markdown side cannot produce, by design.
-//
-// These are catalogued, not asserted. Each row names a dtext-only AST
-// shape and the captain decision (or oracle-quirk) that puts it out of
-// scope for the markdown adapter. If a future captain ruling reverses one
-// of these, move the row up into a `Pair` array above.
-// -------------------------------------------------------------------------
-// -------------------------------------------------------------------------
 // Documented divergences.
 //
-// These constructs CAN be expressed in both flavours but the two emitters
+// These constructs can be expressed in both flavours but the two emitters
 // produce non-identical AST shapes for spec-permitted reasons. Each row
 // names the divergence and the rationale; the harness does not assert
-// equality for them. If a future change brings them into alignment, move
-// the row up into a `Pair` array.
+// equality for them. If a change brings them into alignment, move the row
+// up into a `Pair` array.
 // -------------------------------------------------------------------------
 describe('documented AST divergences (asymmetric on purpose)', () => {
   it.skip(
@@ -198,14 +190,14 @@ describe('documented AST divergences (asymmetric on purpose)', () => {
 // -------------------------------------------------------------------------
 // Constructs the markdown side cannot produce, by design.
 //
-// These are catalogued, not asserted. Each row names a dtext-only AST
-// shape and the captain decision (or oracle-quirk) that puts it out of
-// scope for the markdown adapter. If a future captain ruling reverses one
-// of these, move the row up into a `Pair` array above.
+// Catalogued, not asserted. Each row names a dtext-only AST shape and the
+// rationale (oracle-quirk or design choice) that puts it out of scope for
+// the markdown adapter. If a ruling reverses one of these, move the row up
+// into a `Pair` array above.
 // -------------------------------------------------------------------------
 describe('dtext-only constructs (markdown cannot produce, by design)', () => {
   it.skip(
-    '[ltable] -> LTableNode (markdown pipe tables map to TableNode; spec Q7)',
+    '[ltable] -> LTableNode (markdown pipe tables map to TableNode; ADR-0012)',
     () => {
       // No assertion. Inventory only.
     },

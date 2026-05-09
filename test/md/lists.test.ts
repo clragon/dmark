@@ -1,8 +1,8 @@
 // Markdown list coverage. Lists are special because the AST flattens nested
 // structure into depth-tagged sibling items in one `ListNode`, while the
 // markdown source uses indentation. The walker has to invert that. Ordered
-// lists demote to unordered with a `md.ordered_list_demoted` warning per
-// md-ast-mapping.md Q5.
+// lists demote to unordered with a `md.ordered_list_demoted` warning; see
+// ADR-0016 for the marker rule.
 
 import { describe, expect, it } from 'vitest';
 

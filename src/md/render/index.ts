@@ -1,26 +1,9 @@
-// Buffer-pattern markdown formatter (dmark flavour).
-//
-// `formatMarkdown(ast)` is the inverse of `parseMarkdown`: takes a canonical
-// AST and emits dmark-flavour markdown source whose round-trip through
-// `parseMarkdown(src).document` is deep-equal to the input (subject to the
-// resolved divergences). The contract and per-construct canonical forms are
-// captured in `md-formatter-spec.md`'s Resolved design decisions section.
-//
-// Each `formatXxx(node, out, ctx)` pushes its markdown fragments into the
-// shared `out` array; the recursion never builds intermediate strings. A
-// single `out.join('')` at `formatMarkdown`'s exit produces the final output.
-// Mirrors the post-Tier-A shape of `src/dtext/render-html/index.ts` and the
-// dtext-side sibling formatter in `src/dtext/render/`.
-//
-// Load-bearing rule: `out` is created fresh inside `formatMarkdown` and
-// never reused across calls. Concurrent renders would interleave otherwise.
-//
-// Diagnostics (today's catalog, per resolved Q-MD-* items):
-//   - `md.ltable_approximated` (warning) — Q-MD-LTABLE-EMIT
-//   - `md.dtext_salvage_passthrough` (warning) — Q-MD-DTEXT-SALVAGE
-//   - `md.table_cell_linebreak_collapsed` (warning) — Q-MD-TABLE-MULTILINE
-// `Q-MD-QUOTE-COLOR` (path 4) does *not* emit a diagnostic — coloured
-// quotes round-trip via the `[quote=COLOR]` BBCode-survivor form.
+// Buffer-pattern markdown formatter (dmark flavour). The inverse of
+// `parseMarkdown`: takes a canonical AST and emits markdown source whose
+// round-trip is deep-equal to the input (subject to documented divergences).
+// Per-construct rules live in `docs/mapping.md`. Each `formatXxx(node, out,
+// ctx)` pushes fragments into the shared `out` array; `out` is created fresh
+// per call so concurrent renders do not interleave.
 
 import type {
   ASTNode,
@@ -61,8 +44,7 @@ import { asciiLowercase } from '../../ast/text';
 import type { Diagnostic } from '../../diagnostics';
 
 export interface MarkdownFormatterOptions {
-  // Reserved for future flags. Kept as an explicit type so the public
-  // contract has a stable shape from day one.
+  // Reserved for flags.
 }
 
 export interface MarkdownFormatResult {
@@ -73,16 +55,12 @@ export interface MarkdownFormatResult {
 interface FormatContext {
   options: MarkdownFormatterOptions;
   diagnostics: Diagnostic[];
-  // True when the next emit lands at the start of a line. Used by the text
-  // emitter to know whether to apply the line-start-only escape set
-  // (`#`, `>`, `-`, `+`, `1.`-`9.`, `|`). Each function that emits a
-  // newline-terminated fragment sets this flag back to true; functions that
-  // emit non-newline content set it false.
+  // True when the next emit lands at the start of a line. The text emitter
+  // applies the line-start-only escape set only when this is true (ADR-0017).
+  // Functions emitting newline-terminated fragments set it back to true.
   atLineStart: boolean;
-  // True when the formatter is inside a `TableCellNode`. Pipe-table cells
-  // forbid multi-line content, so a `LineBreakNode` inside a cell triggers
-  // the `md.table_cell_linebreak_collapsed` diagnostic and emits a single
-  // space instead.
+  // True when the formatter is inside a `TableCellNode`; flips the
+  // line-break handling per ADR-0019.
   inTableCell: boolean;
 }
 
@@ -194,9 +172,8 @@ function formatNode(
       out.push('||');
       return;
     case 'inline_code':
-      // Q-INLINE-CODE-BACKTICK: verbatim emit, documented divergence in the
-      // round-trip harness for backtick-bearing content (rare; markdown side
-      // can produce via multi-backtick fence rule).
+      // Verbatim emit; backtick-bearing content is a documented divergence
+      // (ADR-0010).
       out.push('`', (node as InlineCodeNode).content, '`');
       ctx.atLineStart = false;
       return;
@@ -220,10 +197,9 @@ function formatNode(
       ctx.atLineStart = false;
       return;
 
-    // Table sub-nodes: standalone emit (round-trip harness, programmatic
-    // construction) lands here. The primary path runs through `formatTable`,
-    // which unwraps head/body and emits rows directly with the
-    // header-separator row markdown-it requires.
+    // Table sub-nodes: standalone emit lands here. The primary path runs
+    // through `formatTable`, which unwraps head/body and emits rows directly
+    // with the header-separator row markdown-it requires.
     case 'table_head':
       for (const row of (node as TableHeadNode).rows) formatNode(row, out, ctx);
       return;
@@ -272,8 +248,6 @@ function formatHeader(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // ATX form. Setext is captured by parser-side `md.setext_header_normalized`
-  // info diagnostic; formatter always emits ATX.
   out.push('#'.repeat(node.level), ' ');
   ctx.atLineStart = false;
   formatInlines(node.children, out, ctx);
@@ -284,10 +258,8 @@ function formatQuote(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Q-MD-QUOTE-COLOR (path 4): dispatch on `node.color`.
-  //   - undefined → `> ` line-prefix form (markdown-native).
-  //   - set      → `[quote=<color>]\n...\n[/quote]` BBCode-survivor form,
-  //                byte-identical to the dtext sibling spec's emit.
+  // Per ADR-0018: colourless uses `> ` prefix, coloured uses
+  // `[quote=<color>]...[/quote]`.
   if (node.color !== undefined) {
     out.push('[quote=', node.color, ']\n');
     ctx.atLineStart = true;
@@ -326,8 +298,8 @@ function formatSpoilerBlock(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // BBCode-survivor form on the markdown side. `||...||` is the *inline*
-  // spoiler; block spoilers use the BBCode form.
+  // BBCode-survivor form: `||...||` is the inline spoiler; block spoilers
+  // use the bracket form.
   out.push('[spoiler]\n');
   ctx.atLineStart = true;
   formatBlocks(node.children, out, ctx);
@@ -340,8 +312,8 @@ function formatSection(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Q-MD-SECTION-FORM: BBCode form is canonical. HTML `<details>` form is
-  // accepted on parse (per md-ast-mapping Q4) but not emitted.
+  // BBCode form is canonical (ADR-0011). HTML `<details>` form is accepted
+  // on parse but not emitted.
   if (node.title !== undefined) {
     out.push(node.expanded ? '[section,expanded=' : '[section=');
     out.push(node.title, ']\n');
@@ -359,19 +331,11 @@ function formatCodeBlock(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Triple-backtick fenced form. Language hints are not on the AST today
-  // (per md-ast-mapping captain Q on language-hint storage); emit a bare
-  // fence.
-  //
-  // Falcon's documented `CodeBlockNode.content` trailing-newline divergence:
-  // markdown-it appends `\n`; the dtext side does not. The formatter emits
-  // content verbatim and accepts the documented divergence. Round-trip on
-  // a markdown-source-originated `CodeBlockNode` produces a fixed point on
-  // the second pass.
+  // Triple-backtick fence; the AST has no slot for language hints. Emit
+  // `content` verbatim; ADR-0007 covers the trailing-newline divergence
+  // between markdown-it (appends `\n`) and the dtext side (does not).
   out.push('```\n');
   out.push(node.content);
-  // Ensure the closing fence sits on its own line. If `content` already ends
-  // in `\n` (markdown-it convention), avoid emitting a duplicate.
   if (!node.content.endsWith('\n')) out.push('\n');
   out.push('```');
   ctx.atLineStart = false;
@@ -382,9 +346,8 @@ function formatRawBlockText(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Q-MD-DTEXT-SALVAGE: passthrough verbatim with warning diagnostic.
-  // The salvaged content originates from a dtext stray-close path; it's
-  // not real markdown and may not round-trip through `parseMarkdown`.
+  // Verbatim passthrough with warning (ADR-0013); content comes from a
+  // dtext stray-close salvage path and may not round-trip.
   ctx.diagnostics.push({
     code: 'md.dtext_salvage_passthrough',
     severity: 'warning',
@@ -400,7 +363,7 @@ function formatLiteralHtml(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Q-MD-DTEXT-SALVAGE: passthrough verbatim with warning diagnostic.
+  // Verbatim passthrough with warning (ADR-0013).
   ctx.diagnostics.push({
     code: 'md.dtext_salvage_passthrough',
     severity: 'warning',
@@ -417,10 +380,9 @@ function formatTable(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Markdown pipe-table form. The header separator row (`|---|---|`) is
-  // structurally required by markdown-it; the formatter emits one whether or
-  // not the AST has a `TableHeadNode` (a header-less table still needs the
-  // separator to parse as a table).
+  // Pipe-table form. The header separator row (`|---|---|`) is structurally
+  // required by markdown-it; emit one even when no `TableHeadNode` is
+  // present (a header-less table still needs the separator to re-parse).
   const headerRows: TableRowNode[] = [];
   const bodyRows: TableRowNode[] = [];
   for (const child of node.children) {
@@ -496,9 +458,8 @@ function formatLTable(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Q-MD-LTABLE-EMIT: option 2 — Diagnostic + pipe-table approximation.
-  // First row treated as header (matching the dtext-side semantic), rest as
-  // body. Lossy on the no-head/body distinction of `LTableNode`.
+  // Pipe-table approximation with warning (ADR-0012). First row treated as
+  // header, rest as body; the no-head/body distinction is lost.
   ctx.diagnostics.push({
     code: 'md.ltable_approximated',
     severity: 'warning',
@@ -530,7 +491,7 @@ function formatTableRowFallback(
   ctx: FormatContext,
 ): void {
   // Reached only when a `TableRowNode` is emitted outside a `TableNode` or
-  // `LTableNode` context — defensive shape for round-trip harness use.
+  // `LTableNode` context.
   formatPipeTableRow(node, out, ctx);
 }
 
@@ -539,7 +500,7 @@ function formatTableCellFallback(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Reached only when a `TableCellNode` is emitted standalone; rare.
+  // Reached only when a `TableCellNode` is emitted standalone.
   const wasInCell = ctx.inTableCell;
   ctx.inTableCell = true;
   formatInlines(node.children, out, ctx);
@@ -551,8 +512,8 @@ function formatList(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Q-MD-LIST-MARKER: `- ` (dash + space). Two-space indent per nesting level
-  // (`item.depth - 1` indents, since depth 1 is the top level).
+  // ADR-0016: `- ` marker, two-space indent per nesting level (depth 1 is
+  // the top level, so `item.depth - 1` indents).
   for (let i = 0; i < node.items.length; i++) {
     if (i > 0) {
       out.push('\n');
@@ -567,9 +528,8 @@ function formatList(
 }
 
 function formatLineBreak(out: string[], ctx: FormatContext): void {
-  // Q-MD-TABLE-MULTILINE: inside a `TableCellNode`, collapse to a single
-  // space and emit the diagnostic (markdown pipe tables forbid multi-line
-  // cells).
+  // Inside a `TableCellNode`, collapse to a single space with a warning
+  // (ADR-0019); pipe tables forbid multi-line cells.
   if (ctx.inTableCell) {
     ctx.diagnostics.push({
       code: 'md.table_cell_linebreak_collapsed',
@@ -580,9 +540,9 @@ function formatLineBreak(out: string[], ctx: FormatContext): void {
     out.push(' ');
     return;
   }
-  // Paragraph-internal hard break. With `markdown-it`'s `breaks: true`
-  // (locked by Q6 of md-ast-mapping), every `\n` re-parses to
-  // `LineBreakNode`. CommonMark's "trailing two spaces" form is not used.
+  // Paragraph-internal hard break. The parser runs with `breaks: true`, so
+  // every `\n` re-parses to `LineBreakNode`; CommonMark's "trailing two
+  // spaces" form is not used.
   out.push('\n');
   ctx.atLineStart = true;
 }
@@ -613,12 +573,10 @@ function formatLink(
 }
 
 function formatUrlLink(node: LinkNode, out: string[]): void {
-  // Q-MD-URL-DELIMITER: bare URL form is "when markdown-it's autolinker
-  // would detect it." Our parser config has `linkify: false` (per
-  // `src/md/parse/index.ts`), so the linkify-driven bare-URL detection is
-  // off; only the standard autolink rule (`<url>`) produces a `LinkNode`.
-  // The formatter therefore always emits the autolink form — bare emission
-  // would re-parse as plain text rather than a `LinkNode`.
+  // ADR-0015: bare URL would only re-parse as a `LinkNode` when markdown-it's
+  // autolinker would detect it. The parser runs with `linkify: false`, so
+  // only the standard autolink rule (`<url>`) produces a `LinkNode`; emit
+  // the autolink form unconditionally.
   out.push('<', node.href, '>');
 }
 
@@ -627,9 +585,8 @@ function formatInlineLink(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // `[<text>](<url>)`. Text inside the brackets needs the always-escape set
-  // applied (especially `]` and `[`); URL inside parens uses backslash-
-  // escape for parens (Q-MD-LINK-ESCAPE) or `<...>` wrapping when whitespace.
+  // `[<text>](<url>)`. URL escape strategy per ADR-0014: backslash-escape
+  // parens; angle-bracket wrap only for whitespace-bearing URLs.
   const titleBuf: string[] = [];
   const titleCtx: FormatContext = {
     options: ctx.options,
@@ -648,10 +605,9 @@ function formatInlineLink(
 }
 
 function formatWikiLink(node: LinkNode, out: string[]): void {
-  // Same dispatch as the dtext sibling formatter (Q-WIKI-PAGE-RECOVER).
-  // Anchor-only form has two source-form variants (`[[#anchor]]` and
-  // `[[#anchor|title]]`); detect title-override by comparing children
-  // content to the default-derived form.
+  // Same dispatch as the dtext sibling formatter (ADR-0004). Anchor-only
+  // form has two variants (`[[#anchor]]` and `[[#anchor|title]]`); detect
+  // title-override by comparing children content to the default form.
   if (node.href.startsWith('#') && node.anchor !== undefined) {
     const childText =
       node.children?.[0] && node.children[0].type === 'text'
@@ -689,13 +645,9 @@ function formatWikiLink(node: LinkNode, out: string[]): void {
 
   if (asciiLowercase(childText) === asciiLowercase(expectedNoTitle)) {
     // No-title case: children content carries the original tag spelling.
-    // Title-collision edge case: when a user typed `[[Wolf|wolf]]` (title
-    // happens to equal the lowercased page form), the AST cannot distinguish
-    // it from the no-title `[[Wolf]]` form — both produce the same
-    // `LinkNode { children: [TextNode "wolf"], href: ".../wolf", ... }`
-    // modulo case. This branch picks the no-title emit, accepted behaviour
-    // per Q-WIKI-PAGE-RECOVER (info-lossless on the page side, lossy on the
-    // title side for the collision case).
+    // Title-collision (e.g. `[[Wolf|wolf]]`) is indistinguishable from the
+    // no-title `[[Wolf]]` form at the AST level; ADR-0004 accepts the
+    // no-title emit here as the documented divergence.
     out.push('[[', childText, ']]');
   } else {
     out.push('[[', normalisedTag);
@@ -710,13 +662,10 @@ function formatPostSearchLink(node: LinkNode, out: string[]): void {
     node.children?.[0] && node.children[0].type === 'text'
       ? (node.children[0] as TextNode).content
       : '';
-  // Same trick as the wikilink no-title branch and the dtext-side sibling:
-  // when children text equals `tags` modulo ASCII case (the parser produces
-  // this for any `{{tag}}` source — `tags` is lowercased, children
-  // preserves original case), emit `{{<childText>}}` rather than the
-  // `{{<tags>}}` form. The parser lowercases on re-parse and preserves
-  // children case, so AST round-trip holds AND the emit avoids a `|` that
-  // would break a wrapping pipe-table cell.
+  // Same dispatch as the wikilink no-title branch: when children text
+  // equals `tags` modulo ASCII case, emit `{{<childText>}}` to preserve
+  // the original spelling and avoid an unnecessary `|` that would break a
+  // wrapping pipe-table cell.
   if (childText === '' || asciiLowercase(childText) === tags) {
     out.push('{{', childText || tags, '}}');
   } else {
@@ -725,21 +674,14 @@ function formatPostSearchLink(node: LinkNode, out: string[]): void {
 }
 
 function formatIdLink(node: LinkNode, out: string[]): void {
-  // Q-MAGIC-LINK-CANONICAL: emit `<source-prefix> #<id>` from `ID_SOURCE`.
-  // `node.children[0].content` carries the display form; ignored here.
+  // ADR-0001: emit `<source-prefix> #<id>` from `ID_SOURCE`. The display
+  // form on `node.children[0].content` is ignored.
   if (!node.idType || !node.id) return;
   out.push(ID_SOURCE[node.idType], ' #', node.id);
 }
 
-// Text-content emit with the resolved Q-MD-TEXT-ESCAPE policy:
-//   - Always escape: `*`, `_`, `` ` ``, `\`, `[`, `~~`, `||`.
-//   - Line-start only: `#`, `>`, `-`, `+`, `1.`-`9.`, `|`.
-//   - Skip: `<`, `>` (HTML allowlist gates these on the parser side; the
-//     formatter never emits unescaped raw HTML in text positions).
-//
-// The walk preserves `ctx.atLineStart` to know when the cursor is at the
-// start of a line. After the walk completes, `ctx.atLineStart` reflects
-// whether the last char emitted was a `\n`.
+// Text-content emit per ADR-0017. After the walk, `ctx.atLineStart`
+// reflects whether the last char emitted was `\n`.
 function emitTextContent(
   content: string,
   out: string[],

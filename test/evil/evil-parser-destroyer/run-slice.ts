@@ -1,5 +1,6 @@
-// Shared runner: each probes-N.test.ts asks for slice index N and we run
-// the corresponding chunk of `cases`. SLICES is the total number of files.
+// Shared runner: each probes-N.test.ts asks for slice index N; the runner
+// executes the corresponding chunk of `cases`. SLICES is the total number
+// of files.
 //
 // Performance: per-slice tests use `it.concurrent` so vitest fans the oracle
 // HTTP calls out in parallel up to its built-in concurrent limit. The big
@@ -50,10 +51,10 @@ export function runSlice(index: number): void {
             maxThumbs: c.maxThumbs ?? 75,
           });
           // Faithfulness invariant: dmark output must equal oracle output.
-          // We compare by hand (instead of expect(...).toBe(...)) so that on
-          // mismatch we only retain a short truncated diff, never the full
-          // HTML strings; thousands of failing tests with long expected/
-          // received fields would otherwise OOM the worker.
+          // Comparison is done by hand (instead of expect(...).toBe(...)) so
+          // that on mismatch only a short truncated diff is retained, never
+          // the full HTML strings; thousands of failing tests with long
+          // expected/received fields would otherwise OOM the worker.
           if (dmark !== oracle.html) {
             const max = 80;
             const a = dmark.length > max ? dmark.slice(0, max) + '...' : dmark;

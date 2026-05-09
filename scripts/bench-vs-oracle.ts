@@ -8,9 +8,9 @@
 //     loopback HTTP overhead.
 //
 // The HTTP overhead matters: the oracle is consumed *as* an HTTP service in
-// dmark's test harness, so its in-test cost is what we benchmark against. A
-// pure-CPU comparison would ignore the dispatch path and overstate ruby's
-// throughput in any context where dmark might replace it.
+// dmark's test harness, so its in-test cost is the right baseline. A pure-CPU
+// comparison would ignore the dispatch path and overstate ruby's throughput
+// in any context where dmark might replace it.
 //
 // Usage:
 //   tsx scripts/bench-vs-oracle.ts [iters] [--max-bytes N]

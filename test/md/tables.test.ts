@@ -1,7 +1,7 @@
 // Pipe-table coverage. Markdown's pipe table maps to `TableNode` with the
-// head/body distinction the AST already encodes, mirroring how the dtext
-// `[table]` form parses on the other side. `[ltable]` is dtext-only and
-// not produced from markdown input by design.
+// head/body distinction the AST encodes, mirroring how the dtext `[table]`
+// form parses on the other side. `[ltable]` is dtext-only and not produced
+// from markdown input by design (ADR-0012).
 
 import { describe, expect, it } from 'vitest';
 

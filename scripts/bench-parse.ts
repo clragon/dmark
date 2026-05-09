@@ -92,7 +92,7 @@ for (const f of fixtures) {
 }
 
 if (SPLIT) {
-  // Diagnostic mode: time parse-only and render-only separately so we see
+  // Diagnostic mode: time parse-only and render-only separately to surface
   // which side dominates. Skips the comparison/save flow.
   const splitResults: { name: string; bytes: number; pMed: number; rMed: number; tMed: number }[] = [];
   for (const f of fixtures) {

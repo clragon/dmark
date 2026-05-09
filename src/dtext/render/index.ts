@@ -1,27 +1,8 @@
-// Buffer-pattern dtext formatter.
-//
-// `formatDText(ast)` is the inverse of `parseDTextToAST`: it takes a canonical
-// AST and emits dtext source whose round-trip through `parseDTextToAST` is
-// deep-equal to the input. The contract and per-construct canonical forms are
-// captured in `dtext-formatter-spec.md`'s Resolved design decisions section
-// (`Q-MAGIC-LINK-CANONICAL`, `Q-WIKI-PAGE-RECOVER`, `Q-TEXTILE-BRACKET`,
-// `Q-URL-DELIMITER`, `Q-CODE-BLOCK-LAYOUT`, `Q-TABLE-LAYOUT`, `Q-LTABLE-SEP`,
-// `Q-DOC-TRAILING`, `Q-INLINE-CODE-BACKTICK`).
-//
-// Each `formatXxx(node, out, ctx)` pushes its dtext fragments into the shared
-// `out` array; the recursion never builds intermediate strings. A single
-// `out.join('')` at `formatDText`'s exit produces the final output. Mirrors
-// the post-Tier-A shape of `src/dtext/render-html/index.ts`.
-//
-// Load-bearing rule: `out` is created fresh inside `formatDText` and never
-// reused across calls. Concurrent renders would interleave otherwise.
-//
-// Diagnostics today: empty. The dtext side has no runtime-emit divergences;
-// `Q-INLINE-CODE-BACKTICK` and salvage-path round-trip are surfaced through
-// the round-trip harness as documented-divergence fixtures rather than as
-// `Diagnostic` entries. The `diagnostics: Diagnostic[]` return shape is kept
-// per resolved `Q-MD-API-SHAPE` so callers can treat both pipelines
-// identically.
+// Buffer-pattern dtext formatter. `formatDText(ast)` is the inverse of
+// `parseDText`: emits dtext source whose round-trip is deep-equal to the
+// input. Per-construct canonical forms are in `docs/mapping.md`; the result
+// shape follows ADR-0003. The `out` buffer is created fresh per call;
+// promoting it to module scope would interleave concurrent renders.
 
 import type {
   ASTNode,
@@ -63,8 +44,8 @@ import type { Diagnostic } from '../../diagnostics';
 import { isBoundaryChar } from '../url';
 
 export interface DTextFormatterOptions {
-  // Reserved for future flags. Kept as an explicit type so the public
-  // contract has a stable shape from day one.
+  // Reserved for flags; kept as an explicit type so the public contract has a
+  // stable shape.
 }
 
 export interface DTextFormatResult {
@@ -114,13 +95,13 @@ function formatNode(
       formatSection(node as SectionNode, out, ctx);
       return;
     case 'code_block':
-      // Q-CODE-BLOCK-LAYOUT: strict-verbatim. User-fenced sources round-trip
-      // fenced because `content` already includes the leading/trailing `\n`.
+      // Strict-verbatim emit (ADR-0007). `content` already carries any
+      // leading/trailing `\n` from a user-fenced source.
       out.push('[code]', (node as CodeBlockNode).content, '[/code]');
       return;
     case 'raw_block_text':
-      // Salvage path. Content is a stray block-level closing tag the parser
-      // captured verbatim; emit it the same way (passthrough).
+      // Salvage passthrough: `content` is a stray block-level close captured
+      // verbatim by the parser.
       out.push((node as RawBlockTextNode).content);
       return;
     case 'literal_html': {
@@ -139,9 +120,8 @@ function formatNode(
       formatList(node as ListNode, out, ctx);
       return;
 
-    // Table sub-nodes are reached only via `formatTable`; the recursive
-    // dispatch lands here for completeness but in practice the table arm
-    // owns its own layout.
+    // Table sub-nodes are normally reached via `formatTable`; the dispatch
+    // arms exist for completeness, the table arm owns its own layout.
     case 'table_head':
       formatTableHead(node as TableHeadNode, out, ctx);
       return;
@@ -157,7 +137,6 @@ function formatNode(
 
     // Inline nodes
     case 'text':
-      // Verbatim emission (resolved Text-content escape policy section).
       out.push((node as TextNode).content);
       return;
     case 'bold':
@@ -191,18 +170,16 @@ function formatNode(
       out.push('[/sub]');
       return;
     case 'inline_spoiler':
-      // Same surface form as the block spoiler; the parser disambiguates
-      // by paragraph-boundary context. Formatter emits `[/spoiler]`
-      // unconditionally — the parser-side `getSpoilerClosePattern` faithfulness
-      // gap (preferring `[/spoilers]`) is unreachable from formatter output.
+      // Same surface form as the block spoiler; the parser disambiguates by
+      // paragraph-boundary context. The `[/spoiler]` unconditional emit can
+      // never reach the parser's `[/spoilers]`-preference gap.
       out.push('[spoiler]');
       formatInlines((node as InlineSpoilerNode).children, out, ctx);
       out.push('[/spoiler]');
       return;
     case 'inline_code':
-      // Q-INLINE-CODE-BACKTICK: verbatim emit. Backtick-bearing content is
-      // unrepresentable in dtext source and round-trips lossy through this
-      // surface; the markdown→AST→dtext path is the only producer.
+      // Verbatim emit (ADR-0010). Backtick-bearing content is unrepresentable
+      // in dtext source; only the markdown to AST to dtext path produces it.
       out.push('`', (node as InlineCodeNode).content, '`');
       return;
     case 'color':
@@ -214,7 +191,6 @@ function formatNode(
       out.push('\n');
       return;
     case 'fragment':
-      // Transparent grouping; emit children with no wrapper.
       formatInlines((node as FragmentNode).children, out, ctx);
       return;
     case 'link':
@@ -230,9 +206,9 @@ function formatNode(
   }
 }
 
-// Walk an array of block nodes, emitting `\n\n` between blocks (resolved
-// block separator policy). No leading or trailing separator; callers wrap
-// with their own framing (e.g. `[quote]\n...\n[/quote]`).
+// Walk an array of block nodes, emitting `\n\n` between blocks. No leading
+// or trailing separator; callers wrap with their own framing (e.g.
+// `[quote]\n...\n[/quote]`). See ADR-0002 for the document-end rule.
 function formatBlocks(
   blocks: BlockNode[],
   out: string[],
@@ -244,7 +220,7 @@ function formatBlocks(
   }
 }
 
-// Walk an array of inline nodes; no separator (inline content concatenates).
+// Walk an array of inline nodes; inline content concatenates with no separator.
 function formatInlines(
   inlines: InlineNode[],
   out: string[],
@@ -291,8 +267,8 @@ function formatSection(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Four canonical forms per the resolved Section row, mirroring the four
-  // matched-string forms in `src/dtext/parse/index.ts`'s `matchSection`.
+  // Four canonical forms, mirroring the four matched-string forms in
+  // `matchSection`.
   if (node.title !== undefined) {
     out.push(node.expanded ? '[section,expanded=' : '[section=');
     out.push(node.title, ']\n');
@@ -308,8 +284,8 @@ function formatTable(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Q-TABLE-LAYOUT: pretty layout. Structural tags on their own lines; rows
-  // on their own lines; cells inline within the row.
+  // Pretty layout (ADR-0008): structural tags on their own lines, rows on
+  // their own lines, cells inline within the row.
   out.push('[table]\n');
   for (const child of node.children) {
     formatNode(child, out, ctx);
@@ -369,7 +345,7 @@ function formatLTable(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Q-LTABLE-SEP: cells joined by ' | ' (space-pipe-space).
+  // Cells joined by ' | ' (ADR-0009).
   out.push('[ltable]\n');
   for (const row of node.rows) {
     for (let i = 0; i < row.cells.length; i++) {
@@ -386,7 +362,7 @@ function formatList(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Depth → asterisk-count, mirroring the parser's `(\*+)[ \t]+` rule.
+  // Depth maps to asterisk-count, mirroring the parser's `(\*+)[ \t]+` rule.
   // One line per item; no container framing.
   for (let i = 0; i < node.items.length; i++) {
     if (i > 0) out.push('\n');
@@ -420,11 +396,8 @@ function formatLink(
   }
 }
 
-// URL bare-vs-delimited boundary check (Q-URL-DELIMITER). Bare emit when the
-// href contains no whitespace AND ends in a non-boundary char; delimited
-// `<href>` otherwise. Boundary set is shared with the parser via
-// `../url`; both sides have to agree on the same code-point set or
-// round-trip breaks for any URL ending in a CJK / full-width bracket.
+// URL bare-vs-delimited boundary check (ADR-0006). Boundary set is shared
+// with the parser via `../url`.
 function urlEndsAtBoundary(url: string): boolean {
   if (url.length === 0) return false;
   return isBoundaryChar(url.charCodeAt(url.length - 1));
@@ -444,8 +417,8 @@ function formatInlineLink(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Q-TEXTILE-BRACKET: bare "title":url when href has no whitespace, no `]`,
-  // and is unchanged by trim-boundary; bracketed otherwise.
+  // ADR-0005: bare "title":url when href has no whitespace, no `]`, and is
+  // unchanged by trim-boundary; bracketed otherwise.
   const titleBuf: string[] = [];
   if (node.children) formatInlines(node.children, titleBuf, ctx);
   const title = titleBuf.join('');
@@ -478,7 +451,7 @@ function formatWikiLink(node: LinkNode, out: string[]): void {
     return;
   }
 
-  // Page-with-optional-anchor form. Two branches per Q-WIKI-PAGE-RECOVER:
+  // Page-with-optional-anchor form. Two branches per ADR-0004:
   //   * No-title: emit `children[0].content` directly (preserves casing).
   //   * Title-override: emit normalised page (lossy on case) plus title.
   // Distinguish by ASCII-case-insensitive match between children content and
@@ -507,13 +480,11 @@ function formatWikiLink(node: LinkNode, out: string[]): void {
 
   if (asciiLowercase(childText) === asciiLowercase(expectedNoTitle)) {
     // No-title case: children content carries the original tag spelling.
-    // Title-collision edge case: when a user typed `[[Wolf|wolf]]` (title
-    // happens to equal the lowercased page form), the AST cannot distinguish
-    // it from the no-title `[[Wolf]]` form — both produce the same
+    // Title-collision edge: `[[Wolf|wolf]]` (title equals the lowercased page
+    // form) is indistinguishable from `[[Wolf]]` in the AST, both yielding
     // `LinkNode { children: [TextNode "wolf"], href: ".../wolf", ... }`
-    // modulo case. This branch picks the no-title emit, accepted behaviour
-    // per Q-WIKI-PAGE-RECOVER (info-lossless on the page side, lossy on the
-    // title side for the collision case).
+    // modulo case. ADR-0004 picks the no-title emit (info-lossless on the
+    // page side, lossy on the title side for the collision case).
     out.push('[[', childText, ']]');
   } else {
     // Title-override case: emit normalised page (lossy on case) + title.
@@ -530,12 +501,12 @@ function formatPostSearchLink(node: LinkNode, out: string[]): void {
       ? (node.children[0] as TextNode).content
       : '';
   // Same trick as the wikilink no-title branch: when children text equals
-  // `tags` modulo ASCII case (the parser produces this for any
-  // `{{tag}}` source — `tags` is lowercased, children preserves original
-  // case), emit `{{<childText>}}` rather than the `{{<tags>}}` form. The
-  // parser lowercases the tag on re-parse and preserves the original case
-  // in children, so AST round-trip holds AND the emit avoids a `|` that
-  // would break LTable cell parsing on round-trip via an `[ltable]` row.
+  // `tags` modulo ASCII case (the parser produces this for any `{{tag}}`
+  // source: `tags` is lowercased, children preserves original case), emit
+  // `{{<childText>}}` rather than `{{<tags>}}`. The parser lowercases the tag
+  // on re-parse and preserves the original case in children, so AST round-trip
+  // holds AND the emit avoids a `|` that would break LTable cell parsing on
+  // round-trip via an `[ltable]` row.
   if (childText === '' || asciiLowercase(childText) === tags) {
     out.push('{{', childText || tags, '}}');
   } else {
@@ -544,9 +515,9 @@ function formatPostSearchLink(node: LinkNode, out: string[]): void {
 }
 
 function formatIdLink(node: LinkNode, out: string[]): void {
-  // Q-MAGIC-LINK-CANONICAL: emit `<source-prefix> #<id>` from `ID_SOURCE`,
-  // not from `ID_DISPLAY` (which would round-trip-break `thumb` to `post`).
-  // `node.children[0].content` carries the display form and is ignored here.
+  // Emit `<source-prefix> #<id>` from `ID_SOURCE` (ADR-0001). `ID_DISPLAY`
+  // would round-trip-break `thumb` to `post`. `node.children[0].content`
+  // carries the display form and is ignored here.
   if (!node.idType || !node.id) return;
   const source = ID_SOURCE[node.idType];
   out.push(source, ' #', node.id);

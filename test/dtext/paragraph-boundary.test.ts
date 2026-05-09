@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { parseDText } from '@dmark/dtext';
 import { renderViaOracle } from '../oracle';
 
-// Reproduces the "trailing <br><br></p>" bug surfaced by the corpus baseline:
-// a paragraph followed by `\n\n` and another block keeps the double-newline
-// as inline `<br><br>` inside the paragraph, instead of closing the paragraph
-// at the block boundary.
+// Reproduces the "trailing <br><br></p>" bug surfaced by the corpus
+// baseline: a paragraph followed by `\n\n` and another block keeps the
+// double-newline as inline `<br><br>` inside the paragraph instead of
+// closing the paragraph at the block boundary.
 //
-// Fix lives in src/dtext/parse/index.ts; once corrected, every assertion
-// below should match the ruby oracle.
+// Fix lives in `src/dtext/parse/index.ts`; every assertion below matches
+// the ruby oracle when the parser is correct.
 
 describe('paragraph block-boundary handling', () => {
   it('paragraph followed by header closes cleanly', async () => {

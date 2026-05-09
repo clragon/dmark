@@ -1,7 +1,6 @@
 // Custom inline coverage. One describe block per spec row from
-// md-ast-mapping.md's "Custom inline" section. Adds in commits as each
-// plugin lands; current scope is `||spoiler||`. BBCode survivors
-// (`[sup]`, `[sub]`, `[color]`) and magic links arrive in follow-ups.
+// `docs/mapping.md`'s "Custom inline" section: `||spoiler||`, BBCode
+// survivors (`[sup]`, `[sub]`, `[color]`), magic links.
 
 import { describe, expect, it } from 'vitest';
 

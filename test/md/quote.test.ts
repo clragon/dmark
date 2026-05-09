@@ -3,10 +3,8 @@
 //   - `>` line-prefix syntax (markdown-it built-in) — colourless.
 //   - `[quote]` / `[quote=COLOR]` BBCode-survivor — optional `color`.
 //
-// Per captain's path-4 resolution of Q-MD-QUOTE-COLOR
-// (`md-formatter-spec.md` / `md-ast-mapping.md` Resolved-decisions item 9),
-// the BBCode form is the only way to express a coloured quote on the
-// markdown side; `>` always emits a colourless QuoteNode by design.
+// Per ADR-0018, the BBCode form is the only way to express a coloured
+// quote on the markdown side; `>` always emits a colourless QuoteNode.
 
 import { describe, expect, it } from 'vitest';
 

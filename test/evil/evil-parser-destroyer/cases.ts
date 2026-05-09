@@ -6,7 +6,7 @@ export interface Case {
   name: string;
   input: string;
   /** Both oracle (snake_case under the hood) and dmark (camelCase) get
-      equivalent options. We default both sides to allowColor: true. */
+      equivalent options. Both sides default to allowColor: true. */
   allowColor?: boolean;
   maxThumbs?: number;
 }
@@ -2591,7 +2591,7 @@ for (const s of SEARCH_TITAN) {
 
 // ===== Wave 155: probe more new bug patterns =====
 const NEW_PROBES_4: Array<[string, string]> = [
-  // Block-close strays we haven't probed enough
+  // Block-close strays not yet probed enough
   ['stray-thead', 'before [/thead] after'],
   ['stray-tbody', 'before [/tbody] after'],
   ['stray-tr', 'before [/tr] after'],
