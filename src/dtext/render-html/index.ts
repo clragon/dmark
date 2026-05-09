@@ -127,407 +127,393 @@ function uriEscape(str: string, whitelist = ''): string {
   });
 }
 
+// Buffer-pattern renderer.
+//
+// Each `renderXxx(node, out, ctx)` pushes its HTML fragments into the shared
+// `out` array; the recursion never builds intermediate strings. A single
+// `out.join('')` at `renderToHTML`'s exit produces the final output. This
+// turns the cost from O(depth × size) (every parent re-concatenated all
+// children) into O(size), and removes the per-level transient array that
+// `children.map(renderNode).join('')` used to allocate.
+//
+// Load-bearing rule: `out` is created fresh inside `renderToHTML` and never
+// reused across calls. Do not promote it to a module-level singleton or
+// reuse it between invocations: concurrent renders would interleave and the
+// caller's HTML would be mangled. The signature passing it explicitly keeps
+// that boundary visible.
 export function renderToHTML(
   node: ASTNode,
   options: DTextRenderOptions = {},
 ): string {
+  const out: string[] = [];
   const context: RenderContext = {
     options,
     thumbCount: 0,
   };
-
-  return renderNode(node, context);
+  renderNode(node, out, context);
+  return out.join('');
 }
 
-function renderNode(node: ASTNode, context: RenderContext): string {
+function renderNode(
+  node: ASTNode,
+  out: string[],
+  context: RenderContext,
+): void {
   switch (node.type) {
     case 'document':
-      return renderDocument(node as DocumentNode, context);
+      renderNodes((node as DocumentNode).children, out, context);
+      return;
 
     // Block nodes
     case 'header':
-      return renderHeader(node as HeaderNode, context);
+      renderHeader(node as HeaderNode, out, context);
+      return;
     case 'paragraph':
-      return renderParagraph(node as ParagraphNode, context);
+      renderParagraph(node as ParagraphNode, out, context);
+      return;
     case 'quote':
-      return renderQuote(node as QuoteNode, context);
+      renderQuote(node as QuoteNode, out, context);
+      return;
     case 'spoiler_block':
-      return renderSpoilerBlock(node as SpoilerBlockNode, context);
+      renderSpoilerBlock(node as SpoilerBlockNode, out, context);
+      return;
     case 'section':
-      return renderSection(node as SectionNode, context);
+      renderSection(node as SectionNode, out, context);
+      return;
     case 'code_block':
-      return renderCodeBlock(node as CodeBlockNode, context);
+      out.push('<pre>', htmlEscape((node as CodeBlockNode).content), '</pre>');
+      return;
     case 'raw_block_text':
-      return renderRawBlockText(node as RawBlockTextNode, context);
+      out.push(htmlEscape((node as RawBlockTextNode).content));
+      return;
     case 'literal_html': {
       const lit = node as LiteralHtmlNode;
-      return (
-        lit.prefix +
-        lit.children.map((child) => renderNode(child, context)).join('')
-      );
+      out.push(lit.prefix);
+      renderNodes(lit.children, out, context);
+      return;
     }
     case 'table':
-      return renderTable(node as TableNode, context);
+      out.push('<table class="striped">');
+      renderNodes((node as TableNode).children, out, context);
+      out.push('</table>');
+      return;
     case 'ltable':
-      return renderLTable(node as LTableNode, context);
+      renderLTable(node as LTableNode, out, context);
+      return;
     case 'table_head':
-      return renderTableHead(node as TableHeadNode, context);
+      out.push('<thead>');
+      renderNodes((node as TableHeadNode).rows, out, context);
+      out.push('</thead>');
+      return;
     case 'table_body':
-      return renderTableBody(node as TableBodyNode, context);
+      out.push('<tbody>');
+      renderNodes((node as TableBodyNode).rows, out, context);
+      out.push('</tbody>');
+      return;
     case 'table_row':
-      return renderTableRow(node as TableRowNode, context);
-    case 'table_cell':
-      return renderTableCell(node as TableCellNode, context);
+      out.push('<tr>');
+      renderNodes((node as TableRowNode).cells, out, context);
+      out.push('</tr>');
+      return;
+    case 'table_cell': {
+      const cell = node as TableCellNode;
+      out.push('<', cell.cellType, '>');
+      renderNodes(cell.children, out, context);
+      out.push('</', cell.cellType, '>');
+      return;
+    }
     case 'list':
-      return renderList(node as ListNode, context);
+      renderList(node as ListNode, out, context);
+      return;
     case 'list_item':
-      return renderListItem(node as ListItemNode, context);
+      out.push('<li>');
+      renderNodes((node as ListItemNode).children, out, context);
+      out.push('</li>');
+      return;
 
     // Inline nodes
     case 'text':
-      return renderText(node as TextNode, context);
+      out.push(htmlEscape((node as TextNode).content));
+      return;
     case 'bold':
-      return renderBold(node as BoldNode, context);
+      out.push('<strong>');
+      renderNodes((node as BoldNode).children, out, context);
+      out.push('</strong>');
+      return;
     case 'italic':
-      return renderItalic(node as ItalicNode, context);
+      out.push('<em>');
+      renderNodes((node as ItalicNode).children, out, context);
+      out.push('</em>');
+      return;
     case 'strikeout':
-      return renderStrikeout(node as StrikeoutNode, context);
+      out.push('<s>');
+      renderNodes((node as StrikeoutNode).children, out, context);
+      out.push('</s>');
+      return;
     case 'underline':
-      return renderUnderline(node as UnderlineNode, context);
+      out.push('<u>');
+      renderNodes((node as UnderlineNode).children, out, context);
+      out.push('</u>');
+      return;
     case 'superscript':
-      return renderSuperscript(node as SuperscriptNode, context);
+      out.push('<sup>');
+      renderNodes((node as SuperscriptNode).children, out, context);
+      out.push('</sup>');
+      return;
     case 'subscript':
-      return renderSubscript(node as SubscriptNode, context);
+      out.push('<sub>');
+      renderNodes((node as SubscriptNode).children, out, context);
+      out.push('</sub>');
+      return;
     case 'inline_spoiler':
-      return renderInlineSpoiler(node as InlineSpoilerNode, context);
+      out.push('<span class="spoiler">');
+      renderNodes((node as InlineSpoilerNode).children, out, context);
+      out.push('</span>');
+      return;
     case 'inline_code':
-      return renderInlineCode(node as InlineCodeNode, context);
+      out.push(
+        '<span class="inline-code">',
+        htmlEscape((node as InlineCodeNode).content),
+        '</span>',
+      );
+      return;
     case 'color':
-      return renderColor(node as ColorNode, context);
+      renderColor(node as ColorNode, out, context);
+      return;
     case 'line_break':
-      return renderLineBreak(node as LineBreakNode, context);
+      out.push('<br>');
+      return;
     case 'fragment':
-      return renderFragment(node as FragmentNode, context);
+      renderNodes((node as FragmentNode).children, out, context);
+      return;
     case 'link':
-      return renderLink(node as LinkNode, context);
+      renderLink(node as LinkNode, out, context);
+      return;
     case 'internal_anchor':
-      return renderInternalAnchor(node as InternalAnchorNode, context);
+      out.push(
+        '<a id="',
+        uriEscape((node as InternalAnchorNode).name.toLowerCase()),
+        '"></a>',
+      );
+      return;
 
     default:
       console.warn(`Unknown node type: ${node.type}`);
-      return '';
+      return;
   }
 }
 
-function renderDocument(node: DocumentNode, context: RenderContext): string {
-  return node.children.map((child) => renderNode(child, context)).join('');
+// Walk an array of AST nodes in order, pushing each one's HTML fragments
+// into the shared `out` buffer. Used by every container arm (anything with
+// `.children`, plus the table arms with `.rows`); the field name is an
+// implementation detail, the contract is just "render each element."
+function renderNodes(
+  nodes: readonly ASTNode[],
+  out: string[],
+  context: RenderContext,
+): void {
+  for (const node of nodes) renderNode(node, out, context);
 }
 
-function renderHeader(node: HeaderNode, context: RenderContext): string {
-  const tag = `h${node.level}`;
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<${tag}>${content}</${tag}>`;
+function renderHeader(
+  node: HeaderNode,
+  out: string[],
+  context: RenderContext,
+): void {
+  out.push('<h', String(node.level), '>');
+  renderNodes(node.children, out, context);
+  out.push('</h', String(node.level), '>');
 }
 
-function renderParagraph(node: ParagraphNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<p>${content}</p>`;
+function renderParagraph(
+  node: ParagraphNode,
+  out: string[],
+  context: RenderContext,
+): void {
+  out.push('<p>');
+  renderNodes(node.children, out, context);
+  out.push('</p>');
 }
 
-function renderQuote(node: QuoteNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
+function renderQuote(
+  node: QuoteNode,
+  out: string[],
+  context: RenderContext,
+): void {
   if (node.color) {
     if (TAG_CATEGORY_RE.test(node.color)) {
       // Tag-category quotes get a sidebar class with the color name as
       // typed; case is preserved (verified against the oracle).
-      return `<blockquote class="dtext-sidebar-colored-${node.color}">${content}</blockquote>`;
+      out.push('<blockquote class="dtext-sidebar-colored-', node.color, '">');
+    } else {
+      out.push(
+        '<blockquote class="dtext-quote-color" style="border-left-color:',
+        node.color,
+        '">',
+      );
     }
-    return `<blockquote class="dtext-quote-color" style="border-left-color:${node.color}">${content}</blockquote>`;
+  } else {
+    out.push('<blockquote>');
   }
-  return `<blockquote>${content}</blockquote>`;
+  renderNodes(node.children, out, context);
+  out.push('</blockquote>');
 }
 
 function renderSpoilerBlock(
   node: SpoilerBlockNode,
+  out: string[],
   context: RenderContext,
-): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<div class="spoiler">${content}</div>`;
+): void {
+  out.push('<div class="spoiler">');
+  renderNodes(node.children, out, context);
+  out.push('</div>');
 }
 
-function renderSection(node: SectionNode, context: RenderContext): string {
-  const openAttr = node.expanded ? ' open' : '';
-  const title = node.title ? htmlEscape(node.title) : '';
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<details${openAttr}><summary>${title}</summary><div>${content}</div></details>`;
+function renderSection(
+  node: SectionNode,
+  out: string[],
+  context: RenderContext,
+): void {
+  out.push(node.expanded ? '<details open><summary>' : '<details><summary>');
+  if (node.title) out.push(htmlEscape(node.title));
+  out.push('</summary><div>');
+  renderNodes(node.children, out, context);
+  out.push('</div></details>');
 }
 
-function renderCodeBlock(node: CodeBlockNode, _context: RenderContext): string {
-  return `<pre>${htmlEscape(node.content)}</pre>`;
-}
-
-function renderRawBlockText(
-  node: RawBlockTextNode,
-  _context: RenderContext,
-): string {
-  return htmlEscape(node.content);
-}
-
-function renderTable(node: TableNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<table class="striped">${content}</table>`;
-}
-
-function renderLTable(node: LTableNode, context: RenderContext): string {
+function renderLTable(
+  node: LTableNode,
+  out: string[],
+  context: RenderContext,
+): void {
   // Oracle quirks:
   //   * Zero rows -> emit a literal `[/tbody]` between the table tags
   //     (verified for `[ltable][/ltable]` and `[ltable]\n\n[/ltable]`).
   //   * Any rows -> always emit `<tbody></tbody>` after `<thead>`, even
   //     when there are no body rows beyond the single header.
   if (node.rows.length === 0) {
-    return `<table class="striped">[/tbody]</table>`;
+    out.push('<table class="striped">[/tbody]</table>');
+    return;
   }
-  const headerRow = node.rows[0];
-  const bodyRows = node.rows.slice(1);
-  const headHtml = `<thead>${renderNode(headerRow, context)}</thead>`;
-  const bodyHtml = `<tbody>${bodyRows
-    .map((row) => renderNode(row, context))
-    .join('')}</tbody>`;
-  return `<table class="striped">${headHtml}${bodyHtml}</table>`;
+  out.push('<table class="striped"><thead>');
+  renderNode(node.rows[0], out, context);
+  out.push('</thead><tbody>');
+  for (let i = 1; i < node.rows.length; i++) renderNode(node.rows[i], out, context);
+  out.push('</tbody></table>');
 }
 
-function renderTableHead(node: TableHeadNode, context: RenderContext): string {
-  const content = node.rows.map((row) => renderNode(row, context)).join('');
-  return `<thead>${content}</thead>`;
-}
-
-function renderTableBody(node: TableBodyNode, context: RenderContext): string {
-  const content = node.rows.map((row) => renderNode(row, context)).join('');
-  return `<tbody>${content}</tbody>`;
-}
-
-function renderTableRow(node: TableRowNode, context: RenderContext): string {
-  const content = node.cells.map((cell) => renderNode(cell, context)).join('');
-  return `<tr>${content}</tr>`;
-}
-
-function renderTableCell(node: TableCellNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<${node.cellType}>${content}</${node.cellType}>`;
-}
-
-function renderList(node: ListNode, context: RenderContext): string {
-  let result = '';
+function renderList(
+  node: ListNode,
+  out: string[],
+  context: RenderContext,
+): void {
   let prevDepth = 0;
 
   for (const item of node.items) {
     if (item.depth > prevDepth) {
-      for (let i = prevDepth; i < item.depth; i++) {
-        result += '<ul>';
-      }
+      for (let i = prevDepth; i < item.depth; i++) out.push('<ul>');
     } else if (item.depth < prevDepth) {
-      for (let i = item.depth; i < prevDepth; i++) {
-        result += '</ul>';
-      }
+      for (let i = item.depth; i < prevDepth; i++) out.push('</ul>');
     }
-    result += renderNode(item, context);
+    renderNode(item, out, context);
     prevDepth = item.depth;
   }
 
-  for (let i = 0; i < prevDepth; i++) {
-    result += '</ul>';
-  }
-
-  return result;
+  for (let i = 0; i < prevDepth; i++) out.push('</ul>');
 }
 
-function renderListItem(node: ListItemNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<li>${content}</li>`;
-}
-
-function renderText(node: TextNode, _context: RenderContext): string {
-  return htmlEscape(node.content);
-}
-
-function renderBold(node: BoldNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<strong>${content}</strong>`;
-}
-
-function renderItalic(node: ItalicNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<em>${content}</em>`;
-}
-
-function renderStrikeout(node: StrikeoutNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<s>${content}</s>`;
-}
-
-function renderUnderline(node: UnderlineNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<u>${content}</u>`;
-}
-
-function renderSuperscript(
-  node: SuperscriptNode,
+function renderColor(
+  node: ColorNode,
+  out: string[],
   context: RenderContext,
-): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<sup>${content}</sup>`;
-}
-
-function renderSubscript(node: SubscriptNode, context: RenderContext): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<sub>${content}</sub>`;
-}
-
-function renderInlineSpoiler(
-  node: InlineSpoilerNode,
-  context: RenderContext,
-): string {
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
-  return `<span class="spoiler">${content}</span>`;
-}
-
-function renderInlineCode(
-  node: InlineCodeNode,
-  _context: RenderContext,
-): string {
-  return `<span class="inline-code">${htmlEscape(node.content)}</span>`;
-}
-
-function renderColor(node: ColorNode, context: RenderContext): string {
+): void {
   if (context.options.allowColor === false) {
-    return node.children.map((child) => renderNode(child, context)).join('');
+    renderNodes(node.children, out, context);
+    return;
   }
-
-  const content = node.children
-    .map((child) => renderNode(child, context))
-    .join('');
 
   if (TAG_CATEGORY_RE.test(node.color)) {
     // Preserve the original case of the color name in the class. Ruby's
-    // dtext does not normalize the case here — `[color=Character]` becomes
+    // dtext does not normalize the case here: `[color=Character]` becomes
     // `dtext-color-Character`, not `dtext-color-character`.
-    return `<span class="dtext-color-${node.color}">${content}</span>`;
+    out.push('<span class="dtext-color-', node.color, '">');
   } else {
-    return `<span class="dtext-color" style="color:${node.color}">${content}</span>`;
+    out.push('<span class="dtext-color" style="color:', node.color, '">');
   }
+  renderNodes(node.children, out, context);
+  out.push('</span>');
 }
 
-function renderLineBreak(
-  _node: LineBreakNode,
-  _context: RenderContext,
-): string {
-  return '<br>';
-}
-
-function renderFragment(node: FragmentNode, context: RenderContext): string {
-  return node.children.map((child) => renderNode(child, context)).join('');
-}
-
-function renderLink(node: LinkNode, context: RenderContext): string {
+function renderLink(
+  node: LinkNode,
+  out: string[],
+  context: RenderContext,
+): void {
   if (node.idType === 'thumb' && context.options.maxThumbs !== undefined) {
     if (context.thumbCount >= context.options.maxThumbs) {
-      return `<span class="thumb-limit-exceeded">${htmlEscape(node.title || node.href)}</span>`;
+      out.push(
+        '<span class="thumb-limit-exceeded">',
+        htmlEscape(node.title || node.href),
+        '</span>',
+      );
+      return;
     }
     context.thumbCount++;
   }
 
-  const classes = generateLinkClasses(node);
+  // Ruby's dtext renderer omits rel="nofollow" on id_link anchors (post #N,
+  // comment #N etc.) but adds it on every other link type.
+  out.push(node.linkType === 'id_link' ? '<a class="' : '<a rel="nofollow" class="');
+  appendLinkClasses(node, out);
+  out.push('"');
 
-  let content = '';
-  if (node.children) {
-    content = node.children.map((child) => renderNode(child, context)).join('');
-  } else if (node.title) {
-    content = htmlEscape(node.title);
-  } else {
-    content = htmlEscape(node.href);
+  if (node.idType === 'thumb' && node.id) {
+    out.push(' data-id="', htmlEscape(node.id), '"');
   }
 
   let href = node.href;
   if (context.options.baseUrl && href.startsWith('/')) {
     href = context.options.baseUrl.replace(/\/$/, '') + href;
   }
+  out.push(' href="', htmlEscape(href), '">');
 
-  // Ruby's dtext renderer omits rel="nofollow" on id_link anchors (post #N,
-  // comment #N etc.) but adds it on every other link type.
-  const relAttr = node.linkType === 'id_link' ? '' : ' rel="nofollow"';
-
-  let dataAttr = '';
-  if (node.idType === 'thumb' && node.id) {
-    dataAttr = ` data-id="${htmlEscape(node.id)}"`;
+  if (node.children) {
+    renderNodes(node.children, out, context);
+  } else if (node.title) {
+    out.push(htmlEscape(node.title));
+  } else {
+    out.push(htmlEscape(node.href));
   }
 
-  return `<a${relAttr} class="${classes.join(' ')}"${dataAttr} href="${htmlEscape(href)}">${content}</a>`;
+  out.push('</a>');
 }
 
-function renderInternalAnchor(
-  node: InternalAnchorNode,
-  _context: RenderContext,
-): string {
-  return `<a id="${uriEscape(node.name.toLowerCase())}"></a>`;
-}
-
-function generateLinkClasses(node: LinkNode): string[] {
-  const classes: string[] = ['dtext-link'];
+function appendLinkClasses(node: LinkNode, out: string[]): void {
+  out.push('dtext-link');
 
   switch (node.linkType) {
     case 'url':
       break;
     case 'textile':
-      if (node.href.startsWith('/')) {
-        break;
-      } else {
-        classes.push('dtext-external-link');
-      }
+      if (!node.href.startsWith('/')) out.push(' dtext-external-link');
       break;
     case 'wiki':
-      classes.push('dtext-wiki-link');
+      out.push(' dtext-wiki-link');
       break;
     case 'post_search':
-      classes.push('dtext-post-search-link');
+      out.push(' dtext-post-search-link');
       break;
     case 'id_link':
-      classes.push('dtext-id-link');
+      out.push(' dtext-id-link');
       if (node.idType) {
         const extra = ID_TYPE_CLASSES[node.idType];
-        if (extra) classes.push(...extra);
+        if (extra) {
+          for (const c of extra) {
+            out.push(' ', c);
+          }
+        }
       }
       break;
   }
-
-  return classes;
 }
+
