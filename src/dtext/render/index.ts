@@ -94,11 +94,18 @@ function formatNode(
     case 'section':
       formatSection(node as SectionNode, out, ctx);
       return;
-    case 'code_block':
-      // Strict-verbatim emit (ADR-0007). `content` already carries any
-      // leading/trailing `\n` from a user-fenced source.
-      out.push('[code]', (node as CodeBlockNode).content, '[/code]');
+    case 'code_block': {
+      // ADR-0007 emit. The parser eats one whitespace+newline run after
+      // `[code]`, so when content's first byte is itself whitespace we
+      // prepend `\n` to absorb the parser's consume on round-trip. Without
+      // it, content like `"\nhi"` reparses as `"hi"`.
+      const content = (node as CodeBlockNode).content;
+      const needsLeadingNewline = content.length > 0 && /^\s/.test(content);
+      out.push('[code]');
+      if (needsLeadingNewline) out.push('\n');
+      out.push(content, '[/code]');
       return;
+    }
     case 'raw_block_text':
       // Salvage passthrough: `content` is a stray block-level close captured
       // verbatim by the parser.

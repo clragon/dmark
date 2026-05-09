@@ -16,22 +16,30 @@ break round-trip.
 
 ## Decision
 
-Emit `[code]<content>[/code]` with `content` written exactly as captured.
-No padding, no trimming, no fence-style normalisation.
+Emit `[code]<content>[/code]` with `content` written exactly as captured,
+with one targeted exception: when `content` begins with a whitespace
+byte (` `, `\t`, `\n`, or `\r`) prepend a single `\n` after `[code]`.
+The parser eats one whitespace+newline run after `[code]`, so without
+the prepend a `content` starting in whitespace round-trips to a shorter
+`content` on re-parse.
 
 ## Consequences
 
 - A fenced source round-trips fenced; an inline source round-trips
   inline. The author's layout choice is preserved through the AST
   because `content` already encodes it.
-- Multi-line content stays multi-line; single-line content stays
-  single-line. The formatter never inserts surrounding `\n`.
+- Inline `[code]hi[/code]` (content `"hi"`) emits unchanged.
+- Fenced `[code]\nhi\n[/code]` (content `"\nhi\n"`) emits with a
+  leading `\n` so the parser's eat-one-newline rule consumes it,
+  leaving the original `content` intact on re-parse.
 - Any post-emit pretty-printing belongs in a separate pass; the
   formatter's contract is round-trip stability, which forbids it.
 
 ## Alternatives considered
 
-- Force `\n` padding around `content` so every code block emits in
-  fenced layout. Rejected: an AST whose `content` lacks a leading or
-  trailing `\n` would round-trip to a different `content` on re-parse,
-  breaking the AST-stability guarantee.
+- Force `\n` padding unconditionally so every code block emits in
+  fenced layout. Rejected: would inflate inline `[code]hi[/code]` to
+  fenced form on every round-trip, churning the author's layout choice.
+- Strict verbatim emit (no padding ever). Rejected: breaks round-trip
+  for any `content` starting with whitespace, which is the common case
+  for fenced sources.
