@@ -24,6 +24,14 @@ import type {
   TableRowNode,
   TextNode,
 } from '../../ast';
+import {
+  buildIdLink,
+  buildWikiLink,
+  ID_PATTERNS,
+  ID_TYPE_MAP,
+  type WikiLinkInput,
+} from '../../ast/links';
+import { asciiLowercase, rubyUriEscape } from '../../ast/text';
 
 interface ParserOptions {
   allowColor?: boolean;
@@ -45,12 +53,6 @@ interface IdMatch {
 interface PostSearchMatch {
   tag: string;
   title?: string;
-}
-
-interface WikiLinkMatch {
-  tag: string;
-  title?: string;
-  anchor?: string;
 }
 
 interface TextileLinkMatch {
@@ -198,23 +200,6 @@ function parseInlineString(input: string): InlineNode[] {
   return [{ type: 'text', content: input }];
 }
 
-// Lowercase ASCII letters only, leaving non-ASCII characters untouched.
-// Ruby's dtext normalizes wiki/post-search keys with `String#downcase` in a
-// way that leaves Unicode letters alone (verified against the oracle:
-// `[[Ōmukade]]` keeps the `Ō` in the URL, while `[[Foo]]` becomes `foo`).
-// JavaScript's String.prototype.toLowerCase is Unicode-aware, so we need
-// our own version.
-//
-// Fast path: most tag-name strings are already entirely lowercase. Test for
-// any uppercase before allocating a new string. `RE_HAS_UPPER.test` lowers
-// to a tight scan, while `replace(/[A-Z]/g, fn)` always produces a fresh
-// string even when nothing needs folding.
-const RE_HAS_UPPER = /[A-Z]/;
-function asciiLowercase(s: string): string {
-  if (!RE_HAS_UPPER.test(s)) return s;
-  return s.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
-}
-
 // Ruby's dtext only accepts a textile-style "title":url link when the url
 // looks like an absolute path or an http(s) URL. Bare hostnames like
 // `example.com/foo` or relative paths like `users/123` are left as literal
@@ -223,24 +208,6 @@ function isAcceptedTextileUrl(url: string): boolean {
   if (url.length === 0) return false;
   if (url[0] === '/') return true;
   return /^https?:\/\//i.test(url);
-}
-
-// Match ruby's CGI.escape / URI::DEFAULT_PARSER.escape behavior: encode
-// everything outside RFC 3986 unreserved (A-Z a-z 0-9 - _ . ~). JS's
-// encodeURIComponent leaves !'()* unencoded; ruby encodes them.
-//
-// Fast path: the secondary `replace(/[!'()*]/g, ...)` only matters when at
-// least one of those five chars survived `encodeURIComponent` unencoded. A
-// quick test on the original string skips the second pass for the common
-// case (most tag/wiki keys contain none of them).
-const RE_RUBY_EXTRA_ESCAPES = /[!'()*]/;
-function rubyUriEscape(str: string): string {
-  const encoded = encodeURIComponent(str);
-  if (!RE_RUBY_EXTRA_ESCAPES.test(encoded)) return encoded;
-  return encoded.replace(
-    /[!'()*]/g,
-    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
 }
 
 // Sticky-flag (`/y`) variants of the regexes the parser anchors at `this.pos`.
@@ -335,35 +302,6 @@ export class DTextStateMachineParser {
   private sectionDepth: number = 0;
   private spoilerBlockDepth: number = 0;
 
-  // All link ID patterns
-  private static readonly ID_PATTERNS: ReadonlyArray<{
-    pattern: string;
-    type: IdType;
-  }> = [
-    { pattern: 'post', type: 'post' },
-    { pattern: 'thumb', type: 'thumb' },
-    { pattern: 'post changes', type: 'post_changes' },
-    { pattern: 'flag', type: 'flag' },
-    { pattern: 'note', type: 'note' },
-    { pattern: 'forum', type: 'forum_post' },
-    { pattern: 'topic', type: 'topic' },
-    { pattern: 'comment', type: 'comment' },
-    { pattern: 'pool', type: 'pool' },
-    { pattern: 'user', type: 'user' },
-    { pattern: 'artist', type: 'artist' },
-    { pattern: 'ban', type: 'ban' },
-    { pattern: 'bur', type: 'bur' },
-    { pattern: 'alias', type: 'alias' },
-    { pattern: 'implication', type: 'implication' },
-    { pattern: 'mod action', type: 'mod_action' },
-    { pattern: 'record', type: 'record' },
-    { pattern: 'wiki', type: 'wiki' },
-    { pattern: 'set', type: 'set' },
-    { pattern: 'blip', type: 'blip' },
-    { pattern: 'takedown', type: 'takedown' },
-    { pattern: 'take\\s?down\\s+request', type: 'takedown' },
-    { pattern: 'ticket', type: 'ticket' },
-  ];
 
   // Single compiled regex for all ID patterns. Ruby requires exactly one
   // ASCII space or NBSP between the prefix word and `#` (verified against
@@ -371,7 +309,7 @@ export class DTextStateMachineParser {
   // literal, while `pool #1234` and `pool #1234` link).
   private static readonly COMPILED_ID_PATTERN = new RegExp(
     '^(' +
-      DTextStateMachineParser.ID_PATTERNS.map((p) => p.pattern).join('|') +
+      ID_PATTERNS.map((p) => p.pattern).join('|') +
       ') #(\\d+)',
     'i',
   );
@@ -382,84 +320,10 @@ export class DTextStateMachineParser {
   // `^` is dropped since sticky already anchors to `lastIndex`.
   private static readonly COMPILED_ID_PATTERN_STICKY = new RegExp(
     '(' +
-      DTextStateMachineParser.ID_PATTERNS.map((p) => p.pattern).join('|') +
+      ID_PATTERNS.map((p) => p.pattern).join('|') +
       ') #(\\d+)',
     'iy',
   );
-
-  // Canonical display form per id-type. Ruby renders the link text as
-  // "<canonical> #<id>" regardless of how the prefix was typed in the source.
-  // `Pool` and `POOL` both display as `pool`, `Take Down Request` collapses
-  // to `takedown`, and `bur` always upcases to `BUR`.
-  private static readonly ID_DISPLAY: Record<IdType, string> = {
-    post: 'post',
-    thumb: 'post',
-    post_changes: 'post changes',
-    flag: 'flag',
-    note: 'note',
-    forum_post: 'forum',
-    topic: 'topic',
-    comment: 'comment',
-    pool: 'pool',
-    user: 'user',
-    artist: 'artist',
-    ban: 'ban',
-    bur: 'BUR',
-    alias: 'alias',
-    implication: 'implication',
-    mod_action: 'mod action',
-    record: 'record',
-    wiki: 'wiki',
-    set: 'set',
-    blip: 'blip',
-    takedown: 'takedown',
-    ticket: 'ticket',
-  };
-
-  // Build the matched-prefix to type map by collapsing each pattern's regex
-  // whitespace metachars into a single space. `take\\s?down\\s+request`
-  // becomes `take down request`; `post changes` is already a literal-space
-  // pattern. Lookup keys are lowercase, with input whitespace runs collapsed
-  // to a single space.
-  private static readonly ID_TYPE_MAP: ReadonlyMap<string, IdType> = new Map(
-    [
-      ...DTextStateMachineParser.ID_PATTERNS.map((p) => [
-        p.pattern.replace(/\\s[?+*]?/g, ' ').replace(/\s+/g, ' '),
-        p.type,
-      ] as [string, IdType]),
-      // extra alias for the contracted form of takedown request
-      ['takedown request', 'takedown'],
-    ],
-  );
-
-  // URL path prefix per id-type. The id is appended directly to the route
-  // string. Stays in lockstep with `ID_PATTERNS` / `ID_DISPLAY` /
-  // `ID_TYPE_MAP`: a new id type means a matching entry here, and the
-  // exhaustive `Record<IdType, ...>` makes a missing one a compile error.
-  private static readonly ID_ROUTES: Record<IdType, string> = {
-    post: '/posts/',
-    thumb: '/posts/',
-    post_changes: '/post_versions?search[post_id]=',
-    flag: '/post_flags/',
-    note: '/notes/',
-    forum_post: '/forum_posts/',
-    topic: '/forum_topics/',
-    comment: '/comments/',
-    pool: '/pools/',
-    user: '/users/',
-    artist: '/artists/',
-    ban: '/bans/',
-    bur: '/bulk_update_requests/',
-    alias: '/tag_aliases/',
-    implication: '/tag_implications/',
-    mod_action: '/mod_actions/',
-    record: '/user_feedbacks/',
-    wiki: '/wiki_pages/',
-    set: '/post_sets/',
-    blip: '/blips/',
-    takedown: '/takedowns/',
-    ticket: '/tickets/',
-  };
 
   constructor(input: string, options: ParserOptions = {}) {
     this.input = input;
@@ -1848,7 +1712,7 @@ export class DTextStateMachineParser {
     // corresponding entry here. The null guard is paranoia for a future
     // edit that adds a regex pattern without a map entry.
     const matchedPattern = match[1].toLowerCase().replace(/\s+/g, ' ');
-    const type = DTextStateMachineParser.ID_TYPE_MAP.get(matchedPattern);
+    const type = ID_TYPE_MAP.get(matchedPattern);
     if (type === undefined) return null;
 
     this.pos += match[0].length;
@@ -1892,7 +1756,7 @@ export class DTextStateMachineParser {
     return result;
   }
 
-  protected matchWikiLink(): WikiLinkMatch | null {
+  protected matchWikiLink(): WikiLinkInput | null {
     // Match the [[...]] block first, then validate the content as a whole.
     // Verified against the oracle:
     //   * 0 pipes  -> [[tag]] form (tag must be non-empty)
@@ -1915,7 +1779,7 @@ export class DTextStateMachineParser {
     return result;
   }
 
-  private parseWikiContent(content: string): WikiLinkMatch | null {
+  private parseWikiContent(content: string): WikiLinkInput | null {
     const firstPipe = content.indexOf('|');
     const lastPipe = content.lastIndexOf('|');
 
@@ -1941,19 +1805,19 @@ export class DTextStateMachineParser {
 
     const hashIdx = tagPart.indexOf('#');
     if (hashIdx === 0) {
-      const r: WikiLinkMatch = { tag: '', anchor: tagPart.slice(1) };
+      const r: WikiLinkInput = { tag: '', anchor: tagPart.slice(1) };
       if (titlePart !== undefined) r.title = titlePart;
       return r;
     }
     if (hashIdx > 0) {
-      const r: WikiLinkMatch = {
+      const r: WikiLinkInput = {
         tag: tagPart.slice(0, hashIdx),
         anchor: tagPart.slice(hashIdx + 1),
       };
       if (titlePart !== undefined) r.title = titlePart;
       return r;
     }
-    const r: WikiLinkMatch = { tag: tagPart };
+    const r: WikiLinkInput = { tag: tagPart };
     if (titlePart !== undefined) r.title = titlePart;
     return r;
   }
@@ -2222,41 +2086,19 @@ export class DTextStateMachineParser {
 
   // Link creation methods
   private createIdLink(match: IdMatch): LinkNode {
-    const href = DTextStateMachineParser.ID_ROUTES[match.type] + match.id;
-
-    // Display text uses the canonical form for the id-type, not the raw
-    // source. `Pool` becomes `pool`, `bur` upcases to `BUR`, and the verbose
-    // `take down request` collapses to `takedown` (verified against the
-    // oracle). Thumbs piggyback on the post canonical name.
-    const canonical =
-      DTextStateMachineParser.ID_DISPLAY[match.type] ?? match.type;
-    const text = `${canonical} #${match.id}`;
-
-    if (match.type === 'thumb') {
+    // Past the per-document thumb limit ruby drops the thumb-placeholder
+    // class and emits a plain post id-link, so swap idType to 'post' to
+    // suppress the thumb-only attributes the renderer would otherwise add.
+    // The actual node shape lives in `buildIdLink`; this wrapper just
+    // resolves the budget question and delegates.
+    let type = match.type;
+    if (type === 'thumb') {
       this.thumbCount++;
       if (this.options.maxThumbs && this.thumbCount > this.options.maxThumbs) {
-        // Past the per-document thumb limit ruby drops the thumb-placeholder
-        // class and emits a plain post id-link, so swap idType to 'post' to
-        // suppress the thumb-only attributes the renderer would otherwise add.
-        return {
-          type: 'link',
-          linkType: 'id_link',
-          idType: 'post',
-          id: match.id,
-          href,
-          children: [{ type: 'text', content: text }],
-        };
+        type = 'post';
       }
     }
-
-    return {
-      type: 'link',
-      linkType: 'id_link',
-      idType: match.type,
-      id: match.id,
-      href,
-      children: [{ type: 'text', content: text }],
-    };
+    return buildIdLink(type, match.id);
   }
 
   private createPostSearchLink(match: PostSearchMatch): LinkNode {
@@ -2273,52 +2115,10 @@ export class DTextStateMachineParser {
     };
   }
 
-  private createWikiLink(match: WikiLinkMatch): LinkNode {
-    // Anchor presence is signalled by `anchor !== undefined`; an empty-string
-    // anchor is meaningful (e.g. `[[abc#]]` -> trailing `#` in href + display,
-    // `[[#]]` -> internal anchor with empty fragment). In the href fragment,
-    // ASCII spaces become `_` before URI escaping (verified against the
-    // oracle: `[[wiki#a b c]]` -> `wiki#a_b_c`); other whitespace like tab
-    // is left for `rubyUriEscape` to encode (`\t` -> `%09`). Embedded `#`
-    // characters stay literal in the fragment (oracle does not encode them,
-    // so `[[abc#x#y#z]]` -> `abc#x#y#z`). Display text preserves the
-    // original anchor as typed.
-    const anchorHref = (anchor: string) =>
-      rubyUriEscape(asciiLowercase(anchor.replace(/ /g, '_'))).replace(
-        /%23/g,
-        '#',
-      );
-
-    if (match.tag === '' && match.anchor !== undefined) {
-      const href = `#${anchorHref(match.anchor)}`;
-      const title = match.title ?? `#${match.anchor}`;
-      return {
-        type: 'link',
-        linkType: 'wiki',
-        href,
-        anchor: match.anchor,
-        children: [{ type: 'text', content: title }],
-      };
-    }
-
-    const normalizedTag = asciiLowercase(match.tag.replace(/ /g, '_'));
-    let href = `/wiki_pages/show_or_new?title=${rubyUriEscape(normalizedTag)}`;
-
-    if (match.anchor !== undefined) {
-      href += `#${anchorHref(match.anchor)}`;
-    }
-
-    const title =
-      match.title ??
-      (match.anchor !== undefined ? `${match.tag}#${match.anchor}` : match.tag);
-
-    return {
-      type: 'link',
-      linkType: 'wiki',
-      href,
-      anchor: match.anchor,
-      children: [{ type: 'text', content: title }],
-    };
+  private createWikiLink(match: WikiLinkInput): LinkNode {
+    // Pure construction lives in `buildWikiLink` so the markdown adapter
+    // produces byte-identical hrefs without copying the rules.
+    return buildWikiLink(match);
   }
 
   private createTextileLink(match: TextileLinkMatch): LinkNode {
