@@ -175,9 +175,18 @@ function trimTrailingLineBreaks(children: InlineNode[]): void {
   }
 }
 
-// Parse a piece of text that's already known to be inline-only (link titles,
-// for example) and return the resulting inline children. Falls back to a
-// single text node if parsing yields nothing useful.
+// Parse a string of inline content in a fully isolated parser context. Used
+// for textile link titles, which sit syntactically inside the outer document
+// but semantically belong to their own world: a `[/quote]` typed into a
+// textile title is literal text, not a scope-killer; thumbs in a textile
+// title get their own budget rather than counting against the document
+// total. The fresh parser instance reflects that isolation.
+//
+// Compare `parseInlineText` (method on the class), which does the opposite:
+// it shares the surrounding parser's depth counters and thumb count so list
+// item / ltable cell content stays aware of its outer block context.
+//
+// Falls back to a single text node if parsing yields nothing useful.
 function parseInlineString(input: string): InlineNode[] {
   if (input.length === 0) return [];
   const sub = new DTextStateMachineParser(input, { inlineOnly: true });
@@ -259,10 +268,10 @@ const RE_SPOILER_BLOCK = /\[(spoilers?)\]([\s\S]*?)\[\/\1\]/iy;
 // independent of the open form (used by peekBlockElement, which only cares
 // whether *some* close exists, matching the prior `(.*?)\[\/spoilers?\]` rule).
 const RE_SPOILER_BLOCK_LOOSE = /\[spoilers?\]([\s\S]*?)\[\/spoilers?\]/iy;
-const RE_SPOILER_PEEK = /\[spoilers?\]/iy;
-const RE_QUOTE_CLOSE_PEEK = /\[\/quote\]/iy;
-const RE_SECTION_CLOSE_PEEK = /\[\/section\]/iy;
-const RE_TEXTILE_TITLE_PEEK = /"[^"]+":/y;
+const RE_SPOILER_OPEN = /\[spoilers?\]/iy;
+const RE_QUOTE_CLOSE = /\[\/quote\]/iy;
+const RE_SECTION_CLOSE = /\[\/section\]/iy;
+const RE_TEXTILE_TITLE = /"[^"]+":/y;
 
 // Block-context patterns shared by `peekBlockElement`. Hoisted so the array
 // isn't rebuilt and the regexes aren't recompiled on every paragraph step.
@@ -1567,6 +1576,21 @@ export class DTextStateMachineParser {
     return { type: 'text', content: input[this.pos++] || '' };
   }
 
+  // Parse a string of inline content while sharing the outer parser's state
+  // (depth counters, thumb count). Used for list-item bodies and ltable cell
+  // contents, which sit inside an outer block context that they need to stay
+  // aware of: a `[/quote]` inside a list item that's nested in a quote should
+  // close the outer quote (not show up as literal text), and thumbs inside a
+  // list item should count toward the document-wide `maxThumbs` budget.
+  //
+  // Compare the free function `parseInlineString` near the top of the file,
+  // which does the opposite: fresh parser instance, own budget, container
+  // closes stay literal. That one is for genuinely isolated contexts like
+  // textile link titles.
+  //
+  // The save/restore of `input` and `pos` lets the caller stage a substring
+  // through the existing matcher infrastructure without leaking position
+  // state back to the caller.
   private parseInlineText(text: string): InlineNode[] {
     const savedPos = this.pos;
     const savedInput = this.input;
@@ -1657,10 +1681,18 @@ export class DTextStateMachineParser {
 
   private matchSpoilerBlockOpen(): boolean {
     // At block context (parseBlock is only entered at document start or after
-    // a paragraph break) `[spoiler]` always opens a block spoiler, regardless
-    // of what its body contains. A spoiler embedded inside a paragraph (after
-    // a single newline or mid-line) stays inline; that case never reaches
-    // parseBlock, so the structural test here is sufficient.
+    // a paragraph break) `[spoiler]` opens a block spoiler when a matching
+    // close exists somewhere ahead. A spoiler embedded inside a paragraph
+    // (after a single newline or mid-line) stays inline; that case never
+    // reaches parseBlock, so the structural test here is sufficient.
+    //
+    // Known faithfulness gap: this regex pairs the close form with the open
+    // form via `\1`, so `[spoiler]x[/spoilers]` does NOT match here and
+    // falls through to inline parsing. The oracle is more permissive and
+    // treats either close form as block when at block context (probed
+    // against the live oracle 2026-05-09). Fixing this requires both this
+    // matcher and `getSpoilerClosePattern` to be reworked together; the
+    // close-form picking and the open-form pairing interact.
     const blockMatch = this.matchSticky(RE_SPOILER_BLOCK);
     if (!blockMatch) return false;
     this.pos += blockMatch[1].length + 2; // consume only the opening tag
@@ -1675,10 +1707,20 @@ export class DTextStateMachineParser {
   }
 
   private getSpoilerClosePattern(): string {
-    // Prefer `[/spoilers]` when it appears anywhere ahead of this.pos,
-    // matching the prior `slice().toLowerCase().includes()` behavior. The
-    // global flag lets us walk forward from this.pos without allocating a
-    // lower-cased copy of the rest of the buffer.
+    // Pick which close form `parseInlineContainer` should look for. Prefer
+    // `[/spoilers]` whenever one appears anywhere ahead, otherwise fall
+    // back to `[/spoiler]`. The `/g` flag lets us walk forward from
+    // `this.pos` without allocating a lower-cased copy of the rest of the
+    // buffer.
+    //
+    // Known faithfulness gap: ruby pair-matches by depth, not by form, so
+    // `[spoiler]a [spoiler]b[/spoiler] c[/spoilers]` correctly nests with
+    // the outer `[spoiler]` paired against the trailing `[/spoilers]`.
+    // Our naive "first `[/spoilers]` ahead wins" picker loses that
+    // structure when nested inline spoilers appear, and is also coupled
+    // to the block-vs-inline decision in `matchSpoilerBlockOpen` which
+    // has its own gap. Fix the two together. Probed against the live
+    // oracle 2026-05-09.
     const re = /\[\/spoilers\]/gi;
     re.lastIndex = this.pos;
     return re.test(this.input) ? '[/spoilers]' : '[/spoiler]';
@@ -2122,7 +2164,7 @@ export class DTextStateMachineParser {
       this.pos === 0 || this.input[this.pos - 1] === '\n';
 
     // Special handling for spoilers - only block if multiline
-    if (this.testSticky(RE_SPOILER_PEEK)) {
+    if (this.testSticky(RE_SPOILER_OPEN)) {
       const spoilerMatch = this.matchSticky(RE_SPOILER_BLOCK_LOOSE);
       return spoilerMatch !== null && spoilerMatch[1].includes('\n');
     }
@@ -2131,9 +2173,9 @@ export class DTextStateMachineParser {
     // matching open is in scope. Outside of one, ruby treats them as
     // ordinary inline text and so do we (otherwise we infinite-loop in
     // parseBlock since no branch consumes them).
-    if (this.quoteDepth > 0 && this.testSticky(RE_QUOTE_CLOSE_PEEK))
+    if (this.quoteDepth > 0 && this.testSticky(RE_QUOTE_CLOSE))
       return true;
-    if (this.sectionDepth > 0 && this.testSticky(RE_SECTION_CLOSE_PEEK))
+    if (this.sectionDepth > 0 && this.testSticky(RE_SECTION_CLOSE))
       return true;
     if (this.spoilerBlockDepth > 0 && this.testSticky(RE_STRAY_SPOILER_CLOSE))
       return true;
@@ -2166,7 +2208,7 @@ export class DTextStateMachineParser {
       input.startsWith('[[', pos) ||
       input.startsWith('"http', pos) ||
       input.startsWith('<http', pos) ||
-      this.testSticky(RE_TEXTILE_TITLE_PEEK)
+      this.testSticky(RE_TEXTILE_TITLE)
     ); // Match textile links like "text":url or "text":[url]
   }
 
