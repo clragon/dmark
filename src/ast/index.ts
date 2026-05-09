@@ -227,7 +227,7 @@ export type IdType =
 
 export interface LinkNode extends ASTNode {
   type: 'link';
-  linkType: 'url' | 'textile' | 'wiki' | 'post_search' | 'id_link';
+  linkType: 'url' | 'inline' | 'wiki' | 'post_search' | 'id_link';
   href: string;
   title?: string;
   children?: InlineNode[];

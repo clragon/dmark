@@ -2116,10 +2116,14 @@ export class DTextStateMachineParser {
     return buildWikiLink(match);
   }
 
+  // Builds a `LinkNode` for the dtext textile-style syntax (`"text":url` and
+  // `"text":[url]`). The function's name describes its input shape, but the
+  // AST tag it produces is the flavor-neutral `linkType: 'inline'` (shared
+  // with the markdown adapter's `[text](url)` form).
   private createTextileLink(match: TextileLinkMatch): LinkNode {
     return {
       type: 'link',
-      linkType: 'textile',
+      linkType: 'inline',
       href: match.url,
       children: parseInlineString(match.title),
     };

@@ -459,9 +459,9 @@ function walkInlineRange(
         // `<url>` and email autolinks; inline links `[text](url)` set it
         // to `''`. Spec: autolinks become `linkType: 'url'` with the href
         // as the only TextNode child; inline links become `linkType:
-        // 'textile'` with the parsed text content as children. Reusing
-        // `'textile'` is a captain-locked decision (see Naming-debt note in
-        // md-ast-mapping.md).
+        // 'inline'` with the parsed text content as children. The `inline`
+        // tag is shared with dtext's `"text":url` syntax (same render
+        // rules, same AST shape).
         const close = findInlineClose(tokens, i, end, 'link_close');
         const href = tok.attrGet('href') ?? '';
         const isAutolink = tok.markup === 'autolink';
@@ -477,7 +477,7 @@ function walkInlineRange(
           const children = walkInlineRange(tokens, i + 1, close, diagnostics);
           const node: LinkNode = {
             type: 'link',
-            linkType: 'textile',
+            linkType: 'inline',
             href,
             children,
           };

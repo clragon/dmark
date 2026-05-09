@@ -80,11 +80,11 @@ describe('inline code', () => {
 });
 
 describe('inline link `[text](url)`', () => {
-  it('produces LinkNode with linkType `textile` and parsed text children', () => {
+  it('produces LinkNode with linkType `inline` and parsed text children', () => {
     expect(inlineOf('[google](https://google.com)')).toEqual([
       {
         type: 'link',
-        linkType: 'textile',
+        linkType: 'inline',
         href: 'https://google.com',
         children: [{ type: 'text', content: 'google' }],
       },
@@ -95,7 +95,7 @@ describe('inline link `[text](url)`', () => {
     expect(inlineOf('[**bold link**](https://example.com)')).toEqual([
       {
         type: 'link',
-        linkType: 'textile',
+        linkType: 'inline',
         href: 'https://example.com',
         children: [
           {

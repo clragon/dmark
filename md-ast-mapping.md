@@ -121,14 +121,11 @@ same rendered intent. See Open questions.
 
 - md: `[text](url)`
 - dtext: `"text":url` or `"text":[url]`
-- AST: `LinkNode { linkType: "textile", href: "url", children: [...inline-of-text] }`
+- AST: `LinkNode { linkType: "inline", href: "url", children: [...inline-of-text] }`
 
-Notes: the `"textile"` tag is reused for markdown's `[text](url)` because the
-render rules are identical to dtext's `"text":url` and `"text":[url]` forms.
-The name is historical (it originally described only the dtext textile-style
-syntax); reuse is a captain-locked decision so the renderer's per-class HTML
-stays unchanged. A future rename to a more provenance-neutral name is a
-focused follow-up if a stronger reason arrives.
+Notes: the `"inline"` tag is shared with dtext's `"text":url` and
+`"text":[url]` forms, since the render rules are identical. Both surface
+syntaxes produce a structurally identical `LinkNode`.
 
 ### Bare URL
 
@@ -167,7 +164,7 @@ delegates to a shared helper rather than re-implementing the rules.
 Notes: markdown.md proposes also mapping this to `[anchor](#anchor)`; we
 **don't**. The wikilink form is preserved as-is so the AST stays identical to
 the dtext side. The plain markdown link form `[anchor](#anchor)` works too,
-but parses as a `linkType: "textile"` link, not a wiki link.
+but parses as a `linkType: "inline"` link, not a wiki link.
 
 ### Tag search
 
@@ -445,11 +442,3 @@ imports resolve.
   whatever the Artisan's planned A1 cleanup of these constants has settled
   on; if that cleanup has landed, the export is already there.
 
-## Naming-debt note
-
-The `linkType: "textile"` tag covers both dtext's `"text":url` (genuinely
-textile-style) and markdown's `[text](url)` (covered above under Markdown
-link). Reuse is intentional: the render rules are identical and the captain
-locked the name so the renderer keeps a single per-class HTML path. A
-focused rename to a more provenance-neutral name is on the table if a
-stronger reason ever arrives, but is not in scope for the markdown adapter.

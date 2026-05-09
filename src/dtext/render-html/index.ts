@@ -494,7 +494,7 @@ function appendLinkClasses(node: LinkNode, out: string[]): void {
   switch (node.linkType) {
     case 'url':
       break;
-    case 'textile':
+    case 'inline':
       if (!node.href.startsWith('/')) out.push(' dtext-external-link');
       break;
     case 'wiki':
