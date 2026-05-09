@@ -495,6 +495,13 @@ function formatWikiLink(node: LinkNode, out: string[]): void {
 
   if (asciiLowercase(childText) === asciiLowercase(expectedNoTitle)) {
     // No-title case: children content carries the original tag spelling.
+    // Title-collision edge case: when a user typed `[[Wolf|wolf]]` (title
+    // happens to equal the lowercased page form), the AST cannot distinguish
+    // it from the no-title `[[Wolf]]` form — both produce the same
+    // `LinkNode { children: [TextNode "wolf"], href: ".../wolf", ... }`
+    // modulo case. This branch picks the no-title emit, accepted behaviour
+    // per Q-WIKI-PAGE-RECOVER (info-lossless on the page side, lossy on the
+    // title side for the collision case).
     out.push('[[', childText, ']]');
   } else {
     // Title-override case: emit normalised page (lossy on case) + title.
