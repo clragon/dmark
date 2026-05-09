@@ -85,6 +85,26 @@ const BLOCK_FIXTURES: Fixture[] = [
     markdown: '> first line\n> second line',
   },
   {
+    name: 'bbcode quote bare',
+    markdown: '[quote]\nbody text\n[/quote]',
+  },
+  {
+    name: 'bbcode quote red',
+    markdown: '[quote=red]\nin red\n[/quote]',
+  },
+  {
+    name: 'bbcode quote hex',
+    markdown: '[quote=#abc]\ncustom hex\n[/quote]',
+  },
+  {
+    name: 'bbcode quote tag-category',
+    markdown: '[quote=character]\nin character colour\n[/quote]',
+  },
+  {
+    name: 'bbcode quote multi-paragraph',
+    markdown: '[quote=red]\nfirst para\n\nsecond para\n[/quote]',
+  },
+  {
     name: 'spoiler block bbcode',
     markdown: '[spoiler]\ncontents hidden\n[/spoiler]',
   },
@@ -136,14 +156,6 @@ describe('markdown round-trip — blocks', () => {
 // (or the markdown-it / parser-side root cause) that justifies why the
 // round-trip is *expected* to break for this construct.
 describe('markdown round-trip — documented divergences (skipped)', () => {
-  // Q-MD-QUOTE-COLOR (path 4): coloured `QuoteNode` emits as
-  // `[quote=COLOR]...[/quote]` BBCode-survivor form. Falcon's parser-side
-  // plugin recognising `[quote]` / `[quote=COLOR]` has not yet landed on
-  // the markdown side, so re-parsing the formatter's coloured-quote output
-  // currently triggers `md.legacy_bbcode` rejection. Unskip this fixture
-  // when the plugin commits.
-  it.skip('coloured blockquote (Q-MD-QUOTE-COLOR; blocked on parser plugin)', () => {});
-
   // Q-MD-TABLE-MULTILINE: a `LineBreakNode` inside a `TableCellNode`
   // collapses to a single space on emit (`md.table_cell_linebreak_collapsed`
   // warning). Round-trip is intrinsically lossy on the source-form side.

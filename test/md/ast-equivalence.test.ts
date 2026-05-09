@@ -69,6 +69,26 @@ const BLOCK_PAIRS: Pair[] = [
   { name: 'header level 3', dtext: 'h3. title', markdown: '### title' },
   { name: 'blockquote (single line)', dtext: '[quote]hi[/quote]', markdown: '> hi' },
   {
+    name: 'blockquote BBCode form (colourless)',
+    dtext: '[quote]hi[/quote]',
+    markdown: '[quote]\nhi\n[/quote]',
+  },
+  {
+    name: 'blockquote BBCode form (red)',
+    dtext: '[quote=red]hi[/quote]',
+    markdown: '[quote=red]\nhi\n[/quote]',
+  },
+  {
+    name: 'blockquote BBCode form (hex colour)',
+    dtext: '[quote=#abc]hue[/quote]',
+    markdown: '[quote=#abc]\nhue\n[/quote]',
+  },
+  {
+    name: 'blockquote BBCode form (tag-category, case preserved)',
+    dtext: '[quote=Character]hi[/quote]',
+    markdown: '[quote=Character]\nhi\n[/quote]',
+  },
+  {
     name: 'section: bare',
     dtext: '[section]\nhello\n[/section]',
     markdown: '[section]\nhello\n[/section]',

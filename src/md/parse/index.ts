@@ -59,6 +59,7 @@ import {
 } from '../../ast/links';
 import { bbcodePlugin } from './plugins/bbcode';
 import { magicLinksPlugin } from './plugins/magic-links';
+import { quotePlugin } from './plugins/quote';
 import { referencesPlugin } from './plugins/references';
 import { sectionsPlugin } from './plugins/sections';
 import { spoilerPlugin } from './plugins/spoiler';
@@ -105,6 +106,7 @@ md.use(bbcodePlugin);
 md.use(referencesPlugin);
 md.use(magicLinksPlugin);
 md.use(sectionsPlugin);
+md.use(quotePlugin);
 
 export function parseMarkdown(
   input: string,
@@ -171,13 +173,22 @@ function walkBlocksRange(
         break;
       }
       case 'blockquote_open': {
-        // Markdown's `>` blockquote has no slot for the dtext `[quote=COLOR]`
-        // colour, so the AST `color` field stays unset. Recursion runs the
-        // standard block walker over the inner range so nested quotes,
-        // headers, lists, etc. all just work.
+        // Two source forms feed this case (per captain's path-4 resolution
+        // of Q-MD-QUOTE-COLOR; see `md-formatter-spec.md` /
+        // `md-ast-mapping.md` Resolved-decisions item 9):
+        //   - `>`-prefix syntax (markdown-it built-in) -> no `color` attr
+        //   - `[quote]` / `[quote=COLOR]` BBCode-survivor (`./plugins/quote`)
+        //     -> optional `color` attr on the open token.
+        // The walker reads the attribute and lifts it into `QuoteNode.color`
+        // when present. Recursion runs the standard block walker over the
+        // inner range so nested quotes, headers, lists, etc. just work.
         const close = findContainerClose(tokens, i);
         const children = walkBlocksRange(tokens, i + 1, close, diagnostics);
-        const node: QuoteNode = { type: 'quote', children };
+        const colorAttr = tok.attrGet('color');
+        const node: QuoteNode =
+          colorAttr !== null
+            ? { type: 'quote', children, color: colorAttr }
+            : { type: 'quote', children };
         out.push(node);
         i = close;
         break;
