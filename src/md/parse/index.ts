@@ -6,9 +6,10 @@
 // and surface through the diagnostics array so callers can decide policy.
 //
 // Coverage so far: paragraph + standard inline (text, line break, bold,
-// underline, italic, strikethrough, inline code, link, autolink). Everything
-// else still routes to the `md.unsupported_*` fallback and lands in
-// follow-up commits as each spec row is implemented.
+// underline, italic, strikethrough, inline code, link, autolink) + headers,
+// blockquote, fenced and indented code blocks. Everything else still routes
+// to the `md.unsupported_*` fallback and lands in follow-up commits as each
+// spec row is implemented.
 
 import MarkdownIt from 'markdown-it';
 // The `MarkdownIt.Token` namespace pattern only exists in the CJS variant
@@ -21,13 +22,16 @@ import type Token from 'markdown-it/lib/token.mjs';
 import type {
   BlockNode,
   BoldNode,
+  CodeBlockNode,
   DocumentNode,
+  HeaderNode,
   InlineCodeNode,
   InlineNode,
   ItalicNode,
   LineBreakNode,
   LinkNode,
   ParagraphNode,
+  QuoteNode,
   StrikeoutNode,
   TextNode,
   UnderlineNode,
@@ -88,8 +92,17 @@ export function parseMarkdown(
 }
 
 function walkBlocks(tokens: Token[], diagnostics: Diagnostic[]): BlockNode[] {
+  return walkBlocksRange(tokens, 0, tokens.length, diagnostics);
+}
+
+function walkBlocksRange(
+  tokens: Token[],
+  start: number,
+  end: number,
+  diagnostics: Diagnostic[],
+): BlockNode[] {
   const out: BlockNode[] = [];
-  for (let i = 0; i < tokens.length; i++) {
+  for (let i = start; i < end; i++) {
     const tok = tokens[i]!;
     switch (tok.type) {
       case 'paragraph_open': {
@@ -104,9 +117,70 @@ function walkBlocks(tokens: Token[], diagnostics: Diagnostic[]): BlockNode[] {
         i = close;
         break;
       }
+      case 'heading_open': {
+        // `tag` is the html element name, e.g. `h3`; the digit is the level.
+        // Setext-form headers (`===` / `---`) reach this case too with the
+        // same tag, so an info diagnostic flags the round-trip will pick the
+        // ATX form. Per md-ast-mapping.md only level 1..6 exist; markdown-it
+        // never emits anything else, but the clamp is cheap insurance.
+        const close = findContainerClose(tokens, i);
+        const level = Math.min(6, Math.max(1, parseInt(tok.tag.slice(1), 10) || 1));
+        const inline = tokens[i + 1];
+        const children =
+          inline && inline.type === 'inline' && inline.children
+            ? walkInline(inline.children, diagnostics)
+            : [];
+        if (tok.markup === '=' || tok.markup === '-') {
+          diagnostics.push({
+            code: 'md.setext_header_normalized',
+            severity: 'info',
+            message: `Setext header (${tok.markup}) normalised to ATX form (level ${level}); round-trip will emit \`#\`-style.`,
+          });
+        }
+        const node: HeaderNode = { type: 'header', level, children };
+        out.push(node);
+        i = close;
+        break;
+      }
+      case 'blockquote_open': {
+        // Markdown's `>` blockquote has no slot for the dtext `[quote=COLOR]`
+        // colour, so the AST `color` field stays unset. Recursion runs the
+        // standard block walker over the inner range so nested quotes,
+        // headers, lists, etc. all just work.
+        const close = findContainerClose(tokens, i);
+        const children = walkBlocksRange(tokens, i + 1, close, diagnostics);
+        const node: QuoteNode = { type: 'quote', children };
+        out.push(node);
+        i = close;
+        break;
+      }
+      case 'fence': {
+        // Triple-backtick form. `info` carries the optional language hint,
+        // which the AST has no slot for; the spec calls this an explicit
+        // (info-severity) loss so the caller knows the round-trip will drop
+        // it. Trailing newline on `content` is markdown-it's convention.
+        if (tok.info && tok.info.trim() !== '') {
+          diagnostics.push({
+            code: 'md.code_lang_dropped',
+            severity: 'info',
+            message: `Code block language hint \`${tok.info.trim()}\` dropped (AST has no slot for it).`,
+          });
+        }
+        const node: CodeBlockNode = { type: 'code_block', content: tok.content };
+        out.push(node);
+        break;
+      }
+      case 'code_block': {
+        // Indented (4-space) code block. No language hint is possible by
+        // construction, so no diagnostic is needed.
+        const node: CodeBlockNode = { type: 'code_block', content: tok.content };
+        out.push(node);
+        break;
+      }
       case 'paragraph_close':
-        // Consumed by `paragraph_open` above; appears only when the paragraph
-        // walk failed to bridge to it (defensive no-op).
+      case 'heading_close':
+      case 'blockquote_close':
+        // Consumed by their matching open above (defensive no-op).
         break;
       default:
         i = handleUnsupportedBlock(tokens, i, diagnostics);
