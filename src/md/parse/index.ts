@@ -8,9 +8,9 @@
 // Coverage so far: paragraph + standard inline (text, line break, bold,
 // underline, italic, strikethrough, inline code, link, autolink) + headers,
 // blockquote, fenced and indented code blocks + lists (ordered demoted to
-// unordered with a warning). Everything else still routes to the
-// `md.unsupported_*` fallback and lands in follow-up commits as each spec
-// row is implemented.
+// unordered with a warning) + pipe tables. Everything else still routes to
+// the `md.unsupported_*` fallback and lands in follow-up commits as each
+// spec row is implemented.
 
 import MarkdownIt from 'markdown-it';
 // The `MarkdownIt.Token` namespace pattern only exists in the CJS variant
@@ -36,6 +36,11 @@ import type {
   ParagraphNode,
   QuoteNode,
   StrikeoutNode,
+  TableBodyNode,
+  TableCellNode,
+  TableHeadNode,
+  TableNode,
+  TableRowNode,
   TextNode,
   UnderlineNode,
 } from '../../ast';
@@ -180,6 +185,26 @@ function walkBlocksRange(
         out.push(node);
         break;
       }
+      case 'table_open': {
+        // Pipe tables lower to `TableNode` (not `LTableNode`; the lightweight
+        // form is dtext-only per spec). markdown-it splits the table into
+        // `thead` and `tbody` regions with `tr` rows of `th`/`td` cells; the
+        // walker mirrors that structure into the AST. Per-cell alignment from
+        // the header separator (`:---:`) is dropped without a diagnostic; the
+        // AST has no slot for it and the dtext side renders aligned cells the
+        // same way regardless.
+        const close = findContainerClose(tokens, i);
+        const children = walkTableChildren(
+          tokens,
+          i + 1,
+          close,
+          diagnostics,
+        );
+        const node: TableNode = { type: 'table', children };
+        out.push(node);
+        i = close;
+        break;
+      }
       case 'bullet_list_open':
       case 'ordered_list_open': {
         // Both lower to a flat `ListNode` whose items are depth-tagged.
@@ -203,6 +228,7 @@ function walkBlocksRange(
       case 'bullet_list_close':
       case 'ordered_list_close':
       case 'list_item_close':
+      case 'table_close':
         // Consumed by their matching open above (defensive no-op).
         break;
       default:
@@ -509,4 +535,76 @@ function emitOrderedDemoted(diagnostics: Diagnostic[]): void {
     message:
       'Ordered list demoted to unordered: the AST has no ordered/unordered slot today and marker numbers are not preserved.',
   });
+}
+
+// Walk the `thead` / `tbody` regions of a table. The AST shape allows bare
+// `TableRowNode`s alongside the head/body wrappers, but markdown-it always
+// emits both wrappers around at least one row, so the bare-row branch is
+// not reached in practice (the union slot stays available for future
+// dtext-side parsers that may emit it).
+function walkTableChildren(
+  tokens: Token[],
+  start: number,
+  end: number,
+  diagnostics: Diagnostic[],
+): (TableHeadNode | TableBodyNode | TableRowNode)[] {
+  const out: (TableHeadNode | TableBodyNode | TableRowNode)[] = [];
+  for (let i = start; i < end; i++) {
+    const tok = tokens[i]!;
+    if (tok.type === 'thead_open') {
+      const close = findContainerClose(tokens, i);
+      const rows = walkTableRows(tokens, i + 1, close, diagnostics);
+      out.push({ type: 'table_head', rows });
+      i = close;
+    } else if (tok.type === 'tbody_open') {
+      const close = findContainerClose(tokens, i);
+      const rows = walkTableRows(tokens, i + 1, close, diagnostics);
+      out.push({ type: 'table_body', rows });
+      i = close;
+    }
+  }
+  return out;
+}
+
+function walkTableRows(
+  tokens: Token[],
+  start: number,
+  end: number,
+  diagnostics: Diagnostic[],
+): TableRowNode[] {
+  const out: TableRowNode[] = [];
+  for (let i = start; i < end; i++) {
+    const tok = tokens[i]!;
+    if (tok.type === 'tr_open') {
+      const close = findContainerClose(tokens, i);
+      const cells = walkTableCells(tokens, i + 1, close, diagnostics);
+      out.push({ type: 'table_row', cells });
+      i = close;
+    }
+  }
+  return out;
+}
+
+function walkTableCells(
+  tokens: Token[],
+  start: number,
+  end: number,
+  diagnostics: Diagnostic[],
+): TableCellNode[] {
+  const out: TableCellNode[] = [];
+  for (let i = start; i < end; i++) {
+    const tok = tokens[i]!;
+    if (tok.type === 'th_open' || tok.type === 'td_open') {
+      const close = findContainerClose(tokens, i);
+      const cellType = tok.type === 'th_open' ? 'th' : 'td';
+      const inlineTok = tokens[i + 1];
+      const children =
+        inlineTok && inlineTok.type === 'inline' && inlineTok.children
+          ? walkInline(inlineTok.children, diagnostics)
+          : [];
+      out.push({ type: 'table_cell', cellType, children });
+      i = close;
+    }
+  }
+  return out;
 }
