@@ -34,8 +34,6 @@ interface ParserOptions {
 
 interface UrlMatch {
   url: string;
-  start: number;
-  end: number;
 }
 
 interface IdMatch {
@@ -254,6 +252,10 @@ const BLOCK_PATTERNS_STICKY: readonly RegExp[] = [
   /\[\/table\]/iy,
   /\[ltable\]/iy,
 ];
+
+// Body-cell `[/td]` truncator for `parseLTableRow`. Hoisted so the regex
+// compiles once instead of per cell.
+const RE_LTABLE_TD_CLOSE = /\[\/td\]/i;
 
 // Container-tag scanner used by `findContainerCloseInItem` to walk a
 // list-item's text body looking for opens/closes that should truncate the
@@ -1106,12 +1108,9 @@ export class DTextStateMachineParser {
       const lineStart = this.pos;
 
       while (this.pos < this.input.length) {
-        const ch = this.input[this.pos];
-        if (ch === '\n' || ch === '\r') break;
-        if (
-          ch === '[' &&
-          this.input.slice(this.pos, this.pos + 9).toLowerCase() === '[/ltable]'
-        ) {
+        const code = this.input.charCodeAt(this.pos);
+        if (code === 0x0a || code === 0x0d) break;
+        if (code === 0x5b /* [ */ && this.compareAtPos('[/ltable]', true)) {
           break;
         }
         this.pos++;
@@ -1163,7 +1162,7 @@ export class DTextStateMachineParser {
       // a lowercased copy. When present, a CI regex finds the close in a
       // single pass without the eager `toLowerCase()` allocation.
       if (cellType === 'td' && content.indexOf('[') >= 0) {
-        const m = /\[\/td\]/i.exec(content);
+        const m = RE_LTABLE_TD_CLOSE.exec(content);
         if (m) content = content.slice(0, m.index).trimEnd();
       }
       const children: InlineNode[] = content
@@ -1993,14 +1992,9 @@ export class DTextStateMachineParser {
   protected matchUrl(): UrlMatch | null {
     const match = this.matchSticky(RE_URL);
     if (match) {
-      const start = this.pos;
-      let url = match[0];
-
-      url = trimUrlBoundaries(url);
-
-      this.pos = start + url.length;
-
-      return { url, start, end: this.pos };
+      const url = trimUrlBoundaries(match[0]);
+      this.pos += url.length;
+      return { url };
     }
     return null;
   }
@@ -2009,11 +2003,7 @@ export class DTextStateMachineParser {
     const match = this.matchSticky(RE_DELIMITED_URL);
     if (match) {
       this.pos += match[0].length;
-      return {
-        url: match[1],
-        start: this.pos - match[0].length,
-        end: this.pos,
-      };
+      return { url: match[1] };
     }
     return null;
   }
