@@ -126,3 +126,113 @@ describe('section BBCode form', () => {
     expect(result.document.children.find((c) => c.type === 'section')).toBeUndefined();
   });
 });
+
+describe('section HTML form `<details>`', () => {
+  it('lowers a bare `<details>...</details>` to SectionNode', () => {
+    const result = parseMarkdown('<details>\nhello\n</details>');
+    expect(result.diagnostics).toEqual([]);
+    expect(result.document.children).toEqual([
+      {
+        type: 'section',
+        children: [
+          {
+            type: 'paragraph',
+            children: [{ type: 'text', content: 'hello' }],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('captures the `open` attribute as expanded', () => {
+    const result = parseMarkdown('<details open>\nhello\n</details>');
+    expect(result.document.children[0]).toEqual({
+      type: 'section',
+      expanded: true,
+      children: [
+        {
+          type: 'paragraph',
+          children: [{ type: 'text', content: 'hello' }],
+        },
+      ],
+    });
+  });
+
+  it('captures the title from `<summary>...</summary>` on the open line', () => {
+    const result = parseMarkdown(
+      '<details><summary>Notes</summary>\nhello\n</details>',
+    );
+    expect(result.document.children[0]).toEqual({
+      type: 'section',
+      title: 'Notes',
+      children: [
+        {
+          type: 'paragraph',
+          children: [{ type: 'text', content: 'hello' }],
+        },
+      ],
+    });
+  });
+
+  it('captures both open and summary together', () => {
+    const result = parseMarkdown(
+      '<details open><summary>Notes</summary>\nhello\n</details>',
+    );
+    expect(result.document.children[0]).toEqual({
+      type: 'section',
+      title: 'Notes',
+      expanded: true,
+      children: [
+        {
+          type: 'paragraph',
+          children: [{ type: 'text', content: 'hello' }],
+        },
+      ],
+    });
+  });
+
+  it('handles nested `<details>` by tracking depth', () => {
+    const result = parseMarkdown(
+      '<details>\nouter\n<details>\ninner\n</details>\nouter again\n</details>',
+    );
+    expect(result.document.children).toEqual([
+      {
+        type: 'section',
+        children: [
+          {
+            type: 'paragraph',
+            children: [{ type: 'text', content: 'outer' }],
+          },
+          {
+            type: 'section',
+            children: [
+              {
+                type: 'paragraph',
+                children: [{ type: 'text', content: 'inner' }],
+              },
+            ],
+          },
+          {
+            type: 'paragraph',
+            children: [{ type: 'text', content: 'outer again' }],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('produces the same SectionNode for HTML and BBCode forms with the same title', () => {
+    const html = parseMarkdown(
+      '<details open><summary>X</summary>\nbody\n</details>',
+    ).document.children[0];
+    const bbcode = parseMarkdown(
+      '[section,expanded=X]\nbody\n[/section]',
+    ).document.children[0];
+    expect(html).toEqual(bbcode);
+  });
+
+  it('rejects unsupported attributes (falls through to text)', () => {
+    const result = parseMarkdown('<details class="foo">\nx\n</details>');
+    expect(result.document.children.find((c) => c.type === 'section')).toBeUndefined();
+  });
+});
