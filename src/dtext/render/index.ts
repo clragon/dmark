@@ -68,10 +68,63 @@ export function formatDText(
   return { output: out.join(''), diagnostics: ctx.diagnostics };
 }
 
+// First byte that `node` would emit when formatted. Used by URL-link
+// emitters to detect when a bare form would glue its URL to the next
+// sibling's emit on re-parse. Returns `undefined` for nodes whose emit is
+// effectively empty (or unknown), which signals "no following byte" — the
+// safe default for the bare-form check.
+function firstEmitChar(node: ASTNode): string | undefined {
+  switch (node.type) {
+    case 'text': {
+      const c = (node as TextNode).content;
+      return c.length > 0 ? c[0] : undefined;
+    }
+    case 'internal_anchor':
+    case 'bold':
+    case 'italic':
+    case 'strikeout':
+    case 'underline':
+    case 'superscript':
+    case 'subscript':
+    case 'inline_spoiler':
+    case 'color':
+      return '[';
+    case 'inline_code':
+      return '`';
+    case 'line_break':
+      return '\n';
+    case 'fragment': {
+      const ch = (node as FragmentNode).children[0];
+      return ch ? firstEmitChar(ch) : undefined;
+    }
+    case 'link':
+      switch ((node as LinkNode).linkType) {
+        case 'url': {
+          const h = (node as LinkNode).href;
+          return h.length > 0 ? h[0] : undefined;
+        }
+        case 'inline':
+          return '"';
+        case 'wiki':
+          return '[';
+        case 'post_search':
+          return '{';
+        case 'id_link': {
+          const t = (node as LinkNode).idType;
+          return t ? t[0] : undefined;
+        }
+      }
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
 function formatNode(
   node: ASTNode,
   out: string[],
   ctx: FormatContext,
+  trailing?: string,
 ): void {
   switch (node.type) {
     case 'document':
@@ -148,32 +201,32 @@ function formatNode(
       return;
     case 'bold':
       out.push('[b]');
-      formatInlines((node as BoldNode).children, out, ctx);
+      formatInlines((node as BoldNode).children, out, ctx, '[');
       out.push('[/b]');
       return;
     case 'italic':
       out.push('[i]');
-      formatInlines((node as ItalicNode).children, out, ctx);
+      formatInlines((node as ItalicNode).children, out, ctx, '[');
       out.push('[/i]');
       return;
     case 'strikeout':
       out.push('[s]');
-      formatInlines((node as StrikeoutNode).children, out, ctx);
+      formatInlines((node as StrikeoutNode).children, out, ctx, '[');
       out.push('[/s]');
       return;
     case 'underline':
       out.push('[u]');
-      formatInlines((node as UnderlineNode).children, out, ctx);
+      formatInlines((node as UnderlineNode).children, out, ctx, '[');
       out.push('[/u]');
       return;
     case 'superscript':
       out.push('[sup]');
-      formatInlines((node as SuperscriptNode).children, out, ctx);
+      formatInlines((node as SuperscriptNode).children, out, ctx, '[');
       out.push('[/sup]');
       return;
     case 'subscript':
       out.push('[sub]');
-      formatInlines((node as SubscriptNode).children, out, ctx);
+      formatInlines((node as SubscriptNode).children, out, ctx, '[');
       out.push('[/sub]');
       return;
     case 'inline_spoiler':
@@ -181,7 +234,7 @@ function formatNode(
       // paragraph-boundary context. The `[/spoiler]` unconditional emit can
       // never reach the parser's `[/spoilers]`-preference gap.
       out.push('[spoiler]');
-      formatInlines((node as InlineSpoilerNode).children, out, ctx);
+      formatInlines((node as InlineSpoilerNode).children, out, ctx, '[');
       out.push('[/spoiler]');
       return;
     case 'inline_code':
@@ -191,7 +244,7 @@ function formatNode(
       return;
     case 'color':
       out.push('[color=', (node as ColorNode).color, ']');
-      formatInlines((node as ColorNode).children, out, ctx);
+      formatInlines((node as ColorNode).children, out, ctx, '[');
       out.push('[/color]');
       return;
     case 'line_break':
@@ -201,7 +254,7 @@ function formatNode(
       formatInlines((node as FragmentNode).children, out, ctx);
       return;
     case 'link':
-      formatLink(node as LinkNode, out, ctx);
+      formatLink(node as LinkNode, out, ctx, trailing);
       return;
     case 'internal_anchor':
       out.push('[#', (node as InternalAnchorNode).name, ']');
@@ -228,12 +281,21 @@ function formatBlocks(
 }
 
 // Walk an array of inline nodes; inline content concatenates with no separator.
+// `trailing` is the first byte that will follow this group — used by the
+// URL-link emitters to pick a glue-safe form for the last child. Pass
+// `'['` from a wrapping inline container (its `[/...]` close starts with `[`)
+// or omit when the group ends at a newline / end-of-block (safe).
 function formatInlines(
   inlines: InlineNode[],
   out: string[],
   ctx: FormatContext,
+  trailing?: string,
 ): void {
-  for (const node of inlines) formatNode(node, out, ctx);
+  for (let i = 0; i < inlines.length; i++) {
+    const next = i + 1 < inlines.length ? inlines[i + 1] : undefined;
+    const hint = next ? firstEmitChar(next) : trailing;
+    formatNode(inlines[i], out, ctx, hint);
+  }
 }
 
 function formatHeader(
@@ -343,7 +405,7 @@ function formatTableCell(
   ctx: FormatContext,
 ): void {
   out.push('[', node.cellType, ']');
-  formatInlines(node.children, out, ctx);
+  formatInlines(node.children, out, ctx, '[');
   out.push('[/', node.cellType, ']');
 }
 
@@ -383,13 +445,14 @@ function formatLink(
   node: LinkNode,
   out: string[],
   ctx: FormatContext,
+  trailing: string | undefined,
 ): void {
   switch (node.linkType) {
     case 'url':
-      formatUrlLink(node, out);
+      formatUrlLink(node, out, trailing);
       return;
     case 'inline':
-      formatInlineLink(node, out, ctx);
+      formatInlineLink(node, out, ctx, trailing);
       return;
     case 'wiki':
       formatWikiLink(node, out);
@@ -410,9 +473,28 @@ function urlEndsAtBoundary(url: string): boolean {
   return isBoundaryChar(url.charCodeAt(url.length - 1));
 }
 
-function formatUrlLink(node: LinkNode, out: string[]): void {
+// True when the byte that immediately follows a bare-emitted URL is safe:
+// the parser's `\S+` capture stops at it without absorbing into the URL.
+// Whitespace and EOF satisfy this; any other glyph (including BOUNDARY_CHARS,
+// since `trimUrlBoundaries` only peels one trailing char and a sibling like
+// `).` would still leave `)` glued to the URL) is treated as unsafe and
+// forces the formatter into the bracketed/delimited form.
+function isSafeUrlFollow(ch: string | undefined): boolean {
+  if (ch === undefined) return true;
+  return /\s/.test(ch);
+}
+
+function formatUrlLink(
+  node: LinkNode,
+  out: string[],
+  trailing: string | undefined,
+): void {
   const href = node.href;
-  if (/\s/.test(href) || urlEndsAtBoundary(href)) {
+  if (
+    /\s/.test(href) ||
+    urlEndsAtBoundary(href) ||
+    !isSafeUrlFollow(trailing)
+  ) {
     out.push('<', href, '>');
   } else {
     out.push(href);
@@ -423,15 +505,20 @@ function formatInlineLink(
   node: LinkNode,
   out: string[],
   ctx: FormatContext,
+  trailing: string | undefined,
 ): void {
-  // ADR-0005: bare "title":url when href has no whitespace, no `]`, and is
-  // unchanged by trim-boundary; bracketed otherwise.
+  // ADR-0005: bare "title":url when href has no whitespace, no `]`, no
+  // trailing boundary, AND the surrounding context will not glue the URL to
+  // its next sibling on re-parse. Otherwise bracketed.
   const titleBuf: string[] = [];
   if (node.children) formatInlines(node.children, titleBuf, ctx);
   const title = titleBuf.join('');
   const href = node.href;
   const canBare =
-    !/\s/.test(href) && !href.includes(']') && !urlEndsAtBoundary(href);
+    !/\s/.test(href) &&
+    !href.includes(']') &&
+    !urlEndsAtBoundary(href) &&
+    isSafeUrlFollow(trailing);
   if (canBare) {
     out.push('"', title, '":', href);
   } else {

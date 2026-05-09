@@ -25,16 +25,23 @@ Emit the bare form `"title":url` when **all** of the following hold:
 - `href` contains no whitespace.
 - `href` is unchanged by a `trimUrlBoundaries` simulation.
 - `href` contains no `]`.
+- The byte that will follow the link's emit (the next sibling's
+  first emit byte, or the wrapping container's close-tag opener) is
+  whitespace or end-of-input. Otherwise the bare form's `\S+` capture
+  would absorb that byte on re-parse.
 
 Otherwise, emit the bracketed form `"title":[url]`.
+
+The same trailing-byte check applies to the bare emit of a `linkType: 'url'`
+link; when it fails the formatter falls back to the delimited `<href>` form.
 
 ## Consequences
 
 - A bare-form emit is guaranteed to re-parse back to the same `href`;
-  nothing the bare matcher would trim is left for it to trim.
-- A href containing `]` always takes the bracketed form's surrounding
-  brackets without ambiguity, because the simulated trim check covers
-  the trailing-punctuation case and the explicit `]` check covers the
-  closing-bracket case.
-- The picking rule is purely a function of `href`; the children content
-  does not influence the choice.
+  nothing the bare matcher would trim is left for it to trim, and the
+  next sibling cannot glue onto the URL.
+- The picking rule is a function of `href` plus the link's first
+  trailing byte. The children content does not influence the choice.
+- A bare URL/textile link inside `[b]…[/b]` (or any inline container
+  whose close starts with `[`) takes the safe form, because `[` is not
+  a whitespace stop for `\S+`.

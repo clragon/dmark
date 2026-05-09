@@ -49,7 +49,7 @@ const INDEX_PATH = resolve(CORPUS_GOLDEN, 'index.json');
 // One-way pass-rate ratchet. Each formatter / parser fix that closes a
 // real corpus divergence bumps it up; never lower it. Same discipline as
 // `golden-baseline.test.ts`'s PHASE_1_FLOOR.
-const ROUND_TRIP_FLOOR = 0.84;
+const ROUND_TRIP_FLOOR = 0.92;
 const MAX_DIFF_CHARS = 800;
 
 // Per-fixture skip list for known-failing corpus rows where the divergence
