@@ -71,16 +71,11 @@ export interface ParserOptions {
   // day one even when no flags are present.
 }
 
-export interface Diagnostic {
-  // Stable code, e.g. `md.legacy_bbcode`. See md-ast-mapping.md for the
-  // catalog and severity assignments.
-  code: string;
-  severity: 'info' | 'warning' | 'fatal';
-  message: string;
-  // Optional source span. Line/column tracking lands when the adapter wires
-  // up token position propagation; today most diagnostics omit this.
-  range?: { start: number; end: number };
-}
+// Diagnostic shape lives in `src/diagnostics/` so both parsers and
+// formatters can share it; re-exported here so existing imports of
+// `parseMarkdown`'s sibling type don't break.
+import type { Diagnostic } from '../../diagnostics';
+export type { Diagnostic };
 
 export interface ParseResult {
   document: DocumentNode;
