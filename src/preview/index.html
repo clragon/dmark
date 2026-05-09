@@ -3,11 +3,134 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Dmark preview</title>
+    <title>Dmark workbench</title>
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <h1>Dmark preview</h1>
-    <p>placeholder. wired up after parsers land.</p>
+    <header class="app-header">
+      <h1>Dmark workbench</h1>
+      <p class="subtitle">
+        DText &harr; AST &harr; Markdown. Edit either side; AST and HTML
+        update live. The reverse-formatter slots light up as the round-trip
+        formatters land.
+      </p>
+      <div class="toolbar">
+        <label class="toolbar-field">
+          <span>Fixture</span>
+          <select id="fixture-picker">
+            <option value="">(none)</option>
+          </select>
+        </label>
+        <label class="toolbar-field">
+          <span>Sample</span>
+          <select id="sample-picker">
+            <option value="">(none)</option>
+          </select>
+        </label>
+        <label class="toolbar-field toolbar-toggle">
+          <input type="checkbox" id="link-inputs" />
+          <span>Link inputs</span>
+        </label>
+        <button type="button" id="clear-button">Clear both</button>
+      </div>
+    </header>
+
+    <main class="panes">
+      <section class="pane" id="pane-dtext" data-side="dtext">
+        <header class="pane-header">
+          <h2>DText</h2>
+          <span class="pane-status" id="status-dtext">idle</span>
+        </header>
+
+        <div class="cell cell-input">
+          <div class="cell-header">
+            <h3>Source</h3>
+            <span class="cell-meta" id="meta-dtext-input">0 chars</span>
+          </div>
+          <textarea
+            id="input-dtext"
+            spellcheck="false"
+            placeholder="Type DText here. e.g. [b]hello[/b]"
+          ></textarea>
+        </div>
+
+        <div class="cell cell-html">
+          <div class="cell-header">
+            <h3>Rendered HTML</h3>
+            <span class="cell-meta" id="meta-dtext-html"></span>
+          </div>
+          <div class="html-preview" id="html-dtext"></div>
+        </div>
+
+        <div class="cell cell-ast">
+          <div class="cell-header">
+            <h3>AST</h3>
+            <span class="cell-meta" id="meta-dtext-ast"></span>
+          </div>
+          <div class="ast-tree" id="ast-dtext"></div>
+        </div>
+
+        <div class="cell cell-cross">
+          <div class="cell-header">
+            <h3>AST &rarr; Markdown</h3>
+            <span class="cell-meta" id="meta-dtext-cross"></span>
+          </div>
+          <pre class="cross-output" id="cross-dtext"></pre>
+        </div>
+      </section>
+
+      <section class="pane" id="pane-md" data-side="md">
+        <header class="pane-header">
+          <h2>Markdown</h2>
+          <span class="pane-status" id="status-md">idle</span>
+        </header>
+
+        <div class="cell cell-input">
+          <div class="cell-header">
+            <h3>Source</h3>
+            <span class="cell-meta" id="meta-md-input">0 chars</span>
+          </div>
+          <textarea
+            id="input-md"
+            spellcheck="false"
+            placeholder="Type Markdown here. e.g. **hello**"
+          ></textarea>
+        </div>
+
+        <div class="cell cell-html">
+          <div class="cell-header">
+            <h3>Rendered HTML</h3>
+            <span class="cell-meta" id="meta-md-html"></span>
+          </div>
+          <div class="html-preview" id="html-md"></div>
+        </div>
+
+        <div class="cell cell-ast">
+          <div class="cell-header">
+            <h3>AST</h3>
+            <span class="cell-meta" id="meta-md-ast"></span>
+          </div>
+          <div class="ast-tree" id="ast-md"></div>
+        </div>
+
+        <div class="cell cell-diagnostics">
+          <div class="cell-header">
+            <h3>Diagnostics</h3>
+            <span class="cell-meta" id="meta-md-diagnostics"></span>
+          </div>
+          <ul class="diagnostics-list" id="diagnostics-md"></ul>
+        </div>
+
+        <div class="cell cell-cross">
+          <div class="cell-header">
+            <h3>AST &rarr; DText</h3>
+            <span class="cell-meta" id="meta-md-cross"></span>
+          </div>
+          <pre class="cross-output" id="cross-md"></pre>
+        </div>
+      </section>
+    </main>
+
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
