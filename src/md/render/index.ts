@@ -710,8 +710,15 @@ function formatPostSearchLink(node: LinkNode, out: string[]): void {
     node.children?.[0] && node.children[0].type === 'text'
       ? (node.children[0] as TextNode).content
       : '';
-  if (childText === tags || childText === '') {
-    out.push('{{', tags, '}}');
+  // Same trick as the wikilink no-title branch and the dtext-side sibling:
+  // when children text equals `tags` modulo ASCII case (the parser produces
+  // this for any `{{tag}}` source — `tags` is lowercased, children
+  // preserves original case), emit `{{<childText>}}` rather than the
+  // `{{<tags>}}` form. The parser lowercases on re-parse and preserves
+  // children case, so AST round-trip holds AND the emit avoids a `|` that
+  // would break a wrapping pipe-table cell.
+  if (childText === '' || asciiLowercase(childText) === tags) {
+    out.push('{{', childText || tags, '}}');
   } else {
     out.push('{{', tags, '|', childText, '}}');
   }

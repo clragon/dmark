@@ -529,10 +529,15 @@ function formatPostSearchLink(node: LinkNode, out: string[]): void {
     node.children?.[0] && node.children[0].type === 'text'
       ? (node.children[0] as TextNode).content
       : '';
-  // Title-vs-bare: bare when children content equals tags (the no-title
-  // branch of `buildPostSearchLink`); titled otherwise.
-  if (childText === tags || childText === '') {
-    out.push('{{', tags, '}}');
+  // Same trick as the wikilink no-title branch: when children text equals
+  // `tags` modulo ASCII case (the parser produces this for any
+  // `{{tag}}` source — `tags` is lowercased, children preserves original
+  // case), emit `{{<childText>}}` rather than the `{{<tags>}}` form. The
+  // parser lowercases the tag on re-parse and preserves the original case
+  // in children, so AST round-trip holds AND the emit avoids a `|` that
+  // would break LTable cell parsing on round-trip via an `[ltable]` row.
+  if (childText === '' || asciiLowercase(childText) === tags) {
+    out.push('{{', childText || tags, '}}');
   } else {
     out.push('{{', tags, '|', childText, '}}');
   }
