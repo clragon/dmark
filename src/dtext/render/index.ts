@@ -60,6 +60,7 @@ import type {
 import { ID_SOURCE } from '../../ast/links';
 import { asciiLowercase } from '../../ast/text';
 import type { Diagnostic } from '../../diagnostics';
+import { isBoundaryChar } from '../url';
 
 export interface DTextFormatterOptions {
   // Reserved for future flags. Kept as an explicit type so the public
@@ -421,17 +422,12 @@ function formatLink(
 
 // URL bare-vs-delimited boundary check (Q-URL-DELIMITER). Bare emit when the
 // href contains no whitespace AND ends in a non-boundary char; delimited
-// `<href>` otherwise. The boundary-char set mirrors the parser's
-// `BOUNDARY_CHARS` in `src/dtext/parse/index.ts` lockstep.
-const URL_BOUNDARY_CHAR_CODES: ReadonlySet<number> = new Set([
-  0x0021, 0x0029, 0x002c, 0x002e, 0x003a, 0x003b, 0x003c, 0x003e, 0x003f,
-  0x005d, 0x007d, 0x276d, 0x3000, 0x3001, 0x3002, 0x3008, 0x3009, 0x300a,
-  0x300b, 0x300c, 0x300d, 0x300e, 0x300f, 0x3010, 0x3011, 0x3014, 0x3015,
-]);
-
+// `<href>` otherwise. Boundary set is shared with the parser via
+// `../url`; both sides have to agree on the same code-point set or
+// round-trip breaks for any URL ending in a CJK / full-width bracket.
 function urlEndsAtBoundary(url: string): boolean {
   if (url.length === 0) return false;
-  return URL_BOUNDARY_CHAR_CODES.has(url.charCodeAt(url.length - 1));
+  return isBoundaryChar(url.charCodeAt(url.length - 1));
 }
 
 function formatUrlLink(node: LinkNode, out: string[]): void {

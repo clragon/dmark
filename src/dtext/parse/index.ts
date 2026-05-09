@@ -33,6 +33,7 @@ import {
   type WikiLinkInput,
 } from '../../ast/links';
 import { asciiLowercase, rubyUriEscape } from '../../ast/text';
+import { isBoundaryChar } from '../url';
 
 interface ParserOptions {
   allowColor?: boolean;
@@ -100,17 +101,9 @@ function isHorizontalWhitespace(code: number): boolean {
   );
 }
 
-const BOUNDARY_CHARS = [
-  0x0021, 0x0029, 0x002c, 0x002e, 0x003a, 0x003b, 0x003c, 0x003e, 0x003f,
-  0x005d, 0x007d, 0x276d, 0x3000, 0x3001, 0x3002, 0x3008, 0x3009, 0x300a,
-  0x300b, 0x300c, 0x300d, 0x300e, 0x300f, 0x3010, 0x3011, 0x3014, 0x3015,
-  0x3016, 0x3017, 0x3018, 0x3019, 0x301a, 0x301b, 0x301c, 0xff09, 0xff3d,
-  0xff5d, 0xff60, 0xff63,
-];
-
-function isBoundaryChar(char: string): boolean {
-  return BOUNDARY_CHARS.includes(char.charCodeAt(0));
-}
+// `BOUNDARY_CHARS` and `isBoundaryChar` live in `../url` so the formatter can
+// import the same data; the lockstep comment there names the cross-module
+// contract.
 
 // Quote-color validity (verified against the oracle):
 //   * #hex of exactly 3 or 6 hex digits, mixed case allowed
@@ -141,8 +134,7 @@ function isValidQuoteColor(value: string): boolean {
 // Verified against the oracle.
 function trimUrlBoundaries(url: string): string {
   if (url.length === 0) return url;
-  const last = url[url.length - 1];
-  if (isBoundaryChar(last)) {
+  if (isBoundaryChar(url.charCodeAt(url.length - 1))) {
     return url.slice(0, -1);
   }
   return url;
