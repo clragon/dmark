@@ -3,12 +3,19 @@
 // rendered HTML, so they have to agree on link-node shape down to the byte.
 // Centralising the constructors here is what guarantees that.
 //
-// Id-link metadata (`ID_PATTERNS`, `ID_DISPLAY`, `ID_ROUTES`, `ID_TYPE_MAP`)
-// stays in lockstep with the renderer's `ID_TYPE_CLASSES` and the `IdType`
-// union in `./index`. Adding a new id type means a matching entry in all
-// five places; the exhaustive `Record<IdType, ...>` type makes a missing one
-// a compile error on this side, and the parser-side regex / map derive from
-// `ID_PATTERNS` so they pick the new type up automatically.
+// Id-link metadata (`ID_PATTERNS`, `ID_DISPLAY`, `ID_ROUTES`, `ID_TYPE_MAP`,
+// `ID_SOURCE`) stays in lockstep with the renderer's `ID_TYPE_CLASSES` and
+// the `IdType` union in `./index`. Adding a new id type means a matching
+// entry in all six places; the exhaustive `Record<IdType, ...>` type makes
+// a missing one a compile error on this side, and the parser-side regex /
+// map derive from `ID_PATTERNS` so they pick the new type up automatically.
+//
+// `ID_SOURCE` is the canonical source spelling each `IdType` round-trips to
+// via the formatters (see `dtext-formatter-spec.md` Q-MAGIC-LINK-CANONICAL).
+// It diverges from `ID_DISPLAY` for `thumb` (display says `post` but source
+// is `thumb` so the parser preserves `idType: 'thumb'` on round-trip) and
+// `bur` (display upcases to `BUR`, source stays `bur` because `ID_TYPE_MAP`
+// is case-insensitive).
 
 import type { IdType, LinkNode } from './index';
 import { asciiLowercase, rubyUriEscape } from './text';
@@ -120,6 +127,21 @@ export const ID_TYPE_MAP: ReadonlyMap<string, IdType> = new Map(
     ['takedown request', 'takedown'],
   ],
 );
+
+// Canonical source spelling per id-type, derived from `ID_PATTERNS` by
+// taking the first pattern per type and literalising the regex-source
+// escapes the same way `ID_TYPE_MAP` keys are normalised. Diverges from
+// `ID_DISPLAY` for `thumb` and `bur`; see the lockstep comment at the top.
+// Used by the formatters to reverse-emit `<source-prefix> #<id>` for
+// `LinkNode { linkType: 'id_link' }`.
+export const ID_SOURCE: Record<IdType, string> = (() => {
+  const out = {} as Record<IdType, string>;
+  for (const { pattern, type } of ID_PATTERNS) {
+    if (out[type] !== undefined) continue;
+    out[type] = pattern.replace(/\\s[?+*]?/g, ' ').replace(/\s+/g, ' ');
+  }
+  return out;
+})();
 
 // Construct an id-link `LinkNode` from a resolved id type and a numeric id.
 // Pure function: no parser state, no thumb-budget logic. Callers that want
