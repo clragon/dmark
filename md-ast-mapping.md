@@ -220,13 +220,20 @@ headers (underlined `===` / `---`) are accepted as `level: 1` and `level: 2`.
 
 ### Blockquote
 
-- md: lines beginning with `> `
-- dtext: `[quote]...[/quote]`
-- AST: `QuoteNode { children: [...block] }`
+- md (colourless): lines beginning with `> `
+- md (coloured): `[quote]...[/quote]` or `[quote=COLOR]...[/quote]`
+  (BBCode-survivor form, per captain Q-MD-QUOTE-COLOR path 4)
+- dtext: `[quote]...[/quote]` or `[quote=COLOR]...[/quote]`
+- AST: `QuoteNode { children: [...block], color? }`
 
-Notes: dtext supports `[quote=COLOR]`; markdown's `>` syntax has no slot for
-the color, so `color` is omitted. The proposed `>>>...>>>` fenced-quote form
-in markdown.md is **not** implemented (see Open questions).
+Notes: markdown's `>` syntax always produces a colourless `QuoteNode`
+by design. Coloured quotes use the BBCode-survivor form on both sides,
+joining the existing survivor set (`[sup]`, `[sub]`, `[color]`,
+`[section]`, `[#anchor]`); same shape on dtext, byte-identical AST.
+The plugin recognising `[quote]` / `[quote=COLOR]` on the markdown
+side lands alongside the formatter implementation. The proposed
+`>>>...>>>` fenced-quote form in markdown.md is **not** implemented
+(see Resolved design decisions).
 
 ### Code block
 
@@ -339,9 +346,13 @@ Diagnostic codes the parser emits during a parse. Each entry: code, severity,
 when emitted, and what callers should surface.
 
 - `md.legacy_bbcode` (`fatal`): a `[b]` / `[i]` / `[u]` / `[s]` / `[code]` /
-  `[quote]` / `[spoiler]` / `[table]` / `[ltable]` open tag was found in
-  markdown input. Rejected; the offending span is preserved as literal text
-  and the parse continues.
+  `[spoiler]` / `[table]` / `[ltable]` open tag was found in markdown
+  input. Rejected; the offending span is preserved as literal text
+  and the parse continues. (`[quote]` is *no longer* on this list — it
+  joins the BBCode-survivor set per the captain's path-4 resolution
+  of `Q-MD-QUOTE-COLOR` in `md-formatter-spec.md`; a coordinated
+  parser-side plugin landing later will recognise
+  `[quote]` / `[quote=COLOR]` and produce `QuoteNode { color?, children }`.)
 - `md.ordered_list_demoted` (`warning`): `1.` / `2.` ordered list was
   lowered into an unordered list (one `ListNode` with a flat `items[]`,
   numbers absorbed by the markers and lost). Future plans on the dtext side
@@ -366,11 +377,19 @@ in the rendered output. The parser does not throw (see Parser API).
 - Inline or block HTML tags outside the allowlist (`<details>`, `<summary>`).
   Code: `md.html_tag_rejected`.
 - Legacy BBCode formatting that has a real markdown sigil:
-  `[b]`, `[i]`, `[u]`, `[s]`, `[quote]`, `[spoiler]`, `[code]`. Authors are
-  expected to use `**`, `*`, `__`, `~~`, `>`, `||`, and triple-backticks
-  respectively. Surviving BBCode (`[sup]`, `[sub]`, `[color]`, `[section]`,
-  `[#anchor]`) is accepted as documented above.
+  `[b]`, `[i]`, `[u]`, `[s]`, `[spoiler]`, `[code]`. Authors are
+  expected to use `**`, `*`, `__`, `~~`, `||`, and triple-backticks
+  respectively. Surviving BBCode (`[sup]`, `[sub]`, `[color]`,
+  `[section]`, `[quote]`, `[#anchor]`) is accepted as documented above.
   Code: `md.legacy_bbcode`.
+
+  `[quote]` is on the survivor list because markdown's `>` syntax has
+  no slot for the color attribute that `[quote=COLOR]` carries —
+  per the captain's path-4 resolution of `Q-MD-QUOTE-COLOR` in
+  `md-formatter-spec.md`, the markdown side adopts the BBCode form
+  for coloured quotes and reserves `>` for colourless ones. The
+  surviving-plugin to recognise `[quote]` / `[quote=COLOR]` lands
+  alongside the formatter implementation.
 - `[table]...[/table]` and `[ltable]...[/ltable]` BBCode in markdown input.
   Pipe tables are the only accepted form on this side. There is no path from
   markdown input to an `LTableNode`; that node is dtext-only.
@@ -388,8 +407,10 @@ captain's-call form so the spec stands alone going forward.
 1. **`^text^` for superscript.** Not adopted. `[sup]...[/sup]` BBCode is
    the only inline superscript form.
 
-2. **`>>>text>>>` fenced blockquote.** Not adopted. `>` lines are the only
-   blockquote form.
+2. **`>>>text>>>` fenced blockquote.** Not adopted. The accepted markdown
+   blockquote forms are `>` (colourless) and the BBCode-survivor
+   `[quote]` / `[quote=COLOR]` (per item 9 below); the proposed
+   triple-`>` fence is not implemented.
 
 3. **`[[#anchor]]`.** Keeps the wikilink shape (`linkType: "wiki"`,
    `href: "#anchor"`). AST-equivalence with the dtext side is the
@@ -422,6 +443,17 @@ captain's-call form so the spec stands alone going forward.
 8. **Parser API.** The parser never throws. `parseMarkdown` returns
    `{ document, diagnostics }`. See Parser API above for the full contract
    and the `Diagnostic.severity` shape.
+
+9. **Coloured blockquote (`Q-MD-QUOTE-COLOR`, post-resolution
+   amendment).** The markdown side adopts the BBCode-survivor form
+   `[quote]` / `[quote=COLOR]` for blockquotes that carry a colour;
+   markdown's `>` syntax always produces a colourless `QuoteNode`,
+   by design. `[quote]` retires from the `md.legacy_bbcode` rejection
+   set and joins the surviving BBCode group (`[sup]`, `[sub]`,
+   `[color]`, `[section]`, `[#anchor]`). A coordinated parser plugin
+   (modeled on `[section]`) lands alongside the formatter
+   implementation. See `md-formatter-spec.md` Q-MD-QUOTE-COLOR for
+   the formatter dispatch rule and parser-side coordination notes.
 
 ## Prerequisites for the first commit
 
