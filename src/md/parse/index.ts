@@ -7,9 +7,10 @@
 //
 // Coverage so far: paragraph + standard inline (text, line break, bold,
 // underline, italic, strikethrough, inline code, link, autolink) + headers,
-// blockquote, fenced and indented code blocks. Everything else still routes
-// to the `md.unsupported_*` fallback and lands in follow-up commits as each
-// spec row is implemented.
+// blockquote, fenced and indented code blocks + lists (ordered demoted to
+// unordered with a warning). Everything else still routes to the
+// `md.unsupported_*` fallback and lands in follow-up commits as each spec
+// row is implemented.
 
 import MarkdownIt from 'markdown-it';
 // The `MarkdownIt.Token` namespace pattern only exists in the CJS variant
@@ -30,6 +31,8 @@ import type {
   ItalicNode,
   LineBreakNode,
   LinkNode,
+  ListItemNode,
+  ListNode,
   ParagraphNode,
   QuoteNode,
   StrikeoutNode,
@@ -177,9 +180,29 @@ function walkBlocksRange(
         out.push(node);
         break;
       }
+      case 'bullet_list_open':
+      case 'ordered_list_open': {
+        // Both lower to a flat `ListNode` whose items are depth-tagged.
+        // Ordered lists demote to unordered with a warning per spec Q5; the
+        // `ListItemNode` AST has no `ordered` field today, and marker
+        // numbers are not preserved (the markdown engine consumes them).
+        if (tok.type === 'ordered_list_open') {
+          emitOrderedDemoted(diagnostics);
+        }
+        const close = findContainerClose(tokens, i);
+        const items: ListItemNode[] = [];
+        collectListItems(tokens, i + 1, close, 1, items, diagnostics);
+        const node: ListNode = { type: 'list', items };
+        out.push(node);
+        i = close;
+        break;
+      }
       case 'paragraph_close':
       case 'heading_close':
       case 'blockquote_close':
+      case 'bullet_list_close':
+      case 'ordered_list_close':
+      case 'list_item_close':
         // Consumed by their matching open above (defensive no-op).
         break;
       default:
@@ -380,4 +403,110 @@ function findInlineClose(
     }
   }
   return end - 1;
+}
+
+// Flatten a list (top-level or nested) into depth-tagged `ListItemNode`
+// siblings. `depth` is 1 for the outermost list and increases with every
+// nested list encountered. The two-phase walk (item inline first, then
+// nested-list recursion) preserves document order: an item appears before
+// any of its descendant items in the resulting array.
+function collectListItems(
+  tokens: Token[],
+  start: number,
+  end: number,
+  depth: number,
+  items: ListItemNode[],
+  diagnostics: Diagnostic[],
+): void {
+  for (let i = start; i < end; i++) {
+    const tok = tokens[i]!;
+    if (tok.type !== 'list_item_open') continue;
+    const itemClose = findContainerClose(tokens, i);
+    const children = collectInlineFromItem(
+      tokens,
+      i + 1,
+      itemClose,
+      diagnostics,
+    );
+    items.push({ type: 'list_item', depth, children });
+    walkNestedListsInItem(
+      tokens,
+      i + 1,
+      itemClose,
+      depth + 1,
+      items,
+      diagnostics,
+    );
+    i = itemClose;
+  }
+}
+
+// Phase 1: gather all inline content that belongs to a single list item.
+// Multiple paragraphs inside one item (loose lists) are joined with a
+// `LineBreakNode` separator. Nested lists are skipped here; they get their
+// own pass below.
+function collectInlineFromItem(
+  tokens: Token[],
+  start: number,
+  end: number,
+  diagnostics: Diagnostic[],
+): InlineNode[] {
+  const out: InlineNode[] = [];
+  for (let i = start; i < end; i++) {
+    const tok = tokens[i]!;
+    if (tok.type === 'paragraph_open') {
+      const close = findContainerClose(tokens, i);
+      const inlineTok = tokens[i + 1];
+      if (inlineTok && inlineTok.type === 'inline' && inlineTok.children) {
+        const parsed = walkInline(inlineTok.children, diagnostics);
+        if (out.length > 0) {
+          out.push({ type: 'line_break' });
+        }
+        out.push(...parsed);
+      }
+      i = close;
+    } else if (
+      tok.type === 'bullet_list_open' ||
+      tok.type === 'ordered_list_open'
+    ) {
+      i = findContainerClose(tokens, i);
+    }
+  }
+  return out;
+}
+
+// Phase 2: emit depth-tagged items for any list nested inside the current
+// item. Each nested list is itself flattened by `collectListItems`, which
+// recurses through this same pair if it finds further nesting.
+function walkNestedListsInItem(
+  tokens: Token[],
+  start: number,
+  end: number,
+  depth: number,
+  items: ListItemNode[],
+  diagnostics: Diagnostic[],
+): void {
+  for (let i = start; i < end; i++) {
+    const tok = tokens[i]!;
+    if (
+      tok.type === 'bullet_list_open' ||
+      tok.type === 'ordered_list_open'
+    ) {
+      if (tok.type === 'ordered_list_open') {
+        emitOrderedDemoted(diagnostics);
+      }
+      const close = findContainerClose(tokens, i);
+      collectListItems(tokens, i + 1, close, depth, items, diagnostics);
+      i = close;
+    }
+  }
+}
+
+function emitOrderedDemoted(diagnostics: Diagnostic[]): void {
+  diagnostics.push({
+    code: 'md.ordered_list_demoted',
+    severity: 'warning',
+    message:
+      'Ordered list demoted to unordered: the AST has no ordered/unordered slot today and marker numbers are not preserved.',
+  });
 }
