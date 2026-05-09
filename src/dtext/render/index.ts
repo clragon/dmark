@@ -460,9 +460,21 @@ function formatInlineLink(
 }
 
 function formatWikiLink(node: LinkNode, out: string[]): void {
-  // Anchor-only form: href is `#<encoded-anchor>`.
+  // Anchor-only form: href is `#<encoded-anchor>`. Two source-form
+  // variants both produce this AST shape:
+  //   - `[[#anchor]]`         children content = `"#<anchor>"` (default)
+  //   - `[[#anchor|title]]`   children content = title override
+  // Detect by comparing children content to the default-derived form.
   if (node.href.startsWith('#') && node.anchor !== undefined) {
-    out.push('[[#', node.anchor, ']]');
+    const childText =
+      node.children?.[0] && node.children[0].type === 'text'
+        ? (node.children[0] as TextNode).content
+        : '';
+    if (childText === `#${node.anchor}` || childText === '') {
+      out.push('[[#', node.anchor, ']]');
+    } else {
+      out.push('[[#', node.anchor, '|', childText, ']]');
+    }
     return;
   }
 

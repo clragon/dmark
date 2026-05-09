@@ -649,8 +649,19 @@ function formatInlineLink(
 
 function formatWikiLink(node: LinkNode, out: string[]): void {
   // Same dispatch as the dtext sibling formatter (Q-WIKI-PAGE-RECOVER).
+  // Anchor-only form has two source-form variants (`[[#anchor]]` and
+  // `[[#anchor|title]]`); detect title-override by comparing children
+  // content to the default-derived form.
   if (node.href.startsWith('#') && node.anchor !== undefined) {
-    out.push('[[#', node.anchor, ']]');
+    const childText =
+      node.children?.[0] && node.children[0].type === 'text'
+        ? (node.children[0] as TextNode).content
+        : '';
+    if (childText === `#${node.anchor}` || childText === '') {
+      out.push('[[#', node.anchor, ']]');
+    } else {
+      out.push('[[#', node.anchor, '|', childText, ']]');
+    }
     return;
   }
 
