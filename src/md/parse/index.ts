@@ -60,9 +60,10 @@ import {
 import { bbcodePlugin } from './plugins/bbcode';
 import { magicLinksPlugin } from './plugins/magic-links';
 import { referencesPlugin } from './plugins/references';
+import { sectionsPlugin } from './plugins/sections';
 import { spoilerPlugin } from './plugins/spoiler';
 
-import type { IdType, InternalAnchorNode } from '../../ast';
+import type { IdType, InternalAnchorNode, SectionNode } from '../../ast';
 
 export interface ParserOptions {
   // Reserved for future flags (e.g. `allowColor` parity with the dtext side).
@@ -108,6 +109,7 @@ md.use(spoilerPlugin);
 md.use(bbcodePlugin);
 md.use(referencesPlugin);
 md.use(magicLinksPlugin);
+md.use(sectionsPlugin);
 
 export function parseMarkdown(
   input: string,
@@ -208,6 +210,29 @@ function walkBlocksRange(
         out.push(node);
         break;
       }
+      case 'section_open': {
+        // BBCode `[section]` block from the sections plugin (HTML
+        // `<details>` form follows in a follow-up commit and emits the
+        // same `section_open` token, so this case will need no change).
+        const close = findContainerClose(tokens, i);
+        const children = walkBlocksRange(
+          tokens,
+          i + 1,
+          close,
+          diagnostics,
+        );
+        const titleAttr = tok.attrGet('title');
+        const expandedAttr = tok.attrGet('expanded');
+        const node: SectionNode = {
+          type: 'section',
+          children,
+          ...(titleAttr !== null ? { title: titleAttr } : {}),
+          ...(expandedAttr !== null ? { expanded: true } : {}),
+        };
+        out.push(node);
+        i = close;
+        break;
+      }
       case 'table_open': {
         // Pipe tables lower to `TableNode` (not `LTableNode`; the lightweight
         // form is dtext-only per spec). markdown-it splits the table into
@@ -252,6 +277,7 @@ function walkBlocksRange(
       case 'ordered_list_close':
       case 'list_item_close':
       case 'table_close':
+      case 'section_close':
         // Consumed by their matching open above (defensive no-op).
         break;
       default:
