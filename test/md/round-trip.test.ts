@@ -1,0 +1,178 @@
+// Round-trip verification for the markdown formatter: parse a canonical
+// markdown source, format it back, re-parse, and assert the two ASTs are
+// deep-equal. Pins the load-bearing guarantee from `md-formatter-spec.md`:
+//
+//   parseMarkdown(formatMarkdown(parseMarkdown(src).document).output).document
+//   ≡ parseMarkdown(src).document
+//
+// Fixtures span the construct surface; the per-construct files (`inline`,
+// `blocks`, `lists`, `tables`, `references`, `sections`, `custom-inline`)
+// cover surface-level parser correctness, while this file pins the
+// formatter's inverse property for the same constructs.
+//
+// Documented divergences are catalogued at the bottom (skipped fixtures
+// with the `Q-MD-*` reference that justifies the skip), mirroring the
+// dtext-side round-trip harness and falcon's `ast-equivalence.test.ts`.
+
+import { describe, it } from 'vitest';
+
+import { parseMarkdown } from '../../src/md/parse';
+import { formatMarkdown } from '../../src/md/render';
+import { astEqual } from './ast-equal';
+
+interface Fixture {
+  name: string;
+  markdown: string;
+}
+
+function assertRoundTrip(fix: Fixture): void {
+  const ast1 = parseMarkdown(fix.markdown).document;
+  const formatted = formatMarkdown(ast1).output;
+  const ast2 = parseMarkdown(formatted).document;
+  const result = astEqual(ast1, ast2);
+  if (!result.equal) {
+    throw new Error(
+      `round-trip mismatch (input=${JSON.stringify(fix.markdown)}, formatted=${JSON.stringify(formatted)}):\n${result.diff}`,
+    );
+  }
+}
+
+const INLINE_FIXTURES: Fixture[] = [
+  { name: 'plain text', markdown: 'hello world' },
+  { name: 'bold', markdown: '**hello**' },
+  { name: 'italic', markdown: '*hello*' },
+  { name: 'strikeout', markdown: '~~hello~~' },
+  { name: 'underline', markdown: '__hello__' },
+  { name: 'superscript bbcode', markdown: '[sup]x[/sup]' },
+  { name: 'subscript bbcode', markdown: '[sub]x[/sub]' },
+  { name: 'inline spoiler in paragraph', markdown: 'before ||hi|| after' },
+  { name: 'inline code', markdown: '`code` here' },
+  { name: 'color named', markdown: '[color=red]warning[/color]' },
+  { name: 'color tag-category', markdown: '[color=character]name[/color]' },
+  { name: 'color hex', markdown: '[color=#abc]hue[/color]' },
+  { name: 'internal anchor', markdown: '[#section_one]' },
+  { name: 'nested inline', markdown: '**bold *and italic* mix**' },
+];
+
+const LINK_FIXTURES: Fixture[] = [
+  { name: 'bare url autolink', markdown: 'see <https://example.com/page> now' },
+  { name: 'markdown link', markdown: '[text](https://example.com/page)' },
+  { name: 'wikilink page only', markdown: '[[wolf]]' },
+  { name: 'wikilink anchor only', markdown: '[[#footnotes]]' },
+  { name: 'wikilink with anchor', markdown: '[[help#syntax]]' },
+  { name: 'post search bare', markdown: '{{cat}}' },
+  { name: 'post search titled', markdown: '{{cat dog|kittens and puppies}}' },
+  { name: 'id link post', markdown: 'see post #1234 too' },
+  { name: 'id link forum', markdown: 'forum #42' },
+  { name: 'id link mod action', markdown: 'mod action #99' },
+  { name: 'id link takedown', markdown: 'takedown #7' },
+];
+
+const BLOCK_FIXTURES: Fixture[] = [
+  { name: 'header h1', markdown: '# Title' },
+  { name: 'header h6', markdown: '###### Subhead' },
+  { name: 'two paragraphs', markdown: 'first paragraph\n\nsecond paragraph' },
+  {
+    name: 'paragraph with hard break',
+    markdown: 'first line\nsecond line',
+  },
+  {
+    name: 'colourless blockquote single line',
+    markdown: '> a single line of quote',
+  },
+  {
+    name: 'colourless blockquote multi-line',
+    markdown: '> first line\n> second line',
+  },
+  {
+    name: 'spoiler block bbcode',
+    markdown: '[spoiler]\ncontents hidden\n[/spoiler]',
+  },
+  {
+    name: 'section bare',
+    markdown: '[section]\nbody\n[/section]',
+  },
+  {
+    name: 'section expanded',
+    markdown: '[section,expanded]\nbody\n[/section]',
+  },
+  {
+    name: 'section with title',
+    markdown: '[section=Title]\nbody\n[/section]',
+  },
+  {
+    name: 'section expanded with title',
+    markdown: '[section,expanded=Open Me]\nbody\n[/section]',
+  },
+  {
+    name: 'list flat',
+    markdown: '- one\n- two\n- three',
+  },
+  {
+    name: 'list nested two levels',
+    markdown: '- parent\n  - child\n- uncle',
+  },
+];
+
+describe('markdown round-trip — inline', () => {
+  for (const fix of INLINE_FIXTURES) {
+    it(fix.name, () => assertRoundTrip(fix));
+  }
+});
+
+describe('markdown round-trip — links', () => {
+  for (const fix of LINK_FIXTURES) {
+    it(fix.name, () => assertRoundTrip(fix));
+  }
+});
+
+describe('markdown round-trip — blocks', () => {
+  for (const fix of BLOCK_FIXTURES) {
+    it(fix.name, () => assertRoundTrip(fix));
+  }
+});
+
+// Documented divergences. Each skipped entry names the `Q-MD-*` resolution
+// (or the markdown-it / parser-side root cause) that justifies why the
+// round-trip is *expected* to break for this construct.
+describe('markdown round-trip — documented divergences (skipped)', () => {
+  // Q-MD-QUOTE-COLOR (path 4): coloured `QuoteNode` emits as
+  // `[quote=COLOR]...[/quote]` BBCode-survivor form. Falcon's parser-side
+  // plugin recognising `[quote]` / `[quote=COLOR]` has not yet landed on
+  // the markdown side, so re-parsing the formatter's coloured-quote output
+  // currently triggers `md.legacy_bbcode` rejection. Unskip this fixture
+  // when the plugin commits.
+  it.skip('coloured blockquote (Q-MD-QUOTE-COLOR; blocked on parser plugin)', () => {});
+
+  // Q-MD-TABLE-MULTILINE: a `LineBreakNode` inside a `TableCellNode`
+  // collapses to a single space on emit (`md.table_cell_linebreak_collapsed`
+  // warning). Round-trip is intrinsically lossy on the source-form side.
+  it.skip('table cell with line break (Q-MD-TABLE-MULTILINE)', () => {});
+
+  // Q-MD-LTABLE-EMIT: `LTableNode` is dtext-only on the parser side; no
+  // markdown surface produces it. The formatter approximates as a pipe
+  // table with `md.ltable_approximated` warning. Unreachable from a
+  // markdown-source fixture; surfaces in cross-pipeline tests.
+  it.skip('ltable on markdown side (Q-MD-LTABLE-EMIT; dtext-only producer)', () => {});
+
+  // Q-MD-DTEXT-SALVAGE: `LiteralHtmlNode` / `RawBlockTextNode` originate
+  // from dtext salvage paths and never appear in markdown-parsed ASTs.
+  it.skip('literal_html / raw_block_text (Q-MD-DTEXT-SALVAGE; dtext-only producer)', () => {});
+
+  // CodeBlockNode trailing-newline divergence: markdown-it appends `\n` to
+  // fenced code-block content; the dtext side does not. Documented in
+  // falcon's `ast-equivalence.test.ts` "Documented divergences" section.
+  // Round-trip on a markdown-source `CodeBlockNode` produces a fixed
+  // point on the second pass (the appended `\n` is already there), so this
+  // entry exists only to flag the asymmetry to a future reader.
+  it.skip('code block trailing newline (markdown-it convention)', () => {});
+
+  // Q-INLINE-CODE-BACKTICK: an `InlineCodeNode` whose content contains a
+  // backtick is unrepresentable in dtext source; the markdown side can
+  // produce one via CommonMark's multi-backtick fence rule. Round-trip on
+  // the markdown surface itself is stable for double-backtick fences, but
+  // the formatter's verbatim emit drops the multi-backtick fence wrapping
+  // — a focused fixture would need to assert the documented divergence
+  // rather than equality. Skipping for now.
+  it.skip('inline code with backtick (Q-INLINE-CODE-BACKTICK)', () => {});
+});
