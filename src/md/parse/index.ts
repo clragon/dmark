@@ -40,6 +40,7 @@ import type {
   ListNode,
   ParagraphNode,
   QuoteNode,
+  SpoilerBlockNode,
   StrikeoutNode,
   SubscriptNode,
   SuperscriptNode,
@@ -63,6 +64,7 @@ import { quotePlugin } from './plugins/quote';
 import { referencesPlugin } from './plugins/references';
 import { sectionsPlugin } from './plugins/sections';
 import { spoilerPlugin } from './plugins/spoiler';
+import { spoilerBlockPlugin } from './plugins/spoiler-block';
 
 import type { IdType, InternalAnchorNode, SectionNode } from '../../ast';
 
@@ -107,6 +109,7 @@ md.use(referencesPlugin);
 md.use(magicLinksPlugin);
 md.use(sectionsPlugin);
 md.use(quotePlugin);
+md.use(spoilerBlockPlugin);
 
 export function parseMarkdown(
   input: string,
@@ -239,6 +242,19 @@ function walkBlocksRange(
         i = close;
         break;
       }
+      case 'spoiler_block_open': {
+        // BBCode `[spoiler]...[/spoiler]` block from `./plugins/spoiler-block`.
+        // Distinct token type from the inline `||...||` rule's
+        // `spoiler_open` (which lands in `walkInline`); keeping the names
+        // separate routes block-level openers to this case and inline
+        // openers to the inline walker without the two colliding.
+        const close = findContainerClose(tokens, i);
+        const children = walkBlocksRange(tokens, i + 1, close, diagnostics);
+        const node: SpoilerBlockNode = { type: 'spoiler_block', children };
+        out.push(node);
+        i = close;
+        break;
+      }
       case 'table_open': {
         // Pipe tables lower to `TableNode` (not `LTableNode`; the lightweight
         // form is dtext-only per spec). markdown-it splits the table into
@@ -284,6 +300,7 @@ function walkBlocksRange(
       case 'list_item_close':
       case 'table_close':
       case 'section_close':
+      case 'spoiler_block_close':
         // Consumed by their matching open above (defensive no-op).
         break;
       default:

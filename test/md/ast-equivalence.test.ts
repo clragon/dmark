@@ -89,6 +89,11 @@ const BLOCK_PAIRS: Pair[] = [
     markdown: '[quote=Character]\nhi\n[/quote]',
   },
   {
+    name: 'spoiler block BBCode form',
+    dtext: '[spoiler]\nhidden body\n[/spoiler]',
+    markdown: '[spoiler]\nhidden body\n[/spoiler]',
+  },
+  {
     name: 'section: bare',
     dtext: '[section]\nhello\n[/section]',
     markdown: '[section]\nhello\n[/section]',
