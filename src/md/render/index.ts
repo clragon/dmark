@@ -220,13 +220,15 @@ function formatNode(
       ctx.atLineStart = false;
       return;
 
-    // Table sub-nodes are reached only via `formatTable`; the recursive
-    // dispatch lands here for completeness.
+    // Table sub-nodes: standalone emit (round-trip harness, programmatic
+    // construction) lands here. The primary path runs through `formatTable`,
+    // which unwraps head/body and emits rows directly with the
+    // header-separator row markdown-it requires.
     case 'table_head':
-      formatNodeArray((node as TableHeadNode).rows, out, ctx);
+      for (const row of (node as TableHeadNode).rows) formatNode(row, out, ctx);
       return;
     case 'table_body':
-      formatNodeArray((node as TableBodyNode).rows, out, ctx);
+      for (const row of (node as TableBodyNode).rows) formatNode(row, out, ctx);
       return;
     case 'table_row':
       formatTableRowFallback(node as TableRowNode, out, ctx);
@@ -263,14 +265,6 @@ function formatInlines(
   ctx: FormatContext,
 ): void {
   for (const node of inlines) formatNode(node, out, ctx);
-}
-
-function formatNodeArray(
-  nodes: ASTNode[],
-  out: string[],
-  ctx: FormatContext,
-): void {
-  for (const node of nodes) formatNode(node, out, ctx);
 }
 
 function formatHeader(
