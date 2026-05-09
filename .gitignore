@@ -7,3 +7,6 @@ corpus/db_export/
 
 # External reference clones (e.g. e621ng/dtext for Ragel grammar lookup).
 ref/
+
+# Per-machine bench snapshots (regenerate via `scripts/bench-parse.ts`).
+scripts/bench-snapshots/
