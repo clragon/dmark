@@ -8,10 +8,10 @@
 // Coverage so far: paragraph + standard inline (text, line break, bold,
 // underline, italic, strikethrough, inline code, link, autolink) + headers,
 // blockquote, fenced and indented code blocks + lists (ordered demoted to
-// unordered with a warning) + pipe tables + inline spoilers (`||...||` via
-// the spoiler plugin). Everything else still routes to the
-// `md.unsupported_*` fallback and lands in follow-up commits as each spec
-// row is implemented.
+// unordered with a warning) + pipe tables + inline spoilers (`||...||`) +
+// BBCode survivors (`[sup]`, `[sub]`, `[color=x]`). Everything else still
+// routes to the `md.unsupported_*` fallback and lands in follow-up commits
+// as each spec row is implemented.
 
 import MarkdownIt from 'markdown-it';
 // The `MarkdownIt.Token` namespace pattern only exists in the CJS variant
@@ -25,6 +25,7 @@ import type {
   BlockNode,
   BoldNode,
   CodeBlockNode,
+  ColorNode,
   DocumentNode,
   HeaderNode,
   InlineCodeNode,
@@ -38,6 +39,8 @@ import type {
   ParagraphNode,
   QuoteNode,
   StrikeoutNode,
+  SubscriptNode,
+  SuperscriptNode,
   TableBodyNode,
   TableCellNode,
   TableHeadNode,
@@ -47,6 +50,7 @@ import type {
   UnderlineNode,
 } from '../../ast';
 
+import { bbcodePlugin } from './plugins/bbcode';
 import { spoilerPlugin } from './plugins/spoiler';
 
 export interface ParserOptions {
@@ -90,6 +94,7 @@ const md = new MarkdownIt({
   typographer: false,
 });
 md.use(spoilerPlugin);
+md.use(bbcodePlugin);
 
 export function parseMarkdown(
   input: string,
@@ -333,6 +338,36 @@ function walkInlineRange(
         i = close;
         break;
       }
+      case 'sup_open': {
+        const close = findInlineClose(tokens, i, end, 'sup_close');
+        const children = walkInlineRange(tokens, i + 1, close, diagnostics);
+        const node: SuperscriptNode = { type: 'superscript', children };
+        out.push(node);
+        i = close;
+        break;
+      }
+      case 'sub_open': {
+        const close = findInlineClose(tokens, i, end, 'sub_close');
+        const children = walkInlineRange(tokens, i + 1, close, diagnostics);
+        const node: SubscriptNode = { type: 'subscript', children };
+        out.push(node);
+        i = close;
+        break;
+      }
+      case 'color_open': {
+        // Color value carried on the open token's `color` attr (set by the
+        // BBCode plugin). The dtext side blanks the field when its
+        // `allowColor` parser option is off; the markdown side preserves
+        // the value as typed today and will gain the same option when
+        // `ParserOptions` grows the slot.
+        const close = findInlineClose(tokens, i, end, 'color_close');
+        const children = walkInlineRange(tokens, i + 1, close, diagnostics);
+        const color = tok.attrGet('color') ?? '';
+        const node: ColorNode = { type: 'color', color, children };
+        out.push(node);
+        i = close;
+        break;
+      }
       case 'link_open': {
         // markdown-it's autolink rule sets `markup === 'autolink'` for
         // `<url>` and email autolinks; inline links `[text](url)` set it
@@ -370,6 +405,9 @@ function walkInlineRange(
       case 's_close':
       case 'link_close':
       case 'spoiler_close':
+      case 'sup_close':
+      case 'sub_close':
+      case 'color_close':
         // Closes are bridged by their matching open; reaching one here means
         // the open scan failed (defensive no-op).
         break;

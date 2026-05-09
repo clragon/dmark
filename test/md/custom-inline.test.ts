@@ -16,6 +16,89 @@ function inlineOf(input: string) {
   return para.type === 'paragraph' ? para.children : [];
 }
 
+describe('BBCode survivors `[sup]` / `[sub]` / `[color=x]`', () => {
+  it('lowers `[sup]text[/sup]` to SuperscriptNode', () => {
+    expect(inlineOf('[sup]hi[/sup]')).toEqual([
+      {
+        type: 'superscript',
+        children: [{ type: 'text', content: 'hi' }],
+      },
+    ]);
+  });
+
+  it('lowers `[sub]text[/sub]` to SubscriptNode', () => {
+    expect(inlineOf('[sub]hi[/sub]')).toEqual([
+      {
+        type: 'subscript',
+        children: [{ type: 'text', content: 'hi' }],
+      },
+    ]);
+  });
+
+  it('lowers `[color=red]text[/color]` to ColorNode with the value preserved', () => {
+    expect(inlineOf('[color=red]hi[/color]')).toEqual([
+      {
+        type: 'color',
+        color: 'red',
+        children: [{ type: 'text', content: 'hi' }],
+      },
+    ]);
+  });
+
+  it('matches tags case-insensitively', () => {
+    expect(inlineOf('[SUP]hi[/SUP]')).toEqual([
+      {
+        type: 'superscript',
+        children: [{ type: 'text', content: 'hi' }],
+      },
+    ]);
+    expect(inlineOf('[Color=Blue]hi[/COLOR]')).toEqual([
+      {
+        type: 'color',
+        color: 'Blue',
+        children: [{ type: 'text', content: 'hi' }],
+      },
+    ]);
+  });
+
+  it('parses inline emphasis inside the tag', () => {
+    expect(inlineOf('[sup]**bold**[/sup]')).toEqual([
+      {
+        type: 'superscript',
+        children: [
+          { type: 'bold', children: [{ type: 'text', content: 'bold' }] },
+        ],
+      },
+    ]);
+  });
+
+  it('composes with bold (`**[sub]x[/sub]**`)', () => {
+    expect(inlineOf('**[sub]x[/sub]**')).toEqual([
+      {
+        type: 'bold',
+        children: [
+          { type: 'subscript', children: [{ type: 'text', content: 'x' }] },
+        ],
+      },
+    ]);
+  });
+
+  it('preserves color value with hex form', () => {
+    expect(inlineOf('[color=#ff0000]red[/color]')).toEqual([
+      {
+        type: 'color',
+        color: '#ff0000',
+        children: [{ type: 'text', content: 'red' }],
+      },
+    ]);
+  });
+
+  it('does not match an unclosed `[sup]`', () => {
+    const inline = inlineOf('[sup]forever');
+    expect(inline.find((n) => n.type === 'superscript')).toBeUndefined();
+  });
+});
+
 describe('inline spoiler `||...||`', () => {
   it('lowers to InlineSpoilerNode', () => {
     expect(inlineOf('||secret||')).toEqual([
