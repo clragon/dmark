@@ -5,6 +5,7 @@ import type {
   DocumentNode,
   FragmentNode,
   HeaderNode,
+  IdType,
   InlineNode,
   LinkNode,
   ListItemNode,
@@ -38,7 +39,7 @@ interface UrlMatch {
 }
 
 interface IdMatch {
-  type: string;
+  type: IdType;
   id: string;
   text: string;
 }
@@ -67,6 +68,20 @@ interface SectionMatch {
 export interface ListMatch {
   depth: number;
   content: string;
+}
+
+// ASCII letter test (A-Z, a-z): replaces `/[a-z]/i.test(char)` in hot paths.
+function isAsciiAlpha(code: number): boolean {
+  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+}
+
+// ASCII alphanumeric test: replaces `/[a-z0-9]/i.test(char)` in hot paths.
+function isAsciiAlphaNumeric(code: number): boolean {
+  return (
+    (code >= 0x30 && code <= 0x39) ||
+    (code >= 0x41 && code <= 0x5a) ||
+    (code >= 0x61 && code <= 0x7a)
+  );
 }
 
 // Horizontal whitespace excluding line terminators. Same set that
@@ -152,7 +167,14 @@ function parseInlineString(input: string): InlineNode[] {
 // `[[Ōmukade]]` keeps the `Ō` in the URL, while `[[Foo]]` becomes `foo`).
 // JavaScript's String.prototype.toLowerCase is Unicode-aware, so we need
 // our own version.
+//
+// Fast path: most tag-name strings are already entirely lowercase. Test for
+// any uppercase before allocating a new string. `RE_HAS_UPPER.test` lowers
+// to a tight scan, while `replace(/[A-Z]/g, fn)` always produces a fresh
+// string even when nothing needs folding.
+const RE_HAS_UPPER = /[A-Z]/;
 function asciiLowercase(s: string): string {
+  if (!RE_HAS_UPPER.test(s)) return s;
   return s.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
 }
 
@@ -169,12 +191,91 @@ function isAcceptedTextileUrl(url: string): boolean {
 // Match ruby's CGI.escape / URI::DEFAULT_PARSER.escape behavior: encode
 // everything outside RFC 3986 unreserved (A-Z a-z 0-9 - _ . ~). JS's
 // encodeURIComponent leaves !'()* unencoded; ruby encodes them.
+//
+// Fast path: the secondary `replace(/[!'()*]/g, ...)` only matters when at
+// least one of those five chars survived `encodeURIComponent` unencoded. A
+// quick test on the original string skips the second pass for the common
+// case (most tag/wiki keys contain none of them).
+const RE_RUBY_EXTRA_ESCAPES = /[!'()*]/;
 function rubyUriEscape(str: string): string {
-  return encodeURIComponent(str).replace(
+  const encoded = encodeURIComponent(str);
+  if (!RE_RUBY_EXTRA_ESCAPES.test(encoded)) return encoded;
+  return encoded.replace(
     /[!'()*]/g,
     (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 }
+
+// Sticky-flag (`/y`) variants of the regexes the parser anchors at `this.pos`.
+// Sticky regexes match starting exactly at `lastIndex`, so a leading `^` is
+// implicit and `this.input.slice(this.pos)` allocations vanish. Patterns are
+// hoisted to module scope so they compile once for the whole process instead
+// of per call site.
+const RE_STRAY_SPOILER_CLOSE = /\[\/spoilers?\]/iy;
+const RE_STRAY_CODE_TABLE_CLOSE = /\[\/(code|table)\]/iy;
+const RE_QUOTE_COLOR_OPEN = /\[quote=([^\]\n]*)\]/iy;
+const RE_HEADER = /h([123456])\.\s*/iy;
+const RE_LIST_ITEM = /(\*+)[ \t]+([^\r\n]+)/y;
+const RE_INTERNAL_ANCHOR = /\[#([a-zA-Z0-9_-]+)\]/y;
+const RE_POST_SEARCH = /\{\{([^}]*)\}\}/y;
+const RE_WIKI_LINK = /\[\[([^\]]*)\]\]/y;
+const RE_TEXTILE_BRACKETED = /"([^"]+)":\[([^\]]+)\]/y;
+const RE_TEXTILE_BASIC = /"([^"]+)":(\S+)/y;
+const RE_URL = /https?:\/\/\S+/iy;
+const RE_DELIMITED_URL = /<(https?:\/\/[^>]+)>/iy;
+const RE_COLOR_OPEN = /\[color=([^\]]+)\]/iy;
+const RE_SECTION_EXPANDED_TITLE = /\[section,expanded=([^\]]+)\]/iy;
+const RE_SECTION_TITLE = /\[section=([^\]]+)\]/iy;
+const RE_SPOILER_BLOCK = /\[(spoilers?)\]([\s\S]*?)\[\/\1\]/iy;
+// Peek-only variant: matches `[spoiler]...[/spoiler...]` with the close form
+// independent of the open form (used by peekBlockElement, which only cares
+// whether *some* close exists, matching the prior `(.*?)\[\/spoilers?\]` rule).
+const RE_SPOILER_BLOCK_LOOSE = /\[spoilers?\]([\s\S]*?)\[\/spoilers?\]/iy;
+const RE_SPOILER_PEEK = /\[spoilers?\]/iy;
+const RE_QUOTE_CLOSE_PEEK = /\[\/quote\]/iy;
+const RE_SECTION_CLOSE_PEEK = /\[\/section\]/iy;
+const RE_TEXTILE_TITLE_PEEK = /"[^"]+":/y;
+
+// Block-context patterns shared by `peekBlockElement`. Hoisted so the array
+// isn't rebuilt and the regexes aren't recompiled on every paragraph step.
+//
+// The `[section...]` pattern is intentionally restrictive: it matches only the
+// four forms `matchSection` will commit to (`[section]`, `[section,expanded]`,
+// `[section,expanded=title]`, `[section=title]`). A permissive `\[section/i`
+// would peek-true on malformed openers like `[section,]` / `[section=]`,
+// which `matchSection` would then reject, leaving `parseBlock` unable to
+// advance and the document loop spinning forever.
+const BLOCK_PATTERNS_STICKY: readonly RegExp[] = [
+  /\[quote\]/iy,
+  /\[code\]/iy,
+  /\[\/code\]/iy,
+  /\[section(?:\]|,expanded(?:=[^\]]+)?\]|=[^\]]+\])/iy,
+  /\[table\]/iy,
+  /\[\/table\]/iy,
+  /\[ltable\]/iy,
+];
+
+// Container-tag scanner used by `findContainerCloseInItem` to walk a
+// list-item's text body looking for opens/closes that should truncate the
+// item at the offset of a matching close. Hoisted to module scope so V8
+// keeps a single compiled regex across all calls; `lastIndex` is reset at
+// the call site since this is the only `/g`-style scanner here.
+const RE_CONTAINER_TAG_GLOBAL =
+  /\[(\/?)(section|quote|spoilers?|code|ltable|table)\b[^\]]*\]/gi;
+
+// Line-start-only patterns: structural at column 0, ordinary text mid-line.
+//
+// The list pattern requires `\*+`, then horizontal whitespace `[ \t]+`, then
+// a single non-whitespace char `\S` for the content. Both narrowings matter:
+// a `\s+` separator would match a bare `*\n` line and eat the next line as
+// item content (matchListItem would then disagree, looping forever); a bare
+// `[ \t]+` without the trailing `\S` would peek-true on `** \n` (spaces but
+// no content after), which matchListItem would also reject. Both failure
+// modes were observed against the oracle before the narrowing landed.
+const LINE_START_PATTERNS_STICKY: readonly RegExp[] = [
+  /h[123456]\./iy,
+  /\*+[ \t]+\S/y,
+];
 
 export class DTextStateMachineParser {
   protected input: string;
@@ -194,7 +295,10 @@ export class DTextStateMachineParser {
   private spoilerBlockDepth: number = 0;
 
   // All link ID patterns
-  private static readonly ID_PATTERNS = [
+  private static readonly ID_PATTERNS: ReadonlyArray<{
+    pattern: string;
+    type: IdType;
+  }> = [
     { pattern: 'post', type: 'post' },
     { pattern: 'thumb', type: 'thumb' },
     { pattern: 'post changes', type: 'post_changes' },
@@ -231,11 +335,22 @@ export class DTextStateMachineParser {
     'i',
   );
 
+  // Sticky-flag twin of `COMPILED_ID_PATTERN`. Used by `matchIdLink` and
+  // `looksLikeIdPattern` so the precheck and the actual match share one
+  // alternation regex (was 23 separate compiled regexes rebuilt per call).
+  // `^` is dropped since sticky already anchors to `lastIndex`.
+  private static readonly COMPILED_ID_PATTERN_STICKY = new RegExp(
+    '(' +
+      DTextStateMachineParser.ID_PATTERNS.map((p) => p.pattern).join('|') +
+      ') #(\\d+)',
+    'iy',
+  );
+
   // Canonical display form per id-type. Ruby renders the link text as
   // "<canonical> #<id>" regardless of how the prefix was typed in the source.
   // `Pool` and `POOL` both display as `pool`, `Take Down Request` collapses
   // to `takedown`, and `bur` always upcases to `BUR`.
-  private static readonly ID_DISPLAY: Record<string, string> = {
+  private static readonly ID_DISPLAY: Record<IdType, string> = {
     post: 'post',
     thumb: 'post',
     post_changes: 'post changes',
@@ -265,12 +380,12 @@ export class DTextStateMachineParser {
   // becomes `take down request`; `post changes` is already a literal-space
   // pattern. Lookup keys are lowercase, with input whitespace runs collapsed
   // to a single space.
-  private static readonly ID_TYPE_MAP = new Map(
+  private static readonly ID_TYPE_MAP: ReadonlyMap<string, IdType> = new Map(
     [
       ...DTextStateMachineParser.ID_PATTERNS.map((p) => [
         p.pattern.replace(/\\s[?+*]?/g, ' ').replace(/\s+/g, ' '),
         p.type,
-      ] as [string, string]),
+      ] as [string, IdType]),
       // extra alias for the contracted form of takedown request
       ['takedown request', 'takedown'],
     ],
@@ -359,7 +474,7 @@ export class DTextStateMachineParser {
   // text inside the paragraph (verified against the oracle).
   private peekStrayBlockClose(): boolean {
     if (this.spoilerBlockDepth > 0) return false;
-    return /^\[\/spoilers?\]/i.test(this.input.slice(this.pos));
+    return this.testSticky(RE_STRAY_SPOILER_CLOSE);
   }
 
   // True at a stray `[/code]` or `[/table]`. Their behaviour differs from
@@ -367,14 +482,14 @@ export class DTextStateMachineParser {
   // emits an implicit `<p></p>` if at pristine state, and renders the
   // following inline tail without a `<p>` wrap (verified against the oracle).
   private peekStrayCodeOrTableClose(): boolean {
-    return /^\[\/(code|table)\]/i.test(this.input.slice(this.pos));
+    return this.testSticky(RE_STRAY_CODE_TABLE_CLOSE);
   }
 
   // Consume a stray `[/code]` or `[/table]`. `pristine` is true when the
   // surrounding container has not emitted any block yet, in which case ruby
   // synthesises an empty paragraph before the close.
   private consumeStrayCodeTableAsLiteral(pristine: boolean): LiteralHtmlNode {
-    const m = this.input.slice(this.pos).match(/^\[\/(code|table)\]/i);
+    const m = this.matchSticky(RE_STRAY_CODE_TABLE_CLOSE);
     if (!m) return { type: 'literal_html', prefix: '', children: [] };
     this.pos += m[0].length;
     while (this.pos < this.input.length) {
@@ -418,10 +533,12 @@ export class DTextStateMachineParser {
   }
 
   private peekStrayBlockCloseAfterNewline(): boolean {
+    const input = this.input;
+    const code = input.charCodeAt(this.pos);
     let offset = 0;
-    if (this.input.slice(this.pos, this.pos + 2) === '\r\n') {
+    if (code === 0x0d && input.charCodeAt(this.pos + 1) === 0x0a) {
       offset = 2;
-    } else if (this.input[this.pos] === '\n') {
+    } else if (code === 0x0a) {
       offset = 1;
     } else {
       return false;
@@ -438,7 +555,7 @@ export class DTextStateMachineParser {
   // `[/spoiler] alone at start` becomes `<p> alone at start</p>` and
   // `[/spoiler]\n\nafter` becomes `<p>after</p>`.
   private consumeStrayBlockCloseSilent(): void {
-    const m = this.input.slice(this.pos).match(/^\[\/spoilers?\]/i);
+    const m = this.matchSticky(RE_STRAY_SPOILER_CLOSE);
     if (!m) return;
     this.pos += m[0].length;
   }
@@ -451,7 +568,7 @@ export class DTextStateMachineParser {
   // break (`\n\n`) or at an in-scope `[/quote]` / `[/section]` so the
   // surrounding container can resume normally.
   private consumeStrayBlockCloseAsLiteral(prefix = ''): LiteralHtmlNode {
-    const m = this.input.slice(this.pos).match(/^\[\/spoilers?\]/i);
+    const m = this.matchSticky(RE_STRAY_SPOILER_CLOSE);
     if (!m) return { type: 'literal_html', prefix, children: [] };
     this.pos += m[0].length;
     const fullPrefix = prefix + m[0];
@@ -486,7 +603,8 @@ export class DTextStateMachineParser {
       }
       break;
     }
-    return /^\[\/spoilers?\]/i.test(this.input.slice(p));
+    RE_STRAY_SPOILER_CLOSE.lastIndex = p;
+    return RE_STRAY_SPOILER_CLOSE.test(this.input);
   }
 
   // Look ahead through any whitespace and newlines starting at pos. If a
@@ -504,13 +622,12 @@ export class DTextStateMachineParser {
       }
       break;
     }
-    const r = this.input.slice(p);
-    if (this.spoilerBlockDepth === 0 && /^\[\/spoilers?\]/i.test(r)) {
-      const prefix = this.input.slice(this.pos, p);
-      this.pos = p;
-      return prefix;
-    }
-    return null;
+    if (this.spoilerBlockDepth !== 0) return null;
+    RE_STRAY_SPOILER_CLOSE.lastIndex = p;
+    if (!RE_STRAY_SPOILER_CLOSE.test(this.input)) return null;
+    const prefix = this.input.slice(this.pos, p);
+    this.pos = p;
+    return prefix;
   }
 
   private parseInlineDocument(): DocumentNode {
@@ -610,8 +727,7 @@ export class DTextStateMachineParser {
   // pos unchanged when not a valid colored quote (so the surrounding parser
   // can fall through to inline-text handling).
   private matchQuoteColorOpen(): string | null {
-    const remaining = this.input.slice(this.pos);
-    const m = remaining.match(/^\[quote=([^\]\n]*)\]/i);
+    const m = this.matchSticky(RE_QUOTE_COLOR_OPEN);
     if (!m) return null;
     const color = m[1];
     if (!isValidQuoteColor(color)) return null;
@@ -1041,9 +1157,14 @@ export class DTextStateMachineParser {
       // `[/td]` and drop everything from there to the cell's end. Verified
       // against the oracle: `[td]body[/td]` -> `[td]body`, `body[/td]more`
       // -> `body`, `[/td]bare` -> empty. Header cells are kept as-is.
-      if (cellType === 'td') {
-        const idx = content.toLowerCase().indexOf('[/td]');
-        if (idx >= 0) content = content.slice(0, idx).trimEnd();
+      //
+      // Fast path: most body cells contain no `[` at all, in which case
+      // `[/td]` cannot appear. Probe with `indexOf('[')` before allocating
+      // a lowercased copy. When present, a CI regex finds the close in a
+      // single pass without the eager `toLowerCase()` allocation.
+      if (cellType === 'td' && content.indexOf('[') >= 0) {
+        const m = /\[\/td\]/i.exec(content);
+        if (m) content = content.slice(0, m.index).trimEnd();
       }
       const children: InlineNode[] = content
         ? this.parseInlineText(content)
@@ -1166,7 +1287,7 @@ export class DTextStateMachineParser {
     // Paragraphs never reach this branch because peekBlockElement breaks
     // them on `[/table]` first; the document/quote/section block loops
     // intercept the same close earlier via consumeStrayCodeTableAsLiteral.
-    const inlineCT = this.input.slice(this.pos).match(/^\[\/(code|table)\]/i);
+    const inlineCT = this.matchSticky(RE_STRAY_CODE_TABLE_CLOSE);
     if (inlineCT) {
       this.pos += inlineCT[0].length;
       while (this.pos < this.input.length) {
@@ -1434,34 +1555,35 @@ export class DTextStateMachineParser {
 
   protected parseText(): TextNode {
     const start = this.pos;
+    const input = this.input;
+    const len = input.length;
 
-    while (this.pos < this.input.length) {
-      const char = this.input[this.pos];
+    while (this.pos < len) {
+      const code = input.charCodeAt(this.pos);
 
-      // Stop at markup characters
-      if (char === '[' || char === '`' || char === '\r' || char === '\n') {
+      // Stop at markup characters: '[' (0x5b), '`' (0x60), '\r' (0x0d), '\n' (0x0a)
+      if (code === 0x5b || code === 0x60 || code === 0x0d || code === 0x0a) {
         break;
       }
 
-      // Handle escaped characters
-      if (char === '\\' && this.pos + 1 < this.input.length) {
-        const nextChar = this.input[this.pos + 1];
-        if (nextChar === '`') {
+      // Handle escaped characters: '\\' (0x5c) followed by '`'
+      if (code === 0x5c && this.pos + 1 < len) {
+        if (input.charCodeAt(this.pos + 1) === 0x60) {
           // Don't stop here, let the escaped backtick be handled by parseInlineElement
           break;
         }
       }
 
-      // Stop at potential link starts
-      if (char === '"' || char === '<' || char === '{') {
+      // Stop at potential link starts: '"' (0x22), '<' (0x3c), '{' (0x7b)
+      if (code === 0x22 || code === 0x3c || code === 0x7b) {
         if (this.looksLikeMarkup()) {
           break;
         }
       }
 
-      // Stop at URL starts
-      if (char === 'h' && this.pos + 3 < this.input.length) {
-        if (this.input.slice(this.pos, this.pos + 4).toLowerCase() === 'http') {
+      // Stop at URL starts: 'h' (0x68) or 'H' (0x48), prefix matches "http"
+      if ((code === 0x68 || code === 0x48) && this.pos + 3 < len) {
+        if (this.compareAtPos('http', true)) {
           break;
         }
       }
@@ -1470,11 +1592,11 @@ export class DTextStateMachineParser {
       // buffer or after a non-alphanumeric character) so we don't pay the
       // cost of a regex check at every char. Ruby's parser fires id-link
       // detection after any non-word boundary including `(`, `[`, `,`, etc.
-      if (
-        /[a-z]/i.test(char) &&
-        (this.pos === start || !/[a-z0-9]/i.test(this.input[this.pos - 1]))
-      ) {
-        if (this.looksLikeIdPattern()) {
+      if (isAsciiAlpha(code)) {
+        const prevIsAlnum =
+          this.pos !== start &&
+          isAsciiAlphaNumeric(input.charCodeAt(this.pos - 1));
+        if (!prevIsAlnum && this.looksLikeIdPattern()) {
           break;
         }
       }
@@ -1482,10 +1604,10 @@ export class DTextStateMachineParser {
       this.pos++;
     }
 
-    const content = this.input.slice(start, this.pos);
-    return content
-      ? { type: 'text', content }
-      : { type: 'text', content: this.input[this.pos++] || '' };
+    if (this.pos > start) {
+      return { type: 'text', content: input.slice(start, this.pos) };
+    }
+    return { type: 'text', content: input[this.pos++] || '' };
   }
 
   private parseInlineText(text: string): InlineNode[] {
@@ -1511,20 +1633,57 @@ export class DTextStateMachineParser {
 
   // Pattern matching methods
   private matchString(pattern: string, caseInsensitive = false): boolean {
-    const slice = this.input.slice(this.pos, this.pos + pattern.length);
-    const matches = caseInsensitive
-      ? slice.toLowerCase() === pattern.toLowerCase()
-      : slice === pattern;
+    if (!this.compareAtPos(pattern, caseInsensitive)) return false;
+    this.pos += pattern.length;
+    return true;
+  }
 
-    if (matches) {
-      this.pos += pattern.length;
-      return true;
+  // Compare `pattern` against the input at `this.pos` without allocating.
+  // CS path delegates to `String.prototype.startsWith(pattern, pos)`.
+  //
+  // Precondition for the CI path: `pattern` MUST be ASCII. Every current
+  // caller passes a hardcoded bracketed tag (`[/quote]`, `[code]`, etc.).
+  // Non-ASCII letters that JS's `String#toLowerCase` *would* fold (e.g. the
+  // Kelvin sign U+212A folds to ASCII `k`) will NOT fold here. The manual
+  // loop only case-folds A-Z. Closer to ruby's `String#downcase` behavior
+  // than the prior implementation, but the contract narrowed: do not call
+  // with a non-ASCII pattern unless you've thought about the fold rules.
+  private compareAtPos(pattern: string, caseInsensitive: boolean): boolean {
+    const input = this.input;
+    const pos = this.pos;
+    if (!caseInsensitive) return input.startsWith(pattern, pos);
+    const len = pattern.length;
+    if (pos + len > input.length) return false;
+    for (let i = 0; i < len; i++) {
+      const a = input.charCodeAt(pos + i);
+      const b = pattern.charCodeAt(i);
+      if (a === b) continue;
+      const al = a >= 0x41 && a <= 0x5a ? a + 0x20 : a;
+      const bl = b >= 0x41 && b <= 0x5a ? b + 0x20 : b;
+      if (al !== bl) return false;
     }
-    return false;
+    return true;
+  }
+
+  // Run a sticky regex anchored at `this.pos`. Sticky regexes (`/y` flag)
+  // match only when their start equals `lastIndex`, so this is the in-place
+  // equivalent of `this.input.slice(this.pos).match(/^.../)` minus the
+  // O(n - pos) allocation per call. Returns the match or null; does not
+  // advance `this.pos` (callers do, the same way the slice form did).
+  private matchSticky(re: RegExp): RegExpExecArray | null {
+    re.lastIndex = this.pos;
+    return re.exec(this.input);
+  }
+
+  // Boolean variant of `matchSticky`. Identical contract; just avoids
+  // allocating a match object when callers only need a yes/no.
+  private testSticky(re: RegExp): boolean {
+    re.lastIndex = this.pos;
+    return re.test(this.input);
   }
 
   private matchHeader(): number | null {
-    const match = this.input.slice(this.pos).match(/^h([123456])\.\s*/i);
+    const match = this.matchSticky(RE_HEADER);
     if (match) {
       this.pos += match[0].length;
       return parseInt(match[1]);
@@ -1545,8 +1704,7 @@ export class DTextStateMachineParser {
     // of what its body contains. A spoiler embedded inside a paragraph (after
     // a single newline or mid-line) stays inline; that case never reaches
     // parseBlock, so the structural test here is sufficient.
-    const remaining = this.input.slice(this.pos);
-    const blockMatch = remaining.match(/^\[(spoilers?)\]([\s\S]*?)\[\/\1\]/i);
+    const blockMatch = this.matchSticky(RE_SPOILER_BLOCK);
     if (!blockMatch) return false;
     this.pos += blockMatch[1].length + 2; // consume only the opening tag
     return true;
@@ -1560,9 +1718,13 @@ export class DTextStateMachineParser {
   }
 
   private getSpoilerClosePattern(): string {
-    // Look ahead to determine the right close pattern
-    const remaining = this.input.slice(this.pos).toLowerCase();
-    return remaining.includes('[/spoilers]') ? '[/spoilers]' : '[/spoiler]';
+    // Prefer `[/spoilers]` when it appears anywhere ahead of this.pos,
+    // matching the prior `slice().toLowerCase().includes()` behavior. The
+    // global flag lets us walk forward from this.pos without allocating a
+    // lower-cased copy of the rest of the buffer.
+    const re = /\[\/spoilers\]/gi;
+    re.lastIndex = this.pos;
+    return re.test(this.input) ? '[/spoilers]' : '[/spoiler]';
   }
 
   private matchSection(): SectionMatch | null {
@@ -1573,17 +1735,13 @@ export class DTextStateMachineParser {
       return {};
     }
 
-    const expandedMatch = this.input
-      .slice(this.pos)
-      .match(/^\[section,expanded=([^\]]+)\]/i);
+    const expandedMatch = this.matchSticky(RE_SECTION_EXPANDED_TITLE);
     if (expandedMatch) {
       this.pos += expandedMatch[0].length;
       return { title: expandedMatch[1], expanded: true };
     }
 
-    const titleMatch = this.input
-      .slice(this.pos)
-      .match(/^\[section=([^\]]+)\]/i);
+    const titleMatch = this.matchSticky(RE_SECTION_TITLE);
     if (titleMatch) {
       this.pos += titleMatch[0].length;
       return { title: titleMatch[1] };
@@ -1606,8 +1764,12 @@ export class DTextStateMachineParser {
   // and a stray close inside a list item ends the list (verified against
   // the oracle: `* a [/table] b` becomes `<ul><li>a </li></ul>[/table]b`).
   private findContainerCloseInItem(content: string): number {
-    const re =
-      /\[(\/?)(section|quote|spoilers?|code|ltable|table)\b[^\]]*\]/gi;
+    // Fast path: most list items are pure prose with no `[` at all. Skip
+    // the regex setup entirely; `indexOf` lowers to a tight machine-code
+    // scan that returns -1 quickly on the common case.
+    if (content.indexOf('[') < 0) return -1;
+    const re = RE_CONTAINER_TAG_GLOBAL;
+    re.lastIndex = 0;
     let spoilerDepth = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(content)) !== null) {
@@ -1646,7 +1808,7 @@ export class DTextStateMachineParser {
     // failure: `* a\n*\n* b` then matched `*\n* b` as one item with text
     // `* b`). Oracle keeps the bare `*` as a paragraph and starts a fresh
     // list afterwards.
-    const match = this.input.slice(this.pos).match(/^(\*+)[ \t]+([^\r\n]+)/);
+    const match = this.matchSticky(RE_LIST_ITEM);
     if (!match) return null;
 
     const contentStart = match[0].length - match[2].length;
@@ -1667,7 +1829,7 @@ export class DTextStateMachineParser {
   }
 
   private matchInternalAnchor(): string | null {
-    const match = this.input.slice(this.pos).match(/^\[#([a-zA-Z0-9_-]+)\]/);
+    const match = this.matchSticky(RE_INTERNAL_ANCHOR);
     if (match) {
       this.pos += match[0].length;
       return match[1];
@@ -1676,32 +1838,22 @@ export class DTextStateMachineParser {
   }
 
   protected matchIdLink(): IdMatch | null {
-    const remaining = this.input.slice(this.pos);
-    const match = remaining.match(DTextStateMachineParser.COMPILED_ID_PATTERN);
+    const match = this.matchSticky(
+      DTextStateMachineParser.COMPILED_ID_PATTERN_STICKY,
+    );
+    if (!match) return null;
 
-    if (match) {
-      this.pos += match[0].length;
-      const matchedPattern = match[1].toLowerCase().replace(/\s+/g, ' ');
+    // Lookup keys are stored lowercase with whitespace collapsed; the input
+    // pattern is normalised to match. The map is built from the same source
+    // list as the regex alternation, so any successful regex match has a
+    // corresponding entry here. The null guard is paranoia for a future
+    // edit that adds a regex pattern without a map entry.
+    const matchedPattern = match[1].toLowerCase().replace(/\s+/g, ' ');
+    const type = DTextStateMachineParser.ID_TYPE_MAP.get(matchedPattern);
+    if (type === undefined) return null;
 
-      let type = 'unknown';
-      for (const [
-        pattern,
-        patternType,
-      ] of DTextStateMachineParser.ID_TYPE_MAP) {
-        if (matchedPattern === pattern.toLowerCase()) {
-          type = patternType;
-          break;
-        }
-      }
-
-      return {
-        type,
-        id: match[2],
-        text: match[0],
-      };
-    }
-
-    return null;
+    this.pos += match[0].length;
+    return { type, id: match[2], text: match[0] };
   }
 
   protected matchPostSearchLink(): PostSearchMatch | null {
@@ -1713,7 +1865,7 @@ export class DTextStateMachineParser {
     //     `{{|tag}}` -> "|tag")
     //   * 1 trailing pipe -> literal
     //   * 2+ pipes -> literal
-    const block = this.input.slice(this.pos).match(/^\{\{([^}]*)\}\}/);
+    const block = this.matchSticky(RE_POST_SEARCH);
     if (!block) return null;
     const content = block[1];
     if (content.length === 0) return null;
@@ -1752,7 +1904,7 @@ export class DTextStateMachineParser {
     //   * 2+ pipes -> literal
     // After tag-vs-title is decided, the tag is split on its first `#` for
     // an anchor (anchor may be empty: `[[abc#]]` -> tag "abc", anchor "").
-    const block = this.input.slice(this.pos).match(/^\[\[([^\]]*)\]\]/);
+    const block = this.matchSticky(RE_WIKI_LINK);
     if (!block) return null;
     const content = block[1];
     if (content.length === 0) return null;
@@ -1816,9 +1968,7 @@ export class DTextStateMachineParser {
     // "title":[url] format. Oracle rejects bracketed urls that contain any
     // whitespace (space/tab/newline/CR) or are empty. The empty case is
     // already screened by the `+` in the regex.
-    const bracketedMatch = this.input
-      .slice(this.pos)
-      .match(/^"([^"]+)":\[([^\]]+)\]/);
+    const bracketedMatch = this.matchSticky(RE_TEXTILE_BRACKETED);
     if (bracketedMatch) {
       if (!isAcceptedTextileUrl(bracketedMatch[2])) return null;
       if (/\s/.test(bracketedMatch[2])) return null;
@@ -1828,7 +1978,7 @@ export class DTextStateMachineParser {
 
     // "title":url format. Strip trailing boundary punctuation (,.;:!?) the
     // way matchUrl does for bare urls , preserving balanced parens.
-    const basicMatch = this.input.slice(this.pos).match(/^"([^"]+)":(\S+)/);
+    const basicMatch = this.matchSticky(RE_TEXTILE_BASIC);
     if (basicMatch) {
       const trimmed = trimUrlBoundaries(basicMatch[2]);
       if (!isAcceptedTextileUrl(trimmed)) return null;
@@ -1841,7 +1991,7 @@ export class DTextStateMachineParser {
   }
 
   protected matchUrl(): UrlMatch | null {
-    const match = this.input.slice(this.pos).match(/^https?:\/\/\S+/i);
+    const match = this.matchSticky(RE_URL);
     if (match) {
       const start = this.pos;
       let url = match[0];
@@ -1856,7 +2006,7 @@ export class DTextStateMachineParser {
   }
 
   private matchDelimitedUrl(): UrlMatch | null {
-    const match = this.input.slice(this.pos).match(/^<(https?:\/\/[^>]+)>/i);
+    const match = this.matchSticky(RE_DELIMITED_URL);
     if (match) {
       this.pos += match[0].length;
       return {
@@ -1869,7 +2019,7 @@ export class DTextStateMachineParser {
   }
 
   private matchColor(): string | null {
-    const colorMatch = this.input.slice(this.pos).match(/^\[color=([^\]]+)\]/i);
+    const colorMatch = this.matchSticky(RE_COLOR_OPEN);
     if (colorMatch) {
       // Same validity rules as a quote-colour: hex (3 or 6), strict-lowercase
       // word, or one of the tag-category aliases. Anything else is left as
@@ -1884,11 +2034,14 @@ export class DTextStateMachineParser {
   private matchNewlines(): boolean {
     // Consume only line terminators here. Horizontal whitespace must stay so
     // it can be picked up as paragraph content (ruby preserves indentation).
+    const input = this.input;
+    const len = input.length;
     const start = this.pos;
-    while (this.pos < this.input.length) {
-      if (this.input.slice(this.pos, this.pos + 2) === '\r\n') {
+    while (this.pos < len) {
+      const code = input.charCodeAt(this.pos);
+      if (code === 0x0d && input.charCodeAt(this.pos + 1) === 0x0a) {
         this.pos += 2;
-      } else if (this.input[this.pos] === '\n' || this.input[this.pos] === '\r') {
+      } else if (code === 0x0a || code === 0x0d) {
         this.pos += 1;
       } else {
         break;
@@ -1898,29 +2051,30 @@ export class DTextStateMachineParser {
   }
 
   private skipWhitespace(): void {
-    while (this.pos < this.input.length && /[ \t]/.test(this.input[this.pos])) {
+    const input = this.input;
+    const len = input.length;
+    while (this.pos < len) {
+      const code = input.charCodeAt(this.pos);
+      if (code !== 0x20 && code !== 0x09) break;
       this.pos++;
     }
   }
 
   private peekNewline(): boolean {
-    return (
-      this.input[this.pos] === '\n' ||
-      this.input.slice(this.pos, this.pos + 2) === '\r\n'
-    );
+    const code = this.input.charCodeAt(this.pos);
+    if (code === 0x0a) return true;
+    return code === 0x0d && this.input.charCodeAt(this.pos + 1) === 0x0a;
   }
 
   private peekString(pattern: string, caseInsensitive = false): boolean {
-    const slice = this.input.slice(this.pos, this.pos + pattern.length);
-    return caseInsensitive
-      ? slice.toLowerCase() === pattern.toLowerCase()
-      : slice === pattern;
+    return this.compareAtPos(pattern, caseInsensitive);
   }
 
   private consumeNewline(): void {
-    if (this.input.slice(this.pos, this.pos + 2) === '\r\n') {
+    const code = this.input.charCodeAt(this.pos);
+    if (code === 0x0d && this.input.charCodeAt(this.pos + 1) === 0x0a) {
       this.pos += 2;
-    } else if (this.input[this.pos] === '\n') {
+    } else if (code === 0x0a) {
       this.pos += 1;
     }
   }
@@ -1931,15 +2085,15 @@ export class DTextStateMachineParser {
   // paragraph break before `body` instead of an empty <p></p> from the
   // leftover ` \n`.
   private consumeBlockCloseTail(): void {
-    while (
-      this.pos < this.input.length &&
-      isHorizontalWhitespace(this.input.charCodeAt(this.pos))
-    ) {
+    const input = this.input;
+    const len = input.length;
+    while (this.pos < len && isHorizontalWhitespace(input.charCodeAt(this.pos))) {
       this.pos++;
     }
-    if (this.input.slice(this.pos, this.pos + 2) === '\r\n') {
+    const code = input.charCodeAt(this.pos);
+    if (code === 0x0d && input.charCodeAt(this.pos + 1) === 0x0a) {
       this.pos += 2;
-    } else if (this.input[this.pos] === '\n' || this.input[this.pos] === '\r') {
+    } else if (code === 0x0a || code === 0x0d) {
       this.pos += 1;
     }
   }
@@ -1951,20 +2105,17 @@ export class DTextStateMachineParser {
   // as empty paragraphs. At document level we don't do this; ruby keeps
   // " \n\n" as a real <p> </p>.
   private skipBlankLines(): void {
-    while (this.pos < this.input.length) {
+    const input = this.input;
+    const len = input.length;
+    while (this.pos < len) {
       let lookahead = this.pos;
-      while (
-        lookahead < this.input.length &&
-        isHorizontalWhitespace(this.input.charCodeAt(lookahead))
-      ) {
+      while (lookahead < len && isHorizontalWhitespace(input.charCodeAt(lookahead))) {
         lookahead++;
       }
-      if (this.input.slice(lookahead, lookahead + 2) === '\r\n') {
+      const code = input.charCodeAt(lookahead);
+      if (code === 0x0d && input.charCodeAt(lookahead + 1) === 0x0a) {
         this.pos = lookahead + 2;
-      } else if (
-        this.input[lookahead] === '\n' ||
-        this.input[lookahead] === '\r'
-      ) {
+      } else if (code === 0x0a || code === 0x0d) {
         this.pos = lookahead + 1;
       } else {
         break;
@@ -1973,12 +2124,14 @@ export class DTextStateMachineParser {
   }
 
   private peekDoubleNewline(): boolean {
+    const input = this.input;
     let tempPos = this.pos;
 
     // First newline
-    if (this.input.slice(tempPos, tempPos + 2) === '\r\n') {
+    const code1 = input.charCodeAt(tempPos);
+    if (code1 === 0x0d && input.charCodeAt(tempPos + 1) === 0x0a) {
       tempPos += 2;
-    } else if (this.input[tempPos] === '\n') {
+    } else if (code1 === 0x0a) {
       tempPos += 1;
     } else {
       return false;
@@ -1988,18 +2141,20 @@ export class DTextStateMachineParser {
     // Ruby treats `newline + horizontal whitespace + newline` as two
     // separate single newlines (rendered as `<br>...<br>` inside the same
     // paragraph), not as a paragraph break.
+    const code2 = input.charCodeAt(tempPos);
     return (
-      this.input.slice(tempPos, tempPos + 2) === '\r\n' ||
-      this.input[tempPos] === '\n'
+      code2 === 0x0a ||
+      (code2 === 0x0d && input.charCodeAt(tempPos + 1) === 0x0a)
     );
   }
 
   private peekBlockElementAfterNewline(): boolean {
-    const here = this.input[this.pos];
+    const input = this.input;
+    const code = input.charCodeAt(this.pos);
     let offset = 0;
-    if (this.input.slice(this.pos, this.pos + 2) === '\r\n') {
+    if (code === 0x0d && input.charCodeAt(this.pos + 1) === 0x0a) {
       offset = 2;
-    } else if (here === '\n') {
+    } else if (code === 0x0a) {
       offset = 1;
     } else {
       return false;
@@ -2012,111 +2167,72 @@ export class DTextStateMachineParser {
   }
 
   private peekBlockElement(): boolean {
-    const remaining = this.input.slice(this.pos);
     // Some block markers (h1., * item, etc.) are only structural at the
     // start of a line. Mid-line they are ordinary text. Bracketed tags
     // ([code], [/code], ...) break paragraphs regardless of position.
     const atLineStart =
       this.pos === 0 || this.input[this.pos - 1] === '\n';
-    // List item pattern must require horizontal whitespace AND a content
-    // char. Using `\s` would match a bare `*\n` line; using just `[ \t]+`
-    // would match `** \n` (no content after the spaces). In both cases
-    // matchListItem would reject the same input, leaving parseBlock unable
-    // to advance and the document loop spinning forever.
-    const lineStartPatterns = [/^h[123456]\./i, /^\*+[ \t]+[^\s]/];
-    const blockPatterns = [
-      /^\[quote\]/i,
-      /^\[code\]/i,
-      /^\[\/code\]/i,
-      // Match only forms matchSection accepts: `[section]`,
-      // `[section,expanded]`, `[section,expanded=title]`, `[section=title]`.
-      // A permissive `^\[section/i` matched malformed openers like
-      // `[section,]` and `[section=]`, which matchSection then rejected,
-      // causing parseBlock to spin without making progress.
-      /^\[section(?:\]|,expanded(?:=[^\]]+)?\]|=[^\]]+\])/i,
-      /^\[table\]/i,
-      /^\[\/table\]/i,
-      /^\[ltable\]/i,
-    ];
 
     // Special handling for spoilers - only block if multiline
-    if (/^\[spoilers?\]/i.test(remaining)) {
-      const spoilerMatch = remaining.match(
-        /^\[spoilers?\](.*?)\[\/spoilers?\]/is,
-      );
-      if (spoilerMatch && spoilerMatch[1].includes('\n')) {
-        return true; // Block spoiler (contains newlines)
-      }
-      return false; // Inline spoiler (single line)
+    if (this.testSticky(RE_SPOILER_PEEK)) {
+      const spoilerMatch = this.matchSticky(RE_SPOILER_BLOCK_LOOSE);
+      return spoilerMatch !== null && spoilerMatch[1].includes('\n');
     }
 
     // Closes for block containers only count as block markers when their
     // matching open is in scope. Outside of one, ruby treats them as
     // ordinary inline text and so do we (otherwise we infinite-loop in
     // parseBlock since no branch consumes them).
-    if (this.quoteDepth > 0 && /^\[\/quote\]/i.test(remaining)) return true;
-    if (this.sectionDepth > 0 && /^\[\/section\]/i.test(remaining)) return true;
-    if (this.spoilerBlockDepth > 0 && /^\[\/spoilers?\]/i.test(remaining))
+    if (this.quoteDepth > 0 && this.testSticky(RE_QUOTE_CLOSE_PEEK))
+      return true;
+    if (this.sectionDepth > 0 && this.testSticky(RE_SECTION_CLOSE_PEEK))
+      return true;
+    if (this.spoilerBlockDepth > 0 && this.testSticky(RE_STRAY_SPOILER_CLOSE))
       return true;
 
     // Colored quote opens like [quote=#00CCFF] count as block elements only
     // when the color is valid; invalid color attributes (e.g. [quote=Bob])
     // are treated as inline text by ruby and we mirror that.
-    const coloredQuote = remaining.match(/^\[quote=([^\]\n]*)\]/i);
+    const coloredQuote = this.matchSticky(RE_QUOTE_COLOR_OPEN);
     if (coloredQuote && isValidQuoteColor(coloredQuote[1])) return true;
 
-    if (blockPatterns.some((pattern) => pattern.test(remaining))) return true;
-    if (atLineStart && lineStartPatterns.some((p) => p.test(remaining)))
-      return true;
+    for (const pattern of BLOCK_PATTERNS_STICKY) {
+      if (this.testSticky(pattern)) return true;
+    }
+    if (atLineStart) {
+      for (const pattern of LINE_START_PATTERNS_STICKY) {
+        if (this.testSticky(pattern)) return true;
+      }
+    }
     return false;
   }
 
   protected looksLikeMarkup(): boolean {
-    const remaining = this.input.slice(this.pos);
+    // `String.prototype.startsWith` accepts a position arg, so the four
+    // literal-prefix checks need no slice. The textile-title regex uses the
+    // sticky form anchored at this.pos for the same reason.
+    const input = this.input;
+    const pos = this.pos;
     return (
-      remaining.startsWith('{{') ||
-      remaining.startsWith('[[') ||
-      remaining.startsWith('"http') ||
-      remaining.startsWith('<http') ||
-      /^"[^"]+":/.test(remaining)
+      input.startsWith('{{', pos) ||
+      input.startsWith('[[', pos) ||
+      input.startsWith('"http', pos) ||
+      input.startsWith('<http', pos) ||
+      this.testSticky(RE_TEXTILE_TITLE_PEEK)
     ); // Match textile links like "text":url or "text":[url]
   }
 
   protected looksLikeIdPattern(): boolean {
-    const remaining = this.input.slice(this.pos);
-
-    const idPatterns = [
-      /^post #\d+/i,
-      /^thumb #\d+/i,
-      /^post changes #\d+/i,
-      /^flag #\d+/i,
-      /^note #\d+/i,
-      /^forum #\d+/i,
-      /^topic #\d+/i,
-      /^comment #\d+/i,
-      /^pool #\d+/i,
-      /^user #\d+/i,
-      /^artist #\d+/i,
-      /^ban #\d+/i,
-      /^bur #\d+/i,
-      /^alias #\d+/i,
-      /^implication #\d+/i,
-      /^mod action #\d+/i,
-      /^record #\d+/i,
-      /^wiki #\d+/i,
-      /^set #\d+/i,
-      /^blip #\d+/i,
-      /^takedown #\d+/i,
-      /^take ?down request #\d+/i,
-      /^ticket #\d+/i,
-    ];
-
-    return idPatterns.some((pattern) => pattern.test(remaining));
+    // `COMPILED_ID_PATTERN_STICKY` is exactly the same alternation that
+    // `matchIdLink` uses to commit. Sharing it keeps the precheck and the
+    // commit in lockstep (no drift) and replaces 23 freshly-allocated
+    // RegExp objects per call with a single pre-compiled regex.
+    return this.testSticky(DTextStateMachineParser.COMPILED_ID_PATTERN_STICKY);
   }
 
   // Link creation methods
   private createIdLink(match: IdMatch): LinkNode {
-    const routes: Record<string, string> = {
+    const routes: Record<IdType, string> = {
       post: '/posts/',
       thumb: '/posts/',
       post_changes: '/post_versions?search[post_id]=',

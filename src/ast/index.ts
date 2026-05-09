@@ -196,13 +196,42 @@ export interface FragmentNode extends ASTNode {
   children: InlineNode[];
 }
 
+// id-link kinds the parser emits via `[prefix #N]` syntax (post #123,
+// pool #45, etc.). The set is kept in lockstep with `ID_PATTERNS` in
+// `parse/index.ts` and with `ID_TYPE_CLASSES` in `render-html/index.ts`;
+// adding a new id type means a new entry in all three places, and the
+// union here makes the renderer's Record exhaustive against it.
+export type IdType =
+  | 'post'
+  | 'thumb'
+  | 'post_changes'
+  | 'flag'
+  | 'note'
+  | 'forum_post'
+  | 'topic'
+  | 'comment'
+  | 'pool'
+  | 'user'
+  | 'artist'
+  | 'ban'
+  | 'bur'
+  | 'alias'
+  | 'implication'
+  | 'mod_action'
+  | 'record'
+  | 'wiki'
+  | 'set'
+  | 'blip'
+  | 'takedown'
+  | 'ticket';
+
 export interface LinkNode extends ASTNode {
   type: 'link';
   linkType: 'url' | 'textile' | 'wiki' | 'post_search' | 'id_link';
   href: string;
   title?: string;
   children?: InlineNode[];
-  idType?: string;
+  idType?: IdType;
   id?: string;
   anchor?: string;
   tags?: string;

@@ -7,6 +7,7 @@ import type {
   DocumentNode,
   FragmentNode,
   HeaderNode,
+  IdType,
   InlineCodeNode,
   InlineSpoilerNode,
   InternalAnchorNode,
@@ -45,26 +46,86 @@ interface RenderContext {
   thumbCount: number;
 }
 
+// Tag-category aliases that get a class-name treatment instead of an inline
+// style. Both `renderQuote` and `renderColor` dispatch on this same set: a
+// category match emits a `dtext-sidebar-colored-*` or `dtext-color-*` class
+// with the original case preserved, otherwise the inline-style path runs.
+// The parser keeps the same alternation under `QUOTE_CATEGORY_RE` (used by
+// `isValidQuoteColor`) as the upstream gate; the two literals must stay in
+// lockstep until the ID-metadata consolidation collapses them.
+const TAG_CATEGORY_RE =
+  /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i;
+
+// Class names for `id_link` anchors keyed by the parser-emitted `idType`.
+// Multi-class entries (today only `thumb`) carry the full ordered list, so
+// the consumer is one indexed lookup and one push. The set must stay in
+// lockstep with `ID_PATTERNS` in `parse/index.ts`: the parser produces an
+// `idType` that this table must recognise, otherwise the rendered link
+// silently loses its type-specific class. The `thumb` entry is load-bearing:
+// a thumb that exceeds `maxThumbs` gets rewritten by the parser to
+// `idType: 'post'`, so the over-limit case picks up `dtext-post-id-link`
+// alone (no `thumb-placeholder-link`) without any special path here.
+const ID_TYPE_CLASSES: Record<IdType, readonly string[]> = {
+  post: ['dtext-post-id-link'],
+  thumb: ['dtext-post-id-link', 'thumb-placeholder-link'],
+  post_changes: ['dtext-post-changes-for-id-link'],
+  flag: ['dtext-post-flag-id-link'],
+  note: ['dtext-note-id-link'],
+  forum_post: ['dtext-forum-post-id-link'],
+  topic: ['dtext-forum-topic-id-link'],
+  comment: ['dtext-comment-id-link'],
+  pool: ['dtext-pool-id-link'],
+  user: ['dtext-user-id-link'],
+  artist: ['dtext-artist-id-link'],
+  ban: ['dtext-ban-id-link'],
+  bur: ['dtext-bulk-update-request-id-link'],
+  alias: ['dtext-tag-alias-id-link'],
+  implication: ['dtext-tag-implication-id-link'],
+  mod_action: ['dtext-mod-action-id-link'],
+  record: ['dtext-user-feedback-id-link'],
+  wiki: ['dtext-wiki-page-id-link'],
+  set: ['dtext-set-id-link'],
+  blip: ['dtext-blip-id-link'],
+  takedown: ['dtext-takedown-id-link'],
+  ticket: ['dtext-ticket-id-link'],
+};
+
+// Single-pass HTML escape with a no-alloc fast path. The previous
+// implementation chained four `.replace()` calls (one per char), each
+// allocating a fresh string even when the input was already clean. The
+// regex first pass tests whether *any* escape is needed; clean strings
+// (the common case for plain prose text nodes) return as-is. When an
+// escape is needed, one regex walk + a small lookup yields the result in
+// a single allocation.
+const HTML_ESCAPE_RE = /[&<>"]/;
+const HTML_ESCAPE_RE_G = /[&<>"]/g;
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+};
 function htmlEscape(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  if (!HTML_ESCAPE_RE.test(str)) return str;
+  return str.replace(HTML_ESCAPE_RE_G, (c) => HTML_ESCAPES[c]);
 }
 
+// Single-pass URI percent-escape with a no-alloc fast path. Mirrors the
+// shape of `htmlEscape`: a cheap probe regex decides whether any char
+// needs escaping and clean strings (e.g. plain ASCII anchor names like
+// `rangesyntax`) skip both the regex walk and the per-char `+=` chain.
+// `whitelist` lets a caller exempt one extra char from escaping; it
+// passes through the slow path so the fast-path probe stays correct
+// regardless of the whitelist value.
+const URI_NEEDS_ESCAPE_RE = /[^a-zA-Z0-9\-_.~]/;
+const URI_NEEDS_ESCAPE_RE_G = /[^a-zA-Z0-9\-_.~]/g;
+
 function uriEscape(str: string, whitelist = ''): string {
-  let result = '';
-  for (let i = 0; i < str.length; i++) {
-    const c = str[i];
-    if (/[a-zA-Z0-9\-_.~]/.test(c) || c === whitelist) {
-      result += c;
-    } else {
-      const code = str.charCodeAt(i);
-      result += '%' + code.toString(16).toUpperCase().padStart(2, '0');
-    }
-  }
-  return result;
+  if (!URI_NEEDS_ESCAPE_RE.test(str)) return str;
+  return str.replace(URI_NEEDS_ESCAPE_RE_G, (c) => {
+    if (c === whitelist) return c;
+    return '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0');
+  });
 }
 
 export function renderToHTML(
@@ -183,11 +244,7 @@ function renderQuote(node: QuoteNode, context: RenderContext): string {
     .map((child) => renderNode(child, context))
     .join('');
   if (node.color) {
-    if (
-      /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i.test(
-        node.color,
-      )
-    ) {
+    if (TAG_CATEGORY_RE.test(node.color)) {
       // Tag-category quotes get a sidebar class with the color name as
       // typed; case is preserved (verified against the oracle).
       return `<blockquote class="dtext-sidebar-colored-${node.color}">${content}</blockquote>`;
@@ -381,11 +438,7 @@ function renderColor(node: ColorNode, context: RenderContext): string {
     .map((child) => renderNode(child, context))
     .join('');
 
-  if (
-    /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i.test(
-      node.color,
-    )
-  ) {
+  if (TAG_CATEGORY_RE.test(node.color)) {
     // Preserve the original case of the color name in the class. Ruby's
     // dtext does not normalize the case here — `[color=Character]` becomes
     // `dtext-color-Character`, not `dtext-color-character`.
@@ -470,76 +523,9 @@ function generateLinkClasses(node: LinkNode): string[] {
       break;
     case 'id_link':
       classes.push('dtext-id-link');
-
       if (node.idType) {
-        switch (node.idType) {
-          case 'post':
-            classes.push('dtext-post-id-link');
-            break;
-          case 'thumb':
-            classes.push('dtext-post-id-link', 'thumb-placeholder-link');
-            break;
-          case 'post_changes':
-            classes.push('dtext-post-changes-for-id-link');
-            break;
-          case 'flag':
-            classes.push('dtext-post-flag-id-link');
-            break;
-          case 'note':
-            classes.push('dtext-note-id-link');
-            break;
-          case 'forum_post':
-            classes.push('dtext-forum-post-id-link');
-            break;
-          case 'topic':
-            classes.push('dtext-forum-topic-id-link');
-            break;
-          case 'comment':
-            classes.push('dtext-comment-id-link');
-            break;
-          case 'pool':
-            classes.push('dtext-pool-id-link');
-            break;
-          case 'user':
-            classes.push('dtext-user-id-link');
-            break;
-          case 'artist':
-            classes.push('dtext-artist-id-link');
-            break;
-          case 'ban':
-            classes.push('dtext-ban-id-link');
-            break;
-          case 'bur':
-            classes.push('dtext-bulk-update-request-id-link');
-            break;
-          case 'alias':
-            classes.push('dtext-tag-alias-id-link');
-            break;
-          case 'implication':
-            classes.push('dtext-tag-implication-id-link');
-            break;
-          case 'mod_action':
-            classes.push('dtext-mod-action-id-link');
-            break;
-          case 'record':
-            classes.push('dtext-user-feedback-id-link');
-            break;
-          case 'wiki':
-            classes.push('dtext-wiki-page-id-link');
-            break;
-          case 'set':
-            classes.push('dtext-set-id-link');
-            break;
-          case 'blip':
-            classes.push('dtext-blip-id-link');
-            break;
-          case 'takedown':
-            classes.push('dtext-takedown-id-link');
-            break;
-          case 'ticket':
-            classes.push('dtext-ticket-id-link');
-            break;
-        }
+        const extra = ID_TYPE_CLASSES[node.idType];
+        if (extra) classes.push(...extra);
       }
       break;
   }
