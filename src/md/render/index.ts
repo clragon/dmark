@@ -612,22 +612,14 @@ function formatLink(
   }
 }
 
-// Q-MD-URL-DELIMITER: bare URL when markdown-it's autolinker would detect it
-// and the URL has no whitespace; `<URL>` autolink form otherwise. The
-// markdown-it autolinker recognises absolute http(s) URLs without spaces;
-// any other shape (relative paths, mailto, etc.) needs the explicit
-// autolink wrapping.
-function urlAutolinkable(href: string): boolean {
-  if (/\s/.test(href)) return false;
-  return /^https?:\/\//i.test(href);
-}
-
 function formatUrlLink(node: LinkNode, out: string[]): void {
-  if (urlAutolinkable(node.href)) {
-    out.push(node.href);
-  } else {
-    out.push('<', node.href, '>');
-  }
+  // Q-MD-URL-DELIMITER: bare URL form is "when markdown-it's autolinker
+  // would detect it." Our parser config has `linkify: false` (per
+  // `src/md/parse/index.ts`), so the linkify-driven bare-URL detection is
+  // off; only the standard autolink rule (`<url>`) produces a `LinkNode`.
+  // The formatter therefore always emits the autolink form — bare emission
+  // would re-parse as plain text rather than a `LinkNode`.
+  out.push('<', node.href, '>');
 }
 
 function formatInlineLink(
