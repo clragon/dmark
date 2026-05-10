@@ -56,6 +56,11 @@ export interface DTextFormatResult {
 interface FormatContext {
   options: DTextFormatterOptions;
   diagnostics: Diagnostic[];
+  // Set when an inline link's bare emit had `]` inside its href and could
+  // therefore re-parse via `\S+` past the surrounding inline container's
+  // close. Reset by emitInlineContainer when it inserts the `\n` terminator
+  // (or finishes without one).
+  unsafeBareUrl?: boolean;
 }
 
 export function formatDText(
@@ -196,63 +201,65 @@ function formatNode(
       return;
 
     // Inline nodes
-    case 'text':
-      out.push((node as TextNode).content);
+    case 'text': {
+      const content = (node as TextNode).content;
+      out.push(content);
+      if (ctx.unsafeBareUrl && /\s/.test(content)) ctx.unsafeBareUrl = false;
       return;
+    }
     case 'bold':
-      out.push('[b]');
-      formatInlines((node as BoldNode).children, out, ctx, '[');
-      out.push('[/b]');
+      emitInlineContainer('b', (node as BoldNode).children, out, ctx);
       return;
     case 'italic':
-      out.push('[i]');
-      formatInlines((node as ItalicNode).children, out, ctx, '[');
-      out.push('[/i]');
+      emitInlineContainer('i', (node as ItalicNode).children, out, ctx);
       return;
     case 'strikeout':
-      out.push('[s]');
-      formatInlines((node as StrikeoutNode).children, out, ctx, '[');
-      out.push('[/s]');
+      emitInlineContainer('s', (node as StrikeoutNode).children, out, ctx);
       return;
     case 'underline':
-      out.push('[u]');
-      formatInlines((node as UnderlineNode).children, out, ctx, '[');
-      out.push('[/u]');
+      emitInlineContainer('u', (node as UnderlineNode).children, out, ctx);
       return;
     case 'superscript':
-      out.push('[sup]');
-      formatInlines((node as SuperscriptNode).children, out, ctx, '[');
-      out.push('[/sup]');
+      emitInlineContainer('sup', (node as SuperscriptNode).children, out, ctx);
       return;
     case 'subscript':
-      out.push('[sub]');
-      formatInlines((node as SubscriptNode).children, out, ctx, '[');
-      out.push('[/sub]');
+      emitInlineContainer('sub', (node as SubscriptNode).children, out, ctx);
       return;
     case 'inline_spoiler':
       // Same surface form as the block spoiler; the parser disambiguates by
       // paragraph-boundary context. The `[/spoiler]` unconditional emit can
       // never reach the parser's `[/spoilers]`-preference gap.
-      out.push('[spoiler]');
-      formatInlines((node as InlineSpoilerNode).children, out, ctx, '[');
-      out.push('[/spoiler]');
+      emitInlineContainer(
+        'spoiler',
+        (node as InlineSpoilerNode).children,
+        out,
+        ctx,
+      );
       return;
     case 'inline_code':
       // Verbatim emit (ADR-0010). Backtick-bearing content is unrepresentable
       // in dtext source; only the markdown to AST to dtext path produces it.
       out.push('`', (node as InlineCodeNode).content, '`');
       return;
-    case 'color':
-      out.push('[color=', (node as ColorNode).color, ']');
-      formatInlines((node as ColorNode).children, out, ctx, '[');
-      out.push('[/color]');
+    case 'color': {
+      const color = node as ColorNode;
+      const open = `[color=${color.color}]`;
+      emitInlineContainer('color', color.children, out, ctx, open);
       return;
+    }
     case 'line_break':
       out.push('\n');
+      ctx.unsafeBareUrl = false;
       return;
-    case 'fragment':
-      formatInlines((node as FragmentNode).children, out, ctx);
+    case 'fragment': {
+      const frag = node as FragmentNode;
+      if (frag.wrapper) {
+        emitInlineContainer(frag.wrapper, frag.children, out, ctx);
+      } else {
+        formatInlines(frag.children, out, ctx);
+      }
       return;
+    }
     case 'link':
       formatLink(node as LinkNode, out, ctx, trailing);
       return;
@@ -278,6 +285,39 @@ function formatBlocks(
     if (i > 0) out.push('\n\n');
     formatNode(blocks[i], out, ctx);
   }
+}
+
+// Wrap an inline container's children with `open`/`[/tag]` markup. The body
+// is formatted into a local buffer so we can detect the rare case where a
+// child's emit (typically a textile link with `]` in its URL) would be
+// absorbed by the parser's bare-URL `\S+` capture and swallow the close.
+// The fix is a single `\n` before the close: the trailing line break gets
+// stripped by `trimTrailingLineBreaks` at re-parse, so AST equality holds
+// while the close is no longer reachable from the URL capture.
+function emitInlineContainer(
+  tag: string,
+  children: InlineNode[],
+  out: string[],
+  ctx: FormatContext,
+  open?: string,
+): void {
+  const close = `[/${tag}]`;
+  const body: string[] = [];
+  const prevUnsafe = ctx.unsafeBareUrl;
+  ctx.unsafeBareUrl = false;
+  formatInlines(children, body, ctx, '[');
+  const joined = body.join('');
+  out.push(open ?? `[${tag}]`);
+  out.push(joined);
+  // The unsafe-bare-url flag is only meaningful when no whitespace has been
+  // emitted between the URL and the close — which is exactly when the body
+  // still ends in non-whitespace. Otherwise the natural separator already
+  // bounds the `\S+` capture and the close is reachable.
+  if (ctx.unsafeBareUrl && joined.length > 0 && !/\s$/.test(joined)) {
+    out.push('\n');
+  }
+  ctx.unsafeBareUrl = prevUnsafe;
+  out.push(close);
 }
 
 // Walk an array of inline nodes; inline content concatenates with no separator.
@@ -510,17 +550,25 @@ function formatInlineLink(
   // ADR-0005: bare "title":url when href has no whitespace, no `]`, no
   // trailing boundary, AND the surrounding context will not glue the URL to
   // its next sibling on re-parse. Otherwise bracketed.
+  //
+  // Bracketed form cannot encode a `]` inside the URL (the parser's
+  // `[^\]]+` stops at the first one), so for any href containing a `]` we
+  // fall back to bare. The bare emit relies on `\S+` reaching whitespace
+  // before the URL is over-consumed; `emitInlineContainer` adds a trailing
+  // `\n` before the close when the URL would otherwise swallow it.
   const titleBuf: string[] = [];
   if (node.children) formatInlines(node.children, titleBuf, ctx);
   const title = titleBuf.join('');
   const href = node.href;
+  const hasCloseBracket = href.includes(']');
   const canBare =
     !/\s/.test(href) &&
-    !href.includes(']') &&
+    !hasCloseBracket &&
     !urlEndsAtBoundary(href) &&
     isSafeUrlFollow(trailing);
-  if (canBare) {
+  if (canBare || hasCloseBracket) {
     out.push('"', title, '":', href);
+    if (hasCloseBracket) ctx.unsafeBareUrl = true;
   } else {
     out.push('"', title, '":[', href, ']');
   }
@@ -562,17 +610,23 @@ function formatWikiLink(node: LinkNode, out: string[]): void {
       normalisedTag = encodedTag;
     }
   }
-  const denormalisedTag = normalisedTag.replace(/_/g, ' ');
   const anchor = node.anchor;
   const childText =
     node.children?.[0] && node.children[0].type === 'text'
       ? (node.children[0] as TextNode).content
       : '';
 
-  const expectedNoTitle =
-    anchor !== undefined ? `${denormalisedTag}#${anchor}` : denormalisedTag;
+  // Tag normalisation collapses ` ` and `_` into the same href, so either
+  // spelling on the children side counts as a no-title match. Comparing both
+  // sides under `space → underscore` keeps `[[animated_png]]` and
+  // `[[animated png]]` both round-tripping to the no-title form.
+  const tagKey = (s: string) => asciiLowercase(s).replace(/ /g, '_');
+  const expectedNoTitleKey =
+    anchor !== undefined
+      ? `${tagKey(normalisedTag)}#${anchor}`
+      : tagKey(normalisedTag);
 
-  if (asciiLowercase(childText) === asciiLowercase(expectedNoTitle)) {
+  if (tagKey(childText) === expectedNoTitleKey) {
     // No-title case: children content carries the original tag spelling.
     // Title-collision edge: `[[Wolf|wolf]]` (title equals the lowercased page
     // form) is indistinguishable from `[[Wolf]]` in the AST, both yielding

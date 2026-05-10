@@ -1317,7 +1317,11 @@ export class DTextStateMachineParser {
         'children' in wrapped && Array.isArray(wrapped.children)
           ? (wrapped.children as InlineNode[])
           : [];
-      const fragment: FragmentNode = { type: 'fragment', children };
+      const fragment: FragmentNode = {
+        type: 'fragment',
+        children,
+        wrapper: nodeType === 'subscript' ? 'sub' : 'sup',
+      };
       return fragment;
     } finally {
       this.supSubDepth--;

@@ -191,9 +191,15 @@ export interface LineBreakNode extends ASTNode {
 // (e.g. an over-deep [sup]/[sub] open) and bubbles its parsed children up
 // to the containing inline list. The renderer emits children without any
 // surrounding markup.
+//
+// `wrapper` records the source-level tag that produced the fragment. The
+// HTML renderer ignores it (the wrapper was dropped semantically); the
+// dtext formatter uses it to re-emit the source-level open/close so the
+// round-trip preserves the same depth on re-parse.
 export interface FragmentNode extends ASTNode {
   type: 'fragment';
   children: InlineNode[];
+  wrapper?: 'sub' | 'sup';
 }
 
 // id-link kinds the parser emits via `[prefix #N]` syntax (post #123,
