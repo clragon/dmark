@@ -41,7 +41,15 @@ if (watch) {
     minify: true,
   });
 
-  console.log("[esbuild] built dist/dmark.js + .min.js");
+  await build({
+    ...baseOptions,
+    format: "iife",
+    globalName: "dmark",
+    outfile: resolve(root, "dist/dmark.iife.min.js"),
+    minify: true,
+  });
+
+  console.log("[esbuild] built dist/dmark.js + .min.js + .iife.min.js");
 
   console.log("[tsc] emitting .d.ts ...");
   const tscBin = process.platform === "win32" ? "tsc.cmd" : "tsc";
