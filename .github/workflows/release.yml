@@ -40,6 +40,9 @@ jobs:
 
       - run: yarn oracle:build
 
+      - name: build evil-probe slices
+        run: npx tsx test/evil/evil-parser-destroyer/build-slices.mjs
+
       - run: yarn test
 
       - run: yarn oracle:smoke
