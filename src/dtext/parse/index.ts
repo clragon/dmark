@@ -210,7 +210,12 @@ const RE_STRAY_SPOILER_CLOSE = /\[\/spoilers?\]/iy;
 const RE_STRAY_CODE_TABLE_CLOSE = /\[\/(code|table)\]/iy;
 const RE_QUOTE_COLOR_OPEN = /\[quote=([^\]\n]*)\]/iy;
 const RE_HEADER = /h([123456])\.\s*/iy;
-const RE_LIST_ITEM = /(\*+)[ \t]+([^\r\n]+)/y;
+// Content runs to the first true line terminator (`\n` / `\r\n`). A bare
+// `\r` is allowed inside the content; the inline scanner converts it to a
+// single space (mirroring ruby's `'\r' => append(' ')` rule). Excluding
+// `\r` here would split an item like `* "x":[/a\rb]\n` mid-content and let
+// the surrounding parser reinterpret `b]` as a fresh paragraph.
+const RE_LIST_ITEM = /(\*+)[ \t]+([^\n]+?)(?=\r?\n|$)/y;
 const RE_INTERNAL_ANCHOR = /\[#([a-zA-Z0-9_-]+)\]/y;
 const RE_POST_SEARCH = /\{\{([^}]*)\}\}/y;
 const RE_WIKI_LINK = /\[\[([^\]]*)\]\]/y;
@@ -250,9 +255,14 @@ const BLOCK_PATTERNS_STICKY: readonly RegExp[] = [
   /\[ltable\]/iy,
 ];
 
-// Body-cell `[/td]` truncator for `parseLTableRow`. Hoisted so the regex
-// compiles once instead of per cell.
+// Cell-close truncators for `parseLTableRow`. The matching close for a
+// header cell is `[/th]` and for a body cell is `[/td]`; an inner copy of
+// the same close ends the cell content at that offset, mirroring ruby's
+// inline `[/th]` / `[/td]` rules which `dstack_close_block` the wrapping
+// element and fret. Hoisted so the regexes compile once instead of per
+// cell.
 const RE_LTABLE_TD_CLOSE = /\[\/td\]/i;
+const RE_LTABLE_TH_CLOSE = /\[\/th\]/i;
 
 // Container-tag scanner used by `findContainerCloseInItem` to walk a
 // list-item's text body looking for opens/closes that should truncate the
@@ -399,19 +409,26 @@ export class DTextStateMachineParser {
       break;
     }
     const children: InlineNode[] = [];
+    let exitedOnContainerClose = false;
     while (this.pos < this.input.length) {
       if (this.peekDoubleNewline()) break;
       // Break on an in-scope container close ([/quote], [/section],
       // [/spoiler]) so the surrounding container can pick it up. Without
       // this the inline-tail loop would eat the close as plain text and
       // the closing block would never render.
-      if (this.peekContainerClose()) break;
+      if (this.peekContainerClose()) {
+        exitedOnContainerClose = true;
+        break;
+      }
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
     }
-    // A `\n` immediately before the container close should not render as a
-    // `<br>`; ruby closes the wrapper cleanly here too.
-    trimTrailingLineBreaks(children);
+    // A `\n` immediately before a container close should not render as a
+    // `<br>` (ruby closes the wrapper cleanly there). At EOF or a paragraph
+    // break the trailing `<br>` is kept — oracle: `[/table] a\n` ends with
+    // `<br>` because ruby's inline `newline` rule emits one for the
+    // terminating line.
+    if (exitedOnContainerClose) trimTrailingLineBreaks(children);
     const prefix = (pristine ? '<p></p>' : '') + m[0];
     return { type: 'literal_html', prefix, children };
   }
@@ -457,23 +474,28 @@ export class DTextStateMachineParser {
     this.pos += m[0].length;
     const fullPrefix = prefix + m[0];
     const children: InlineNode[] = [];
+    let exitedOnContainerClose = false;
     while (this.pos < this.input.length) {
       if (this.peekDoubleNewline()) break;
-      if (this.peekContainerClose()) break;
+      if (this.peekContainerClose()) {
+        exitedOnContainerClose = true;
+        break;
+      }
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
     }
+    if (exitedOnContainerClose) trimTrailingLineBreaks(children);
     return { type: 'literal_html', prefix: fullPrefix, children };
   }
 
-  // Read-only variant of peekStrayBlockCloseAfterWhitespace: same check, no
+  // Read-only variant of peekStrayBlockCloseAfterNewlines: same check, no
   // pos mutation. Used to decide whether to consume the trailing newline at
   // the end of a paragraph that broke on a stray close.
   private peekStrayBlockCloseAfterAnyWs(): boolean {
     let p = this.pos;
     while (p < this.input.length) {
-      const c = this.input[p];
-      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+      const code = this.input.charCodeAt(p);
+      if (code === 0x0a || code === 0x0d) {
         p++;
         continue;
       }
@@ -483,16 +505,18 @@ export class DTextStateMachineParser {
     return RE_STRAY_SPOILER_CLOSE.test(this.input);
   }
 
-  // Look ahead through any whitespace and newlines starting at pos. If a
-  // stray spoiler close sits past them, return the literal whitespace prefix
-  // so the caller can hand it to consumeStrayBlockCloseAsLiteral. Otherwise
-  // return null and leave pos unchanged. The stray close itself is not
-  // consumed here.
+  // Look ahead through zero or more newlines starting at pos. If a stray
+  // spoiler close sits past them, return the literal newline prefix so the
+  // caller can hand it to consumeStrayBlockCloseAsLiteral, and advance pos
+  // to the close. Otherwise return null and leave pos unchanged. Horizontal
+  // whitespace is NOT skipped: ruby's block-scope rule treats a leading
+  // space/tab as content that opens a paragraph, not as part of the stray
+  // close's prefix.
   private peekStrayBlockCloseAfterWhitespace(): string | null {
     let p = this.pos;
     while (p < this.input.length) {
-      const c = this.input[p];
-      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+      const code = this.input.charCodeAt(p);
+      if (code === 0x0a || code === 0x0d) {
         p++;
         continue;
       }
@@ -512,10 +536,15 @@ export class DTextStateMachineParser {
   // `parseBlock()`. Captures the three-way dispatch shared by the document
   // loop and every container-block parser:
   //
-  //   - `[/spoiler]` past optional whitespace, after at least one block has
-  //     been emitted: silently dropped if the previous block was a quote /
-  //     section close (the oracle absorbs that case), otherwise emitted as
-  //     a literal-html fallout carrying the whitespace prefix.
+  //   - `[/spoiler]` past zero or more newlines, after a block whose inline
+  //     scope was still open at the close (paragraph, list): emitted as a
+  //     literal-html fallout carrying the newline prefix. This mirrors
+  //     ruby's inline `newline* spoilers_close` rule, which appends the
+  //     matched range verbatim when no block-spoiler is on the dstack.
+  //   - `[/spoiler]` past zero or more newlines, after a fully-closed block
+  //     (code, table, header, quote, section, spoiler block, ltable): the
+  //     close is silently dropped, mirroring ruby's block-scope spoilers_close
+  //     rule which does nothing when no block-spoiler is on the dstack.
   //   - `[/spoiler]` at pristine state (no block emitted yet): silently
   //     dropped.
   //   - `[/code]` / `[/table]`: emitted as a literal-html node. `pristine`
@@ -527,14 +556,14 @@ export class DTextStateMachineParser {
   ): boolean {
     if (children.length > 0) {
       const last = children[children.length - 1];
-      const lastIsContainerBlock =
-        last.type === 'quote' || last.type === 'section';
+      const lastLeftInlineOpen =
+        last.type === 'paragraph' || last.type === 'list';
       const prefix = this.peekStrayBlockCloseAfterWhitespace();
       if (prefix !== null) {
-        if (lastIsContainerBlock) {
-          this.consumeStrayBlockCloseSilent();
-        } else {
+        if (lastLeftInlineOpen) {
           children.push(this.consumeStrayBlockCloseAsLiteral(prefix));
+        } else {
+          this.consumeStrayBlockCloseSilent();
         }
         return true;
       }
@@ -629,7 +658,21 @@ export class DTextStateMachineParser {
   private parseHeader(level: number): HeaderNode {
     const children: InlineNode[] = [];
 
-    while (this.pos < this.input.length && !this.peekNewline()) {
+    while (this.pos < this.input.length) {
+      if (this.peekNewline()) {
+        // Ruby's inline scanner has `newline* spoilers_close` as a single
+        // token: a stray `[/spoiler]` (with any number of leading newlines)
+        // is appended verbatim into the open header, and the header stays
+        // open. Other stray block-closes (`[/code]`, `[/table]`) lack the
+        // `newline*` prefix in the grammar, so they don't get this
+        // treatment — the bare newline closes the header first.
+        const consumed = this.consumeNewlinesIfFollowedByStraySpoilerClose();
+        if (consumed !== null) {
+          pushInlineMergingText(children, { type: 'text', content: consumed });
+          continue;
+        }
+        break;
+      }
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
     }
@@ -637,6 +680,36 @@ export class DTextStateMachineParser {
     this.consumeNewline();
 
     return { type: 'header', level, children };
+  }
+
+  // If the cursor sits on one or more consecutive newlines followed by a
+  // stray `[/spoiler]` / `[/spoilers]`, consume both ranges and return the
+  // verbatim slice. Otherwise return null and leave pos unchanged.
+  private consumeNewlinesIfFollowedByStraySpoilerClose(): string | null {
+    const input = this.input;
+    let p = this.pos;
+    while (p < input.length) {
+      const code = input.charCodeAt(p);
+      if (code === 0x0d && input.charCodeAt(p + 1) === 0x0a) {
+        p += 2;
+      } else if (code === 0x0a || code === 0x0d) {
+        p += 1;
+      } else {
+        break;
+      }
+    }
+    if (p === this.pos) return null;
+    const saved = this.pos;
+    this.pos = p;
+    const isStray = this.peekStrayBlockClose();
+    this.pos = saved;
+    if (!isStray) return null;
+    RE_STRAY_SPOILER_CLOSE.lastIndex = p;
+    const m = RE_STRAY_SPOILER_CLOSE.exec(input);
+    if (!m || m.index !== p) return null;
+    const consumed = input.slice(this.pos, p + m[0].length);
+    this.pos = p + m[0].length;
+    return consumed;
   }
 
   // Recognise a coloured quote open like [quote=#00CCFF] or [quote=yellow]
@@ -717,9 +790,13 @@ export class DTextStateMachineParser {
     } finally {
       this.spoilerBlockDepth--;
     }
-    if (this.matchSpoilerClose()) {
-      this.consumeBlockCloseTail();
-    }
+    // Ruby's `spoilers_close` rule (block + inline) consumes only the
+    // close tag itself; unlike `[/quote]` and `[/section]` (whose rules
+    // include a `ws*` trailing run), it eats no horizontal whitespace
+    // and no trailing newline. Letting the next byte fall through means a
+    // run like `[/spoiler] tail` keeps the leading space for the
+    // surrounding container's paragraph.
+    this.matchSpoilerClose();
 
     return { type: 'spoiler_block', children };
   }
@@ -732,8 +809,11 @@ export class DTextStateMachineParser {
   }
 
   private parseCodeBlock(): CodeBlockNode {
+    // Ruby's `[code] space*` open eats *all* whitespace (including newlines)
+    // after the open tag, not just one terminator. So `[code]\n\n[/code]`
+    // produces an empty `<pre></pre>`, not `<pre>\n</pre>`.
     this.skipWhitespace();
-    this.consumeNewline();
+    this.matchNewlines();
 
     const start = this.pos;
     let closed = false;
@@ -753,7 +833,11 @@ export class DTextStateMachineParser {
     const content = closed
       ? this.input.slice(start, this.pos - '[/code]'.length)
       : this.input.slice(start);
-    if (closed) this.consumeBlockCloseTail();
+    // Ruby's `[/code]` rule (in code scope) consumes only the close tag —
+    // no trailing horizontal whitespace, no trailing newline. The outer
+    // block loop is responsible for eating any subsequent newline; leading
+    // horizontal whitespace becomes content for the next paragraph (e.g.
+    // `[code]c[/code] tail` -> `<pre>c</pre><p> tail</p>`).
 
     return { type: 'code_block', content };
   }
@@ -1001,17 +1085,19 @@ export class DTextStateMachineParser {
 
     for (const part of parts) {
       let content = part.trim();
-      // Body cells (not the header row) truncate at the first literal
-      // `[/td]` and drop everything from there to the cell's end
-      // (oracle-verified: `[td]body[/td]` -> `[td]body`, `body[/td]more` ->
-      // `body`, `[/td]bare` -> empty). Header cells are kept as-is.
+      // Cells truncate at the first literal close that matches their
+      // wrapping element (`[/th]` for header cells, `[/td]` for body cells)
+      // and drop everything from there to the cell's end. Oracle-verified:
+      // `[td]body[/td]` -> `[td]body`, `body[/td]more` -> `body`, `[/td]bare`
+      // -> empty; same shape for `[/th]` in header cells.
       //
-      // Fast path: most body cells contain no `[` at all, in which case
-      // `[/td]` cannot appear. Probe with `indexOf('[')` before allocating a
+      // Fast path: most cells contain no `[` at all, in which case the
+      // close cannot appear. Probe with `indexOf('[')` before allocating a
       // lowercased copy. When present, a CI regex finds the close in a single
       // pass without the eager `toLowerCase()` allocation.
-      if (cellType === 'td' && content.indexOf('[') >= 0) {
-        const m = RE_LTABLE_TD_CLOSE.exec(content);
+      if (content.indexOf('[') >= 0) {
+        const re = cellType === 'td' ? RE_LTABLE_TD_CLOSE : RE_LTABLE_TH_CLOSE;
+        const m = re.exec(content);
         if (m) content = content.slice(0, m.index).trimEnd();
       }
       const children: InlineNode[] = content
@@ -1809,13 +1895,15 @@ export class DTextStateMachineParser {
       return null;
     }
 
-    // "title":[url] format. Oracle rejects bracketed URLs that contain any
-    // whitespace (space/tab/newline/CR) or are empty. The empty case is
-    // already screened by the `+` in the regex.
+    // "title":[url] format. Ruby rejects URLs containing ASCII whitespace
+    // (space/tab/newline/CR/VT/FF) — its `^space+` is the POSIX class, NOT
+    // JS's `\s` (which also matches NBSP, U+00A0, and other unicode spaces
+    // that ruby's grammar treats as ordinary URL bytes). Empty URL fails on
+    // the `+` quantifier.
     const bracketedMatch = this.matchSticky(RE_TEXTILE_BRACKETED);
     if (bracketedMatch) {
       if (!isAcceptedTextileUrl(bracketedMatch[2])) return null;
-      if (/\s/.test(bracketedMatch[2])) return null;
+      if (/[ \t\n\r\v\f]/.test(bracketedMatch[2])) return null;
       this.pos += bracketedMatch[0].length;
       return { title: bracketedMatch[1], url: bracketedMatch[2] };
     }
