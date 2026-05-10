@@ -10,3 +10,7 @@ ref/
 
 # Per-machine bench snapshots (regenerate via `scripts/bench-parse.ts`).
 scripts/bench-snapshots/
+
+# Workbench scratch from scripts/evil-* harness.
+.evil-failures.json
+.evil-probe.json
