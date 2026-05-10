@@ -311,7 +311,8 @@ function walkInlineRange(
           out.push(node);
         }
         break;
-      case 'hardbreak': {
+      case 'hardbreak':
+      case 'softbreak': {
         const node: LineBreakNode = { type: 'line_break' };
         out.push(node);
         break;
