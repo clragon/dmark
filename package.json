@@ -1,12 +1,31 @@
 {
   "name": "dmark",
   "version": "0.0.0",
-  "private": true,
   "description": "Two-way dtext ↔ markdown parser with shared AST. Verified against the e621ng/dtext ruby renderer.",
+  "license": "UNLICENSED",
+  "author": "binaryfloof",
   "type": "module",
+  "main": "dist/dmark.js",
+  "module": "dist/dmark.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/dmark.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/build.mjs",
+    "build:watch": "node scripts/build.mjs --watch",
+    "build:preview": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -19,6 +38,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.10.0",
     "csv-parse": "^6.2.1",
+    "esbuild": "^0.28.0",
     "parse5": "^7.2.1",
     "testcontainers": "^11.14.0",
     "tsx": "^4.19.2",
