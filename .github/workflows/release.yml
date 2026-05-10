@@ -40,12 +40,23 @@ jobs:
 
       - run: yarn oracle:build
 
-      - name: build evil-probe slices
-        run: npx tsx test/evil/evil-parser-destroyer/build-slices.mjs
+      - name: today utc date
+        id: utc_date
+        run: echo "value=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
-      - run: yarn test
+      - name: cache e621 db_export dump
+        uses: actions/cache@v4
+        with:
+          path: corpus/db_export
+          key: dmark-db-export-${{ hashFiles('scripts/fetch-corpus.ts') }}-${{ steps.utc_date.outputs.value }}
+          restore-keys: |
+            dmark-db-export-${{ hashFiles('scripts/fetch-corpus.ts') }}-
+            dmark-db-export-
 
-      - run: yarn oracle:smoke
+      - run: yarn corpus:fetch
+
+      - name: golden tests
+        run: yarn test test/golden-baseline.test.ts test/golden-roundtrip.test.ts
 
       - name: bump version
         run: |
