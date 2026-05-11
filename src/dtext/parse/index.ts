@@ -40,6 +40,12 @@ interface ParserOptions {
   maxThumbs?: number;
   baseUrl?: string;
   inlineOnly?: boolean;
+  // Restrict inline tokenisation to ragel's `parse_basic_inline` machine
+  // (lines 188-226): only b/i/s/u/sup/sub formatting is recognised; every
+  // other char is literal text. Used for textile link titles, whose ragel
+  // entrypoint routes through parse_basic_inline rather than the full
+  // inline scanner. Implies inlineOnly.
+  basicInline?: boolean;
 }
 
 interface UrlMatch {
@@ -112,7 +118,7 @@ function isHorizontalWhitespace(code: number): boolean {
 //     renderer; matched case-insensitively, but original case is preserved
 //     in the rendered class name.
 const QUOTE_CATEGORY_RE =
-  /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i;
+  /^(gen(eral)?|art(ist)?|cont(ributor)?|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lor(e)?)$/i;
 
 function isValidQuoteColor(value: string): boolean {
   if (QUOTE_CATEGORY_RE.test(value)) return true;
@@ -182,7 +188,10 @@ function trimTrailingLineBreaks(children: InlineNode[]): void {
 // Falls back to a single text node if parsing yields nothing useful.
 function parseInlineString(input: string): InlineNode[] {
   if (input.length === 0) return [];
-  const sub = new DTextStateMachineParser(input, { inlineOnly: true });
+  const sub = new DTextStateMachineParser(input, {
+    inlineOnly: true,
+    basicInline: true,
+  });
   const doc = sub.parse();
   const first = doc.children[0];
   if (first && first.type === 'paragraph' && first.children.length > 0) {
@@ -197,8 +206,7 @@ function parseInlineString(input: string): InlineNode[] {
 // literal text (oracle-verified).
 function isAcceptedTextileUrl(url: string): boolean {
   if (url.length === 0) return false;
-  if (url[0] === '/') return true;
-  if (url[0] === '#') return url.length > 1;
+  if (url[0] === '/' || url[0] === '#') return url.length > 1;
   return /^https?:\/\//i.test(url);
 }
 
@@ -209,7 +217,7 @@ function isAcceptedTextileUrl(url: string): boolean {
 const RE_STRAY_SPOILER_CLOSE = /\[\/spoilers?\]/iy;
 const RE_STRAY_CODE_TABLE_CLOSE = /\[\/(code|table)\]/iy;
 const RE_QUOTE_COLOR_OPEN = /\[quote=([^\]\n]*)\]/iy;
-const RE_HEADER = /h([123456])\.\s*/iy;
+const RE_HEADER = /h([123456])\.[ \t]*/iy;
 // Content runs to the first true line terminator (`\n` / `\r\n`). A bare
 // `\r` is allowed inside the content; the inline scanner converts it to a
 // single space (mirroring ruby's `'\r' => append(' ')` rule). Excluding
@@ -220,8 +228,14 @@ const RE_INTERNAL_ANCHOR = /\[#([a-zA-Z0-9_-]+)\]/y;
 const RE_POST_SEARCH = /\{\{([^}]*)\}\}/y;
 const RE_WIKI_LINK = /\[\[([^\]]*)\]\]/y;
 const RE_TEXTILE_BRACKETED = /"([^"]+)":\[([^\]]+)\]/y;
-const RE_TEXTILE_BASIC = /"([^"]+)":(\S+)/y;
-const RE_URL = /https?:\/\/\S+/iy;
+// Ragel `basic_textile_link = '"' nonquote+ '":' (url | internal_url)` and
+// both URL forms use `^space+` with POSIX `space` (ASCII whitespace only).
+// `\S` would over-eagerly terminate at Unicode whitespace like NBSP.
+const RE_TEXTILE_BASIC = /"([^"]+)":([^ \t\n\r\f\v]+)/y;
+// Ragel `url = 'http'i 's'i? '://' ^space+;` — POSIX `space` is ASCII
+// whitespace only (` \t\n\r\f\v`). Unicode spaces like NBSP do not
+// terminate the URL; `\S` would over-eagerly stop at them.
+const RE_URL = /https?:\/\/[^ \t\n\r\f\v]+/iy;
 const RE_DELIMITED_URL = /<(https?:\/\/[^>]+)>/iy;
 const RE_COLOR_OPEN = /\[color=([^\]]+)\]/iy;
 const RE_SECTION_EXPANDED_TITLE = /\[section,expanded=([^\]]+)\]/iy;
@@ -302,6 +316,11 @@ export class DTextStateMachineParser {
   private quoteDepth: number = 0;
   private sectionDepth: number = 0;
   private spoilerBlockDepth: number = 0;
+  // Depth of open inline `[spoiler]...[/spoiler]` containers. Used to gate
+  // the `newline* spoilers_close` literal-eating rule so it only fires when
+  // the close ahead is genuinely stray (no enclosing inline-spoiler will
+  // claim it as its matching close).
+  private inlineSpoilerDepth: number = 0;
 
 
   // Single compiled regex for all ID patterns. Ruby requires exactly one
@@ -481,6 +500,19 @@ export class DTextStateMachineParser {
         exitedOnContainerClose = true;
         break;
       }
+      // Mirror parseParagraph's break-set so the surrounding block loop can
+      // pick up downstream block markers. Two cases:
+      //   1. Bracketed always-block tags (`[code]`, `[table]`, ...) at the
+      //      cursor: break now. A preceding `\n` already became a `<br>`.
+      //   2. Line-start-only markers (`h1.`, `* item`) after a single
+      //      newline: break BEFORE consuming the `\n` so the surrounding
+      //      block parser absorbs it (otherwise the header would render
+      //      with a stray `<br>` ahead of it).
+      // Bracketed tags after a `\n` aren't handled here on purpose: the
+      // newline first emits a `<br>` via parseInlineElement, then the next
+      // iteration's peekBlockElement catches the tag at line start.
+      if (this.peekBlockElement()) break;
+      if (this.peekNewline() && this.peekLineStartMarkerAfterNewline()) break;
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
     }
@@ -732,6 +764,10 @@ export class DTextStateMachineParser {
     // starts, a whitespace-only line becomes a real <p> </p> paragraph
     // (oracle-verified).
     this.skipBlankLines();
+    // Drop horizontal whitespace at the start of the first content line.
+    // Ragel's `quote_open space*` consumes all post-open whitespace including
+    // an indent on the next line; mirrors parseSpoilerBlock.
+    this.skipWhitespace();
 
     const children: BlockNode[] = [];
 
@@ -809,11 +845,22 @@ export class DTextStateMachineParser {
   }
 
   private parseCodeBlock(): CodeBlockNode {
-    // Ruby's `[code] space*` open eats *all* whitespace (including newlines)
-    // after the open tag, not just one terminator. So `[code]\n\n[/code]`
-    // produces an empty `<pre></pre>`, not `<pre>\n</pre>`.
-    this.skipWhitespace();
-    this.matchNewlines();
+    // Ruby's `[code] space*` open eats all whitespace (including newlines)
+    // after the open tag. POSIX `space*` is greedy across the mixed set
+    // ` \t\n\r\f\v`, so `[code]  \n  \nbody[/code]` consumes every byte
+    // through the leading run, not just one indent + one newline.
+    while (this.pos < this.input.length) {
+      const code = this.input.charCodeAt(this.pos);
+      if (
+        code === 0x20 || code === 0x09 ||
+        code === 0x0a || code === 0x0d ||
+        code === 0x0b || code === 0x0c
+      ) {
+        this.pos++;
+        continue;
+      }
+      break;
+    }
 
     const start = this.pos;
     let closed = false;
@@ -852,6 +899,10 @@ export class DTextStateMachineParser {
     this.skipWhitespace();
     this.consumeNewline();
     this.skipBlankLines();
+    // Drop horizontal whitespace at the start of the first content line.
+    // Ragel's `section_open space*` consumes all post-open whitespace
+    // including an indent on the next line; mirrors parseSpoilerBlock.
+    this.skipWhitespace();
 
     const children: BlockNode[] = [];
 
@@ -1198,6 +1249,12 @@ export class DTextStateMachineParser {
   protected parseInlineElement(): InlineNode | null {
     if (this.pos >= this.input.length) return null;
 
+    // Ragel `parse_basic_inline` (lines 188-226) only recognises b/i/s/u/
+    // sup/sub formatting plus literal text. In basicInline mode (textile
+    // link titles), skip the inline tokens that aren't part of that
+    // machine; the formatting tags and parseText path stay live.
+    const basic = this.options.basicInline === true;
+
     // Stray `[/code]` / `[/table]` reached as inline content (header, inline
     // wrapper, top-level inline doc): render the close tag literal AND
     // swallow the whitespace run that follows it. Oracle-verified:
@@ -1206,70 +1263,72 @@ export class DTextStateMachineParser {
     // Paragraphs never reach this branch because peekBlockElement breaks
     // them on `[/table]` first; the document/quote/section block loops
     // intercept the same close earlier via consumeStrayCodeTableAsLiteral.
-    const inlineCT = this.matchSticky(RE_STRAY_CODE_TABLE_CLOSE);
-    if (inlineCT) {
-      this.pos += inlineCT[0].length;
-      while (this.pos < this.input.length) {
-        const c = this.input[this.pos];
-        if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
-          this.pos++;
-          continue;
+    if (!basic) {
+      const inlineCT = this.matchSticky(RE_STRAY_CODE_TABLE_CLOSE);
+      if (inlineCT) {
+        this.pos += inlineCT[0].length;
+        while (this.pos < this.input.length) {
+          const c = this.input[this.pos];
+          if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+            this.pos++;
+            continue;
+          }
+          break;
         }
-        break;
+        return { type: 'text', content: inlineCT[0] };
       }
-      return { type: 'text', content: inlineCT[0] };
-    }
 
-    // Escaped backtick
-    if (this.matchString('\\`')) {
-      return { type: 'text', content: '`' };
-    }
+      // Escaped backtick
+      if (this.matchString('\\`')) {
+        return { type: 'text', content: '`' };
+      }
 
-    // Inline code
-    if (this.matchString('`')) {
-      return this.parseInlineCode();
-    }
+      // Inline code
+      if (this.matchString('`')) {
+        return this.parseInlineCode();
+      }
 
-    // Internal anchor
-    const anchorMatch = this.matchInternalAnchor();
-    if (anchorMatch) {
-      return { type: 'internal_anchor', name: anchorMatch };
-    }
+      // Internal anchor
+      const anchorMatch = this.matchInternalAnchor();
+      if (anchorMatch) {
+        return { type: 'internal_anchor', name: anchorMatch };
+      }
 
-    // ID links
-    const idMatch = this.matchIdLink();
-    if (idMatch) {
-      return this.createIdLink(idMatch);
-    }
+      // ID links
+      const idMatch = this.matchIdLink();
+      if (idMatch) {
+        return this.createIdLink(idMatch);
+      }
 
-    // Post search links
-    const postSearchMatch = this.matchPostSearchLink();
-    if (postSearchMatch) {
-      return this.createPostSearchLink(postSearchMatch);
-    }
+      // Post search links
+      const postSearchMatch = this.matchPostSearchLink();
+      if (postSearchMatch) {
+        return this.createPostSearchLink(postSearchMatch);
+      }
 
-    // Wiki links
-    const wikiMatch = this.matchWikiLink();
-    if (wikiMatch) {
-      return this.createWikiLink(wikiMatch);
-    }
+      // Wiki links
+      const wikiMatch = this.matchWikiLink();
+      if (wikiMatch) {
+        return this.createWikiLink(wikiMatch);
+      }
 
-    // Textile links
-    const textileMatch = this.matchTextileLink();
-    if (textileMatch) {
-      return this.createTextileLink(textileMatch);
-    }
+      // Textile links
+      const textileMatch = this.matchTextileLink();
+      if (textileMatch) {
+        return this.createTextileLink(textileMatch);
+      }
 
-    // URLs
-    const urlMatch = this.matchUrl();
-    if (urlMatch) {
-      return this.createUrlLink(urlMatch);
-    }
+      // URLs
+      const urlMatch = this.matchUrl();
+      if (urlMatch) {
+        return this.createUrlLink(urlMatch);
+      }
 
-    // Delimited URLs
-    const delimitedUrlMatch = this.matchDelimitedUrl();
-    if (delimitedUrlMatch) {
-      return this.createUrlLink(delimitedUrlMatch);
+      // Delimited URLs
+      const delimitedUrlMatch = this.matchDelimitedUrl();
+      if (delimitedUrlMatch) {
+        return this.createUrlLink(delimitedUrlMatch);
+      }
     }
 
     // Bold
@@ -1302,18 +1361,35 @@ export class DTextStateMachineParser {
       return this.parseSupSubContainer('[/sub]', 'subscript');
     }
 
-    // Color
-    const colorMatch = this.matchColor();
-    if (colorMatch) {
-      return this.parseColorContainer(colorMatch);
-    }
+    if (!basic) {
+      // Color
+      const colorMatch = this.matchColor();
+      if (colorMatch) {
+        return this.parseColorContainer(colorMatch);
+      }
 
-    // Inline spoiler
-    if (this.matchSpoilerOpen()) {
-      return this.parseInlineContainer(
-        this.getSpoilerClosePattern(),
-        'inline_spoiler',
-      );
+      // Inline spoiler
+      if (this.matchSpoilerOpen()) {
+        const closePattern = this.getSpoilerClosePattern();
+        this.inlineSpoilerDepth++;
+        try {
+          return this.parseInlineContainer(closePattern, 'inline_spoiler');
+        } finally {
+          this.inlineSpoilerDepth--;
+        }
+      }
+
+      // Ragel `inline := |* newline* spoilers_close => ... ;`. A run of
+      // newlines immediately followed by a stray `[/spoiler]` is a single
+      // inline-scanner token that emits the verbatim slice (no `<br>`). The
+      // ruby parser applies this rule from every inline collector, so it
+      // lives here on parseInlineElement rather than at any specific call
+      // site. Gated on inlineSpoilerDepth so an enclosing inline `[spoiler]`
+      // claims its own close instead of having it consumed as literal text.
+      if (this.inlineSpoilerDepth === 0 && this.peekNewline()) {
+        const consumed = this.consumeNewlinesIfFollowedByStraySpoilerClose();
+        if (consumed !== null) return { type: 'text', content: consumed };
+      }
     }
 
     // Line break
@@ -1336,18 +1412,25 @@ export class DTextStateMachineParser {
 
   private parseInlineCode(): InlineNode {
     const start = this.pos;
+    let closed = false;
 
     while (this.pos < this.input.length) {
       if (this.matchString('\\`')) {
         continue; // Escaped backtick
       }
       if (this.matchString('`')) {
-        break; // End of code
+        closed = true;
+        break;
       }
       this.pos++;
     }
 
-    const content = this.input.slice(start, this.pos - 1).replace(/\\`/g, '`');
+    // Ragel's inline_code rule appends every char up to a closing backtick,
+    // then matches the close. At end-of-input the body is whatever was
+    // appended; the closing backtick has zero width. The `-1` trim only
+    // applies when we actually consumed a closing backtick.
+    const end = closed ? this.pos - 1 : this.pos;
+    const content = this.input.slice(start, end).replace(/\\`/g, '`');
     return { type: 'inline_code', content };
   }
 
@@ -1375,6 +1458,14 @@ export class DTextStateMachineParser {
       if (this.peekContainerClose()) {
         break;
       }
+      // Ragel `dstack_close_before_block; fexec ts; fret` fires from inline
+      // scope for bracketed always-block opens (`[code]`, `[table]`,
+      // `[quote]`, `[section]`) and for `newline header` / `newline list_item`
+      // (lines 334, 427, 433, 455, 477, 504). The matching close stays
+      // unconsumed so the surrounding block scope promotes it. Mirrors the
+      // same break-set parseParagraph uses for its outer collector.
+      if (this.peekBlockElement()) break;
+      if (this.peekNewline() && this.peekLineStartMarkerAfterNewline()) break;
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
     }
@@ -1620,15 +1711,21 @@ export class DTextStateMachineParser {
     // (after a single newline or mid-line) stays inline; that case never
     // reaches parseBlock, so the structural test here is sufficient.
     //
-    // Known faithfulness gap: this regex pairs the close form with the open
-    // form via `\1`, so `[spoiler]x[/spoilers]` does NOT match here and falls
-    // through to inline parsing. The oracle is more permissive and treats
-    // either close form as block at block context. Fixing this requires both
-    // this matcher and `getSpoilerClosePattern` to be reworked together; the
-    // close-form picking and the open-form pairing interact.
-    const blockMatch = this.matchSticky(RE_SPOILER_BLOCK);
-    if (!blockMatch) return false;
-    this.pos += blockMatch[1].length + 2; // consume only the opening tag
+    // Pair-match by depth (mirroring ruby's dstack), not by close-form: a
+    // `[spoiler]x[/spoilers]` is a valid block, and a nested inline
+    // `[spoiler]` doesn't steal the outer's close. Matching both halves —
+    // open detection and the close-form picker — share `findMatchingSpoiler
+    // Close`, so the block decision and the inline scope agree.
+    let openLen: number;
+    if (this.peekString('[spoilers]', true)) openLen = 10;
+    else if (this.peekString('[spoiler]', true)) openLen = 9;
+    else return false;
+    const saved = this.pos;
+    this.pos += openLen;
+    const close = this.findMatchingSpoilerClose();
+    this.pos = saved;
+    if (close === null) return false;
+    this.pos += openLen;
     return true;
   }
 
@@ -1640,21 +1737,37 @@ export class DTextStateMachineParser {
   }
 
   private getSpoilerClosePattern(): string {
-    // Pick which close form `parseInlineContainer` should look for. Prefer
-    // `[/spoilers]` whenever one appears anywhere ahead, otherwise fall back
-    // to `[/spoiler]`. The `/g` flag walks forward from `this.pos` without
-    // allocating a lower-cased copy of the buffer remainder.
-    //
-    // Known faithfulness gap: ruby pair-matches by depth, not by form, so
-    // `[spoiler]a [spoiler]b[/spoiler] c[/spoilers]` correctly nests the
-    // outer `[spoiler]` against the trailing `[/spoilers]`. The naive "first
-    // `[/spoilers]` ahead wins" picker loses that structure when nested
-    // inline spoilers appear, and is also coupled to the block-vs-inline
-    // decision in `matchSpoilerBlockOpen` which has its own gap. Fix the
-    // two together.
-    const re = /\[\/spoilers\]/gi;
+    // Resolve the close form for an inline spoiler that has just been opened:
+    // walk forward respecting depth and report the form of the close that
+    // pair-matches our open. Falls back to `[/spoiler]` if no close exists,
+    // matching the surrounding `parseInlineContainer` loop's failure mode
+    // (it won't find one and runs to EOF).
+    return this.findMatchingSpoilerClose() ?? '[/spoiler]';
+  }
+
+  // Walk forward from `this.pos` (assumed to sit just past a `[spoiler...]`
+  // open) and report the close form of the close that pair-matches by depth.
+  // Treats nested `[spoiler]` / `[spoilers]` as opens that increase depth and
+  // their matching closes as decreases. Returns null when no matching close
+  // exists ahead at any depth.
+  private findMatchingSpoilerClose(): '[/spoiler]' | '[/spoilers]' | null {
+    const re = /\[(\/?)spoilers?\]/gi;
     re.lastIndex = this.pos;
-    return re.test(this.input) ? '[/spoilers]' : '[/spoiler]';
+    let depth = 1;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(this.input)) !== null) {
+      if (m[1] === '/') {
+        depth--;
+        if (depth === 0) {
+          return m[0].toLowerCase() === '[/spoilers]'
+            ? '[/spoilers]'
+            : '[/spoiler]';
+        }
+      } else {
+        depth++;
+      }
+    }
+    return null;
   }
 
   private matchSection(): SectionMatch | null {
@@ -2089,6 +2202,36 @@ export class DTextStateMachineParser {
     return result;
   }
 
+  // Sibling of `peekBlockElementAfterNewline` restricted to line-start-only
+  // markers (`h1.`, `* item`). The literal-html tail loop uses this to break
+  // before the `\n` that introduces a header / list, so the outer block
+  // parser swallows that newline as the block-context separator. Bracketed
+  // always-block tags don't pass this filter — they take the
+  // emit-`<br>`-then-break path via the next iteration's peekBlockElement.
+  private peekLineStartMarkerAfterNewline(): boolean {
+    const input = this.input;
+    const code = input.charCodeAt(this.pos);
+    let offset = 0;
+    if (code === 0x0d && input.charCodeAt(this.pos + 1) === 0x0a) {
+      offset = 2;
+    } else if (code === 0x0a) {
+      offset = 1;
+    } else {
+      return false;
+    }
+    const saved = this.pos;
+    this.pos += offset;
+    let hit = false;
+    for (const pattern of LINE_START_PATTERNS_STICKY) {
+      if (this.testSticky(pattern)) {
+        hit = true;
+        break;
+      }
+    }
+    this.pos = saved;
+    return hit;
+  }
+
   private peekBlockElement(): boolean {
     // Some block markers (h1., * item, etc.) are only structural at the
     // start of a line. Mid-line they are ordinary text. Bracketed tags
@@ -2096,11 +2239,12 @@ export class DTextStateMachineParser {
     const atLineStart =
       this.pos === 0 || this.input[this.pos - 1] === '\n';
 
-    // Spoilers only count as block when multiline.
-    if (this.testSticky(RE_SPOILER_OPEN)) {
-      const spoilerMatch = this.matchSticky(RE_SPOILER_BLOCK_LOOSE);
-      return spoilerMatch !== null && spoilerMatch[1].includes('\n');
-    }
+    // `[spoiler]` is never a block-context promoter from inside an inline run.
+    // The block-vs-inline split is owned by parseBlock: `matchSpoilerBlockOpen`
+    // catches the block-context case (doc start or after `\n\n`) before any
+    // inline collector runs. Reaching peekBlockElement at all means we are
+    // already inside an inline run — so a `[spoiler]` here is inline content,
+    // regardless of whether its body spans multiple lines.
 
     // Closes for block containers only count as block markers when their
     // matching open is in scope. Outside of one, ruby treats them as

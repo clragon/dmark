@@ -47,6 +47,7 @@ export const ID_PATTERNS: ReadonlyArray<{
   { pattern: 'set', type: 'set' },
   { pattern: 'blip', type: 'blip' },
   { pattern: 'takedown', type: 'takedown' },
+  { pattern: 'take down', type: 'takedown' },
   { pattern: 'take\\s?down\\s+request', type: 'takedown' },
   { pattern: 'ticket', type: 'ticket' },
 ];

@@ -53,7 +53,7 @@ interface RenderContext {
 // (used by `isValidQuoteColor`) as the upstream gate; both literals must
 // agree until the ID-metadata consolidation collapses them.
 const TAG_CATEGORY_RE =
-  /^(gen(eral)?|art(ist)?|contributor|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lore)$/i;
+  /^(gen(eral)?|art(ist)?|cont(ributor)?|char(acter)?|copy(right)?|spec(ies)?|inv(alid)?|meta|lor(e)?)$/i;
 
 // Class names for `id_link` anchors keyed by the parser-emitted `idType`.
 // Multi-class entries (only `thumb`) carry the full ordered list, so the
