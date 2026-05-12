@@ -333,9 +333,13 @@ function splitOnUnescapedPipe(line: string): string[] {
 // survives.
 function preprocessLTables(input: string): {
   result: string;
-  ltableStarts: Set<number>;
+  ltableSources: Map<number, string>;
 } {
-  const ltableStarts = new Set<number>();
+  // Position-in-rewritten-input → original (trimmed) `[ltable]` contents.
+  // The parser uses the position to recognise its synthesised `[table]`
+  // opens and stashes the source string on the resulting `LTableNode` so
+  // the formatter can re-emit the exact `[ltable]` body verbatim.
+  const ltableSources = new Map<number, string>();
   const openRe = /\[ltable\]/gi;
   let result = '';
   let cursor = 0;
@@ -351,7 +355,7 @@ function preprocessLTables(input: string): {
       closeMatch !== null ? closeMatch.index + closeMatch[0].length : input.length;
     const contents = input.slice(contentStart, contentEnd).trim();
 
-    ltableStarts.add(result.length);
+    ltableSources.set(result.length, contents);
     result += '[table]';
 
     if (contents.length > 0) {
@@ -377,7 +381,7 @@ function preprocessLTables(input: string): {
     openRe.lastIndex = nextCursor;
   }
   result += input.slice(cursor);
-  return { result, ltableStarts };
+  return { result, ltableSources };
 }
 
 // Container-tag scanner used by `findContainerCloseInItem` to walk a
@@ -433,7 +437,7 @@ export class DTextStateMachineParser {
   // life as an `[ltable]` open. The parser wraps the resulting `TableNode` as
   // an `LTableNode` at exactly these positions so the round-trip back to
   // `[ltable]` source survives (`preprocessLTables` did the textual swap).
-  private ltableStarts: Set<number>;
+  private ltableSources: Map<number, string>;
 
 
   // Single compiled regex for all ID patterns. Ruby requires exactly one
@@ -471,9 +475,9 @@ export class DTextStateMachineParser {
     // Either kind of byte can't appear literally in our rendered HTML
     // either, so blank the whole input to mirror oracle's `''` fallback.
     const sanitised = hasUnencodableScalar(input) ? '' : input;
-    const { result, ltableStarts } = preprocessLTables(sanitised);
+    const { result, ltableSources } = preprocessLTables(sanitised);
     this.input = result;
-    this.ltableStarts = ltableStarts;
+    this.ltableSources = ltableSources;
     this.pos = 0;
     this.options = {
       allowColor: true,
@@ -814,11 +818,15 @@ export class DTextStateMachineParser {
     }
 
     if (this.peekString('[table]', true)) {
-      const isLTable = this.ltableStarts.has(this.pos);
+      const ltableSource = this.ltableSources.get(this.pos);
       this.matchString('[table]', true);
       const tableNode = this.parseTable();
-      if (isLTable) {
-        return { type: 'ltable', children: tableNode.children };
+      if (ltableSource !== undefined) {
+        return {
+          type: 'ltable',
+          children: tableNode.children,
+          source: ltableSource,
+        };
       }
       return tableNode;
     }
@@ -1670,6 +1678,12 @@ export class DTextStateMachineParser {
       if (this.peekContainerClose()) {
         break;
       }
+      // A single `\n` immediately before an in-scope `[/quote]` / `[/section]`
+      // / `[/spoiler]` belongs to the close rule (ragel `newline? <close> ws*`),
+      // not to the inline content. Break before consuming so the surrounding
+      // container parser eats it cleanly and no spurious `<br>` lands inside
+      // the still-open inline scope.
+      if (this.peekContainerCloseAfterNewline()) break;
       // Ragel `dstack_close_before_block; fexec ts; fret` fires from inline
       // scope for bracketed always-block opens (`[code]`, `[table]`,
       // `[quote]`, `[section]`) and for `newline header` / `newline list_item`
@@ -1739,6 +1753,29 @@ export class DTextStateMachineParser {
     );
   }
 
+  // True when the cursor sits on a single `\n` (or CRLF) immediately followed
+  // by an in-scope container close. Ragel's `newline? quote_close ws*` and
+  // `newline? section_close ws*` rules eat ONE leading newline as part of the
+  // close, so inline collectors should break BEFORE that `\n` rather than
+  // emitting it as a `<br>` inside a still-open inline scope.
+  private peekContainerCloseAfterNewline(): boolean {
+    const input = this.input;
+    const code = input.charCodeAt(this.pos);
+    let offset = 0;
+    if (code === 0x0d && input.charCodeAt(this.pos + 1) === 0x0a) {
+      offset = 2;
+    } else if (code === 0x0a) {
+      offset = 1;
+    } else {
+      return false;
+    }
+    const saved = this.pos;
+    this.pos += offset;
+    const result = this.peekContainerClose();
+    this.pos = saved;
+    return result;
+  }
+
   private consumeBlankLines(): void {
     while (this.pos < this.input.length) {
       if (this.peekNewline()) {
@@ -1778,6 +1815,10 @@ export class DTextStateMachineParser {
       // still-open color span.
       if (this.headerDepth > 0 && this.peekNewline()) break;
       if (this.peekContainerClose()) break;
+      // A single `\n` immediately before an in-scope container close
+      // belongs to the close rule (ragel `newline? <close> ws*`). Break
+      // before consuming so no spurious `<br>` lands inside the color span.
+      if (this.peekContainerCloseAfterNewline()) break;
       // Bracketed always-block opens (`[code]`, `[table]`, `[quote]`, ...)
       // exit the inline scope via `fexec ts; fret;` — the surrounding main
       // scope then promotes them into real blocks. Stray `[/code]` and

@@ -302,9 +302,12 @@ function formatBlocks(
 // is formatted into a local buffer so we can detect the rare case where a
 // child's emit (typically a textile link with `]` in its URL) would be
 // absorbed by the parser's bare-URL `\S+` capture and swallow the close.
-// The fix is a single `\n` before the close: the trailing line break gets
-// stripped by `trimTrailingLineBreaks` at re-parse, so AST equality holds
-// while the close is no longer reachable from the URL capture.
+// The fix is a `\n\n` (paragraph break) before the close: the parser
+// consumes the blank lines via parseInlineContainer's peekDoubleNewline
+// short-circuit without emitting a line_break, so AST equality holds while
+// the close is no longer reachable from the URL capture. A single `\n`
+// would re-parse to a `line_break` child (ragel's inline scanner has no
+// `newline*` prefix on `[/b]`/`[/i]`/`[/s]`/`[/u]`/`[/sup]`/`[/sub]`).
 function emitInlineContainer(
   tag: string,
   children: InlineNode[],
@@ -325,7 +328,7 @@ function emitInlineContainer(
   // still ends in non-whitespace. Otherwise the natural separator already
   // bounds the `\S+` capture and the close is reachable.
   if (ctx.unsafeBareUrl && joined.length > 0 && !/\s$/.test(joined)) {
-    out.push('\n');
+    out.push('\n\n');
   }
   ctx.unsafeBareUrl = prevUnsafe;
   out.push(close);
@@ -465,13 +468,22 @@ function formatLTable(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Cells joined by a bare `|` because the parser preserves the whitespace
-  // hugging each pipe inside the cells themselves (oracle: `head1 | head2`
-  // parses as cells `head1 ` and ` head2`). Round-tripping with a bare `|`
-  // re-emits the original spacing verbatim. Walk the synthesised table's
-  // children (thead/tbody/row + literal fallout) and recover each row's
-  // cells; non-row literal fallout is skipped because the `[ltable]` source
-  // syntax cannot carry it.
+  // Prefer the captured raw source. `node.children` came from a synthesised
+  // `[table]` parse where URL patterns intentionally spill past structural
+  // tags (matching oracle HTML), and that spillover is lossy if we try to
+  // rebuild cell text from the AST. The original trimmed body re-parses to
+  // the same children + source, keeping AST round-trip stable.
+  if (node.source !== undefined) {
+    if (node.source.length === 0) {
+      out.push('[ltable][/ltable]');
+    } else {
+      out.push('[ltable]\n', node.source, '\n[/ltable]');
+    }
+    return;
+  }
+  // Fallback for ASTs synthesised without a source string (e.g. constructed
+  // programmatically). Cells joined by a bare `|` because the parser
+  // preserves the whitespace hugging each pipe inside the cells themselves.
   out.push('[ltable]\n');
   const rows: TableRowNode[] = [];
   for (const child of node.children) {

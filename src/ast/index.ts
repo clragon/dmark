@@ -113,6 +113,12 @@ export interface LTableNode extends ASTNode {
   // fallout that lives between them, while the formatter recovers a flat
   // pipe-separated row source by walking the structural wrappers.
   children: (TableHeadNode | TableBodyNode | TableRowNode | TableLiteralNode)[];
+  // Original trimmed text between `[ltable]` and `[/ltable]`. Stored so the
+  // formatter can re-emit the exact source — `children` is derived through a
+  // synthesised `[table]` parse where URL patterns intentionally spill past
+  // structural tags (matching oracle HTML), and that spillover is lossy if
+  // the formatter has to reconstruct cells from the parsed AST.
+  source?: string;
 }
 
 export interface TableHeadNode extends ASTNode {
