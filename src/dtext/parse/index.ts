@@ -20,6 +20,7 @@ import type {
   TableBodyNode,
   TableCellNode,
   TableHeadNode,
+  TableLiteralNode,
   TableNode,
   TableRowNode,
   TextNode,
@@ -236,7 +237,12 @@ const RE_TEXTILE_BASIC = /"([^"]+)":([^ \t\n\r\f\v]+)/y;
 // whitespace only (` \t\n\r\f\v`). Unicode spaces like NBSP do not
 // terminate the URL; `\S` would over-eagerly stop at them.
 const RE_URL = /https?:\/\/[^ \t\n\r\f\v]+/iy;
-const RE_DELIMITED_URL = /<(https?:\/\/[^>]+)>/iy;
+// Ragel `delimited_url = '<' url '>'` with `url = 'http'... '://' ^space+`
+// where POSIX `space` includes ASCII tab. A tab inside the `<…>` therefore
+// kills the delimited form (the `url` terminates and the `>` is never
+// reached), and the fallback fires (literal `<` + bare-url + literal tail).
+// `[^>]` would slurp the tab into one big anchor.
+const RE_DELIMITED_URL = /<(https?:\/\/[^ \t\n\r\f\v>]+)>/iy;
 const RE_COLOR_OPEN = /\[color=([^\]]+)\]/iy;
 const RE_SECTION_EXPANDED_TITLE = /\[section,expanded=([^\]]+)\]/iy;
 const RE_SECTION_TITLE = /\[section=([^\]]+)\]/iy;
@@ -269,14 +275,110 @@ const BLOCK_PATTERNS_STICKY: readonly RegExp[] = [
   /\[ltable\]/iy,
 ];
 
-// Cell-close truncators for `parseLTableRow`. The matching close for a
-// header cell is `[/th]` and for a body cell is `[/td]`; an inner copy of
-// the same close ends the cell content at that offset, mirroring ruby's
-// inline `[/th]` / `[/td]` rules which `dstack_close_block` the wrapping
-// element and fret. Hoisted so the regexes compile once instead of per
-// cell.
-const RE_LTABLE_TD_CLOSE = /\[\/td\]/i;
-const RE_LTABLE_TH_CLOSE = /\[\/th\]/i;
+// True if `input` contains a code unit that can't be encoded to valid
+// UTF-8: a NUL byte (U+0000) or a lone UTF-16 surrogate. A high surrogate
+// (U+D800-U+DBFF) must be followed by a low surrogate (U+DC00-U+DFFF); a
+// low surrogate without a preceding high is also unpaired. Valid surrogate
+// pairs (e.g. the two halves of an emoji) pass through.
+function hasUnencodableScalar(input: string): boolean {
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+    if (c === 0x0000) return true;
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const next = i + 1 < input.length ? input.charCodeAt(i + 1) : -1;
+      if (next < 0xdc00 || next > 0xdfff) return true;
+      i++;
+      continue;
+    }
+    if (c >= 0xdc00 && c <= 0xdfff) return true;
+  }
+  return false;
+}
+
+// Split a string on `|` characters not preceded by a backslash. Mirrors
+// ruby's `row.split(/(?<!\\)\|/)` inside `preprocess_for_tables`. Whitespace
+// is NOT collapsed; the spaces hugging a `|` belong to the cells around it.
+//
+// Ruby's `String#split` without an explicit limit drops trailing empty
+// strings: `"|".split("|")` is `[]`, `"a|".split("|")` is `["a"]`. JS's
+// `String.prototype.split` keeps them. Mirror Ruby's behaviour after the
+// split so a row that's just `|` (or `a|b|`) produces zero / fewer cells.
+function splitOnUnescapedPipe(line: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  for (let i = 0; i < line.length; i++) {
+    if (line.charCodeAt(i) !== 0x7c /* | */) continue;
+    if (i > 0 && line.charCodeAt(i - 1) === 0x5c /* \ */) continue;
+    out.push(line.slice(start, i));
+    start = i + 1;
+  }
+  out.push(line.slice(start));
+  while (out.length > 0 && out[out.length - 1] === '') out.pop();
+  return out;
+}
+
+// Ruby `dtext.rb` runs `preprocess_for_tables` *before* the Ragel parser
+// runs at all: every `[ltable]...[/ltable]` (case-insensitive, dotall,
+// non-greedy) is replaced inline with a synthesised `[table]...[/table]`,
+// turning the legacy form into a regular table the C parser can consume
+// directly. We mirror that pass here so quirks like a URL inside an
+// `[ltable]` cell consuming past the synthesised `[/table]` into the source
+// tail (e.g. trailing `,` or `.`) reproduce — the URL pattern is greedy
+// and only the input-level rewrite leaves the tail reachable from inline
+// scope.
+//
+// The returned `ltableStarts` set records each synthesised `[table]` open's
+// offset in the rewritten string; the parser uses it to wrap the resulting
+// `TableNode` as an `LTableNode` so the AST round-trip back to `[ltable]`
+// survives.
+function preprocessLTables(input: string): {
+  result: string;
+  ltableStarts: Set<number>;
+} {
+  const ltableStarts = new Set<number>();
+  const openRe = /\[ltable\]/gi;
+  let result = '';
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(input)) !== null) {
+    result += input.slice(cursor, match.index);
+    const contentStart = match.index + match[0].length;
+    const closeRe = /\[\/ltable\]/gi;
+    closeRe.lastIndex = contentStart;
+    const closeMatch = closeRe.exec(input);
+    const contentEnd = closeMatch !== null ? closeMatch.index : input.length;
+    const nextCursor =
+      closeMatch !== null ? closeMatch.index + closeMatch[0].length : input.length;
+    const contents = input.slice(contentStart, contentEnd).trim();
+
+    ltableStarts.add(result.length);
+    result += '[table]';
+
+    if (contents.length > 0) {
+      const lines = contents.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const cols = splitOnUnescapedPipe(lines[i]);
+        const tag = i === 0 ? 'th' : 'td';
+        let wrapped = '';
+        for (const col of cols) {
+          wrapped += `[${tag}]${col}[/${tag}]`;
+        }
+        if (i === 0) {
+          result += `[thead][tr]${wrapped}[/tr][/thead][tbody]`;
+        } else {
+          result += `[tr]${wrapped}[/tr]`;
+        }
+      }
+      result += '[/tbody]';
+    }
+    result += '[/table]';
+
+    cursor = nextCursor;
+    openRe.lastIndex = nextCursor;
+  }
+  result += input.slice(cursor);
+  return { result, ltableStarts };
+}
 
 // Container-tag scanner used by `findContainerCloseInItem` to walk a
 // list-item's text body looking for opens/closes that should truncate the
@@ -321,6 +423,17 @@ export class DTextStateMachineParser {
   // the close ahead is genuinely stray (no enclosing inline-spoiler will
   // claim it as its matching close).
   private inlineSpoilerDepth: number = 0;
+  // True while parseHeader is mid-flight. Ragel's inline `newline{2,}` rule
+  // always `fret`s, so a paragraph break propagates up through any nested
+  // inline scope and main's `newline{2,}` then closes the leaf blocks (the
+  // open `<h1>`). When this flag is set, inline containers exit on `\n\n`
+  // instead of swallowing the blank lines via consumeBlankLines.
+  private headerDepth: number = 0;
+  // Offsets in `this.input` at which a synthesised `[table]` open started
+  // life as an `[ltable]` open. The parser wraps the resulting `TableNode` as
+  // an `LTableNode` at exactly these positions so the round-trip back to
+  // `[ltable]` source survives (`preprocessLTables` did the textual swap).
+  private ltableStarts: Set<number>;
 
 
   // Single compiled regex for all ID patterns. Ruby requires exactly one
@@ -346,7 +459,21 @@ export class DTextStateMachineParser {
   );
 
   constructor(input: string, options: ParserOptions = {}) {
-    this.input = input;
+    // Ruby's dtext rejects an input that contains a byte / code-unit it
+    // cannot encode as valid UTF-8 ("invalid byte sequence in UTF-8") and
+    // the oracle response carries `html: undefined`. Two cases hit this:
+    //   * NUL (U+0000) — a control byte ruby refuses outright.
+    //   * Lone UTF-16 surrogates (U+D800-U+DFFF unpaired) — these don't
+    //     correspond to a Unicode scalar value at all; a JS engine can hold
+    //     them in a 16-bit string but they cannot survive UTF-8 encoding.
+    //     Valid surrogate PAIRS (e.g. emoji like `🎉` stored as a high+low
+    //     pair) stay through this filter.
+    // Either kind of byte can't appear literally in our rendered HTML
+    // either, so blank the whole input to mirror oracle's `''` fallback.
+    const sanitised = hasUnencodableScalar(input) ? '' : input;
+    const { result, ltableStarts } = preprocessLTables(sanitised);
+    this.input = result;
+    this.ltableStarts = ltableStarts;
     this.pos = 0;
     this.options = {
       allowColor: true,
@@ -419,14 +546,9 @@ export class DTextStateMachineParser {
     const m = this.matchSticky(RE_STRAY_CODE_TABLE_CLOSE);
     if (!m) return { type: 'literal_html', prefix: '', children: [] };
     this.pos += m[0].length;
-    while (this.pos < this.input.length) {
-      const c = this.input[this.pos];
-      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
-        this.pos++;
-        continue;
-      }
-      break;
-    }
+    // Ragel `'[/code]'i space*` / `'[/table]'i space*` — POSIX `space`
+    // (covers VT and FF as well as space/tab/CR/LF).
+    this.skipPosixSpace();
     const children: InlineNode[] = [];
     let exitedOnContainerClose = false;
     while (this.pos < this.input.length) {
@@ -439,6 +561,14 @@ export class DTextStateMachineParser {
         exitedOnContainerClose = true;
         break;
       }
+      // A line-start-only marker (h1., * item) on the next line is a fresh
+      // block — break before the newline so the outer block loop can pick
+      // it up cleanly. Without this `* a [/code]\n* b\n` would let the
+      // inline tail swallow `\n* b` as `<br>* b<br>` instead of opening a
+      // new `<ul>`. Ragel's inline `[/code]` rule explicitly closes the
+      // list (`dstack_close_list`), and the trailing `* b\n` then enters
+      // main at column 0 as a fresh list_item.
+      if (this.peekNewline() && this.peekLineStartMarkerAfterNewline()) break;
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
     }
@@ -495,7 +625,6 @@ export class DTextStateMachineParser {
     const children: InlineNode[] = [];
     let exitedOnContainerClose = false;
     while (this.pos < this.input.length) {
-      if (this.peekDoubleNewline()) break;
       if (this.peekContainerClose()) {
         exitedOnContainerClose = true;
         break;
@@ -513,6 +642,19 @@ export class DTextStateMachineParser {
       // iteration's peekBlockElement catches the tag at line start.
       if (this.peekBlockElement()) break;
       if (this.peekNewline() && this.peekLineStartMarkerAfterNewline()) break;
+      // Ragel's inline `newline* spoilers_close` is a SINGLE token: a stray
+      // `[/spoiler]` after one or more (including doubled) newlines is
+      // appended verbatim by `dstack_close_block`'s else-branch. Mirror that
+      // before the paragraph-break check below — otherwise `\n\n[/spoiler]`
+      // hits peekDoubleNewline first and the second stray close is dropped.
+      if (this.peekNewline()) {
+        const consumed = this.consumeNewlinesIfFollowedByStraySpoilerClose();
+        if (consumed !== null) {
+          pushInlineMergingText(children, { type: 'text', content: consumed });
+          continue;
+        }
+      }
+      if (this.peekDoubleNewline()) break;
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
     }
@@ -671,12 +813,14 @@ export class DTextStateMachineParser {
       return this.parseSection(sectionMatch);
     }
 
-    if (this.matchString('[table]', true)) {
-      return this.parseTable();
-    }
-
-    if (this.matchString('[ltable]', true)) {
-      return this.parseLTable();
+    if (this.peekString('[table]', true)) {
+      const isLTable = this.ltableStarts.has(this.pos);
+      this.matchString('[table]', true);
+      const tableNode = this.parseTable();
+      if (isLTable) {
+        return { type: 'ltable', children: tableNode.children };
+      }
+      return tableNode;
     }
 
     const listMatch = this.matchListItem();
@@ -690,6 +834,8 @@ export class DTextStateMachineParser {
   private parseHeader(level: number): HeaderNode {
     const children: InlineNode[] = [];
 
+    this.headerDepth++;
+    try {
     while (this.pos < this.input.length) {
       if (this.peekNewline()) {
         // Ruby's inline scanner has `newline* spoilers_close` as a single
@@ -705,8 +851,18 @@ export class DTextStateMachineParser {
         }
         break;
       }
+      // Ragel `header` calls `fcall inline`, and the inline scanner exits
+      // (`fexec ts; fret;`) on bracketed always-block opens: `[code]`,
+      // `[table]`, `[quote]`, `[section]`. The matching close stays
+      // unconsumed so the surrounding block scope promotes it into a real
+      // block. Stray `[/code]` / `[/table]` are NOT exits — they're absorbed
+      // inline as literal text (mirrors parseInlineContainer).
+      if (this.peekBlockElement() && !this.peekStrayCodeOrTableClose()) break;
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
+    }
+    } finally {
+      this.headerDepth--;
     }
 
     this.consumeNewline();
@@ -758,16 +914,24 @@ export class DTextStateMachineParser {
   }
 
   private parseQuote(color?: string): QuoteNode {
-    this.skipWhitespace();
-    this.consumeNewline();
-    // Strip blank lines only at the very top of the container; once content
-    // starts, a whitespace-only line becomes a real <p> </p> paragraph
-    // (oracle-verified).
-    this.skipBlankLines();
-    // Drop horizontal whitespace at the start of the first content line.
-    // Ragel's `quote_open space*` consumes all post-open whitespace including
-    // an indent on the next line; mirrors parseSpoilerBlock.
-    this.skipWhitespace();
+    if (color === undefined) {
+      // Ragel attaches `space*` (POSIX space — includes VT/FF/CR/LF) ONLY to
+      // the plain `quote_open` rule. The colored / typed variants don't, so
+      // any leading whitespace after `[quote=...]` belongs to the paragraph
+      // that the surrounding scanner falls into. Eat POSIX space across the
+      // bytes immediately after `[quote]` and one optional newline + blank
+      // lines + an indent on the first content line.
+      this.skipPosixSpace();
+      this.consumeNewline();
+      // Strip blank lines only at the very top of the container; once content
+      // starts, a whitespace-only line becomes a real <p> </p> paragraph
+      // (oracle-verified).
+      this.skipBlankLines();
+      // Drop horizontal whitespace at the start of the first content line.
+      // Ragel's `quote_open space*` consumes all post-open whitespace including
+      // an indent on the next line; mirrors parseSpoilerBlock.
+      this.skipPosixSpace();
+    }
 
     const children: BlockNode[] = [];
 
@@ -802,7 +966,8 @@ export class DTextStateMachineParser {
   }
 
   private parseSpoilerBlock(): SpoilerBlockNode {
-    this.skipWhitespace();
+    // Ragel `spoilers_open space*` — POSIX `space` (includes VT/FF).
+    this.skipPosixSpace();
     this.consumeNewline();
     this.skipBlankLines();
     // Drop horizontal whitespace at the start of the first content line.
@@ -810,7 +975,7 @@ export class DTextStateMachineParser {
     // `<div class="spoiler"><p>hi</p></div>` (the two leading spaces are
     // gone). Subsequent lines preserve indentation, so this only fires here,
     // not inside the block loop.
-    this.skipWhitespace();
+    this.skipPosixSpace();
 
     const children: BlockNode[] = [];
 
@@ -896,13 +1061,15 @@ export class DTextStateMachineParser {
   }
 
   private parseSection(sectionMatch: SectionMatch): SectionNode {
-    this.skipWhitespace();
+    // Ragel attaches `space*` (POSIX, includes VT/FF) to ALL four
+    // section-open variants (plain, expanded, aliased, aliased+expanded).
+    this.skipPosixSpace();
     this.consumeNewline();
     this.skipBlankLines();
     // Drop horizontal whitespace at the start of the first content line.
     // Ragel's `section_open space*` consumes all post-open whitespace
     // including an indent on the next line; mirrors parseSpoilerBlock.
-    this.skipWhitespace();
+    this.skipPosixSpace();
 
     const children: BlockNode[] = [];
 
@@ -932,8 +1099,34 @@ export class DTextStateMachineParser {
     return result;
   }
 
+  // Inside the table scanner, ruby's Ragel rules for `[/tr]` / `[/thead]` /
+  // `[/tbody]` call `dstack_close_block`, which appends the matched text
+  // verbatim when the type isn't on top of the dstack. `[/th]` and `[/td]`
+  // have no rule in table scope at all and are silently swallowed by `any`.
+  // This consume mirrors both behaviours so stray closes reach the AST as
+  // `table_literal` nodes (literal emission) or just vanish (silent drop).
+  // Returns null when no stray-close pattern matched and the cursor is
+  // untouched.
+  private consumeStrayTableClose(): { literal: string } | null {
+    const saved = this.pos;
+    if (this.matchString('[/tr]', true) ||
+        this.matchString('[/thead]', true) ||
+        this.matchString('[/tbody]', true)) {
+      return { literal: this.input.slice(saved, this.pos) };
+    }
+    if (this.matchString('[/th]', true) || this.matchString('[/td]', true)) {
+      return { literal: '' };
+    }
+    return null;
+  }
+
   private parseTable(): TableNode {
-    const children: (TableHeadNode | TableBodyNode | TableRowNode)[] = [];
+    const children: (
+      | TableHeadNode
+      | TableBodyNode
+      | TableRowNode
+      | TableLiteralNode
+    )[] = [];
 
     this.skipWhitespace();
 
@@ -950,8 +1143,14 @@ export class DTextStateMachineParser {
       } else if (this.matchString('[tr]', true)) {
         children.push(this.parseTableRow());
       } else {
-        // Skip unknown content
-        this.pos++;
+        const stray = this.consumeStrayTableClose();
+        if (stray !== null) {
+          if (stray.literal) {
+            children.push({ type: 'table_literal', content: stray.literal });
+          }
+        } else {
+          this.pos++;
+        }
       }
 
       this.skipWhitespace();
@@ -961,7 +1160,7 @@ export class DTextStateMachineParser {
   }
 
   private parseTableHead(): TableHeadNode {
-    const rows: TableRowNode[] = [];
+    const rows: (TableRowNode | TableLiteralNode)[] = [];
 
     this.skipWhitespace();
 
@@ -974,8 +1173,14 @@ export class DTextStateMachineParser {
       if (this.matchString('[tr]', true)) {
         rows.push(this.parseTableRow());
       } else {
-        // Skip unknown content
-        this.pos++;
+        const stray = this.consumeStrayTableClose();
+        if (stray !== null) {
+          if (stray.literal) {
+            rows.push({ type: 'table_literal', content: stray.literal });
+          }
+        } else {
+          this.pos++;
+        }
       }
 
       this.skipWhitespace();
@@ -985,7 +1190,7 @@ export class DTextStateMachineParser {
   }
 
   private parseTableBody(): TableBodyNode {
-    const rows: TableRowNode[] = [];
+    const rows: (TableRowNode | TableLiteralNode)[] = [];
 
     this.skipWhitespace();
 
@@ -1007,8 +1212,14 @@ export class DTextStateMachineParser {
         // serialised output under DOM normalisation.
         rows.push(this.parseLooseTableRow());
       } else {
-        // Skip unknown content
-        this.pos++;
+        const stray = this.consumeStrayTableClose();
+        if (stray !== null) {
+          if (stray.literal) {
+            rows.push({ type: 'table_literal', content: stray.literal });
+          }
+        } else {
+          this.pos++;
+        }
       }
 
       this.skipWhitespace();
@@ -1060,8 +1271,59 @@ export class DTextStateMachineParser {
   private parseTableCell(cellType: 'th' | 'td'): TableCellNode {
     const children: InlineNode[] = [];
     const endTag = cellType === 'th' ? '[/th]' : '[/td]';
+    let closedByTag = false;
+    let inStrayAbsorb = false;
 
-    while (this.pos < this.input.length && !this.matchString(endTag, true)) {
+    while (this.pos < this.input.length) {
+      if (inStrayAbsorb) {
+        // Post-`\n\n` mode: ragel's inline `newline{2,}` rule fret-returns
+        // to the table scope WITHOUT closing BLOCK_TD. The table machine has
+        // no rule for `[/td]` / `[/th]` (silent), and treats `[/tr]` /
+        // `[/thead]` / `[/tbody]` / `[/table]` as `dstack_close_block` calls
+        // that, with the cell still on top of the dstack, append their
+        // literal text to the cell's still-open output. We never re-enter
+        // inline parsing here — that's what makes the trailing `b` of
+        // `a\n\nb[/td][/tr][/table]` vanish.
+        if (
+          this.matchString('[/td]', true) ||
+          this.matchString('[/th]', true)
+        ) {
+          continue;
+        }
+        if (this.matchString('[/tr]', true)) {
+          pushInlineMergingText(children, { type: 'text', content: '[/tr]' });
+          continue;
+        }
+        if (this.matchString('[/thead]', true)) {
+          pushInlineMergingText(children, { type: 'text', content: '[/thead]' });
+          continue;
+        }
+        if (this.matchString('[/tbody]', true)) {
+          pushInlineMergingText(children, { type: 'text', content: '[/tbody]' });
+          continue;
+        }
+        if (this.matchString('[/table]', true)) {
+          pushInlineMergingText(children, { type: 'text', content: '[/table]' });
+          continue;
+        }
+        this.pos++;
+        continue;
+      }
+
+      if (this.matchString(endTag, true)) {
+        closedByTag = true;
+        break;
+      }
+      if (this.peekDoubleNewline()) {
+        // Ragel `newline{2,} => dstack_close_list(); fexec ts; fret;` in the
+        // inline scanner: a paragraph break inside an open cell exits inline
+        // but leaves the cell on the dstack. Drop the `\n\n` and switch to
+        // the stray-absorb branch above so downstream stray closes land as
+        // literal text inside this cell.
+        this.consumeBlankLines();
+        inStrayAbsorb = true;
+        continue;
+      }
       const element = this.parseInlineElement();
       if (element) {
         children.push(element);
@@ -1071,93 +1333,14 @@ export class DTextStateMachineParser {
       }
     }
 
-    trimTrailingLineBreaks(children);
+    // Ruby eats newlines run up to `[/td]` / `[/th]` via the `newline*`
+    // prefix on the inline close rule, so a `\n[/td]` cell ends without a
+    // trailing `<br>`. When the cell falls off the end of input instead
+    // (e.g. a greedy URL inside the cell consumed past the close tag), the
+    // trailing newline survived as a `<br>` in oracle output; keep it here.
+    if (closedByTag) trimTrailingLineBreaks(children);
 
     return { type: 'table_cell', cellType, children };
-  }
-
-  private parseLTable(): LTableNode {
-    const rows: TableRowNode[] = [];
-    const lines: string[] = [];
-
-    this.skipWhitespace();
-
-    // Collect lines until [/ltable]. The close tag may appear mid-line
-    // (e.g. `[ltable]a[/ltable] tail`), so scan char-by-char and break the
-    // line at it just like a newline would.
-    while (
-      this.pos < this.input.length &&
-      !this.matchString('[/ltable]', true)
-    ) {
-      const lineStart = this.pos;
-
-      while (this.pos < this.input.length) {
-        const code = this.input.charCodeAt(this.pos);
-        if (code === 0x0a || code === 0x0d) break;
-        if (code === 0x5b /* [ */ && this.compareAtPos('[/ltable]', true)) {
-          break;
-        }
-        this.pos++;
-      }
-
-      const line = this.input.slice(lineStart, this.pos).trim();
-      if (line) {
-        lines.push(line);
-      }
-
-      // Skip the newline (but leave [/ltable] for the outer loop to consume).
-      if (this.pos < this.input.length && this.input[this.pos] === '\r') {
-        this.pos++;
-      }
-      if (this.pos < this.input.length && this.input[this.pos] === '\n') {
-        this.pos++;
-      }
-    }
-
-    if (lines.length > 0) {
-      rows.push({
-        type: 'table_row',
-        cells: this.parseLTableRow(lines[0], 'th'),
-      });
-      for (let i = 1; i < lines.length; i++) {
-        rows.push({
-          type: 'table_row',
-          cells: this.parseLTableRow(lines[i], 'td'),
-        });
-      }
-    }
-
-    return { type: 'ltable', rows };
-  }
-
-  private parseLTableRow(line: string, cellType: 'th' | 'td'): TableCellNode[] {
-    const cells: TableCellNode[] = [];
-    const parts = line.split('|');
-
-    for (const part of parts) {
-      let content = part.trim();
-      // Cells truncate at the first literal close that matches their
-      // wrapping element (`[/th]` for header cells, `[/td]` for body cells)
-      // and drop everything from there to the cell's end. Oracle-verified:
-      // `[td]body[/td]` -> `[td]body`, `body[/td]more` -> `body`, `[/td]bare`
-      // -> empty; same shape for `[/th]` in header cells.
-      //
-      // Fast path: most cells contain no `[` at all, in which case the
-      // close cannot appear. Probe with `indexOf('[')` before allocating a
-      // lowercased copy. When present, a CI regex finds the close in a single
-      // pass without the eager `toLowerCase()` allocation.
-      if (content.indexOf('[') >= 0) {
-        const re = cellType === 'td' ? RE_LTABLE_TD_CLOSE : RE_LTABLE_TH_CLOSE;
-        const m = re.exec(content);
-        if (m) content = content.slice(0, m.index).trimEnd();
-      }
-      const children: InlineNode[] = content
-        ? this.parseInlineText(content)
-        : [];
-      cells.push({ type: 'table_cell', cellType, children });
-    }
-
-    return cells;
   }
 
   protected parseList(firstItem: ListMatch): ListNode {
@@ -1267,14 +1450,9 @@ export class DTextStateMachineParser {
       const inlineCT = this.matchSticky(RE_STRAY_CODE_TABLE_CLOSE);
       if (inlineCT) {
         this.pos += inlineCT[0].length;
-        while (this.pos < this.input.length) {
-          const c = this.input[this.pos];
-          if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
-            this.pos++;
-            continue;
-          }
-          break;
-        }
+        // Ragel `'[/code]'i space*` / `'[/table]'i space*` — POSIX `space`
+        // includes VT and FF too, not only space/tab/CR/LF.
+        this.skipPosixSpace();
         return { type: 'text', content: inlineCT[0] };
       }
 
@@ -1373,7 +1551,11 @@ export class DTextStateMachineParser {
         const closePattern = this.getSpoilerClosePattern();
         this.inlineSpoilerDepth++;
         try {
-          return this.parseInlineContainer(closePattern, 'inline_spoiler');
+          return this.parseInlineContainer(
+            closePattern,
+            'inline_spoiler',
+            true,
+          );
         } finally {
           this.inlineSpoilerDepth--;
         }
@@ -1392,16 +1574,22 @@ export class DTextStateMachineParser {
       }
     }
 
-    // Line break
-    if (this.peekNewline()) {
+    // Line break. Ragel's full `inline` scanner has
+    //   `newline => append("<br>")` (outside header_mode / list)
+    // but `basic_inline` (used for textile link titles) does NOT — its
+    // `any` catchall writes the byte verbatim, so a newline inside a
+    // link title stays as a real `\n` byte in the anchor's text.
+    if (this.peekNewline() && !basic) {
       this.consumeNewline();
       return { type: 'line_break' };
     }
 
-    // A lone CR (not part of CRLF) renders as a single space inside inline
-    // text per the oracle, e.g. `"link":[/a\rb]` becomes `[/a b]` literal.
-    // It is not a line break here; CRLF and bare LF are handled above.
-    if (this.input[this.pos] === '\r') {
+    // A lone CR (not part of CRLF) renders as a single space inside the full
+    // `inline` scanner per ruby's `'\r' => append(' ')` rule (e.g. inside a
+    // header or paragraph). Ragel's `basic_inline` scanner (used for textile
+    // link titles) has NO such rule — CR is just `any` and the byte renders
+    // literal. Gate on `!basic` so the alias only fires in full-inline mode.
+    if (!basic && this.input[this.pos] === '\r') {
       this.pos++;
       return { type: 'text', content: ' ' };
     }
@@ -1437,6 +1625,7 @@ export class DTextStateMachineParser {
   private parseInlineContainer(
     closePattern: string,
     nodeType: string,
+    eatNewlinesBeforeClose: boolean = false,
   ): InlineNode {
     const children: InlineNode[] = [];
 
@@ -1444,13 +1633,36 @@ export class DTextStateMachineParser {
       this.pos < this.input.length &&
       !this.matchString(closePattern, true)
     ) {
+      // Ragel `newline* spoilers_close` matches greedily over EVERY leading
+      // newline before a stray `[/spoiler]`. When no inline spoiler is open,
+      // `dstack_close_block(BLOCK_SPOILER, ...)` returns false and appends
+      // the full `{ts,te}` range (newlines + close) as literal output. We
+      // mirror that here BEFORE the paragraph-break drop so a multi-newline
+      // prefix doesn't get eaten by `consumeBlankLines` first.
+      if (this.inlineSpoilerDepth === 0 && this.peekNewline()) {
+        const consumed = this.consumeNewlinesIfFollowedByStraySpoilerClose();
+        if (consumed !== null) {
+          pushInlineMergingText(children, { type: 'text', content: consumed });
+          continue;
+        }
+      }
       // Inside an inline container, a paragraph break (\n\n+) is dropped
       // entirely. Ruby's parser consumes the newlines without emitting any
-      // node, joining the surrounding text seamlessly.
+      // node, joining the surrounding text seamlessly. EXCEPT when the
+      // surrounding scope is a header: ragel's inline `newline{2,}` rule
+      // `fret`s, the header-scope's call also frets, and main's
+      // `newline{2,}` closes the leaf blocks. Break here so the header
+      // closes cleanly and the trailing tail falls into the next paragraph.
       if (this.peekDoubleNewline()) {
+        if (this.headerDepth > 0) break;
         this.consumeBlankLines();
         continue;
       }
+      // Ragel inline `newline` rule in header_mode is
+      // `dstack_close_leaf_blocks; fret;` — no `<br>` appended. Break before
+      // consuming so the surrounding header loop closes cleanly without an
+      // extra `<br>` inside the still-open inline container.
+      if (this.headerDepth > 0 && this.peekNewline()) break;
       // Block-container closes ([/section], [/quote]) act as scope killers
       // in ruby: they close any open inline tag and the surrounding
       // paragraph. Stop here without consuming so the outer parser sees
@@ -1464,14 +1676,26 @@ export class DTextStateMachineParser {
       // (lines 334, 427, 433, 455, 477, 504). The matching close stays
       // unconsumed so the surrounding block scope promotes it. Mirrors the
       // same break-set parseParagraph uses for its outer collector.
-      if (this.peekBlockElement()) break;
+      //
+      // Stray `[/code]` / `[/table]` are excepted: ruby's inline `[/code]` and
+      // `[/table]` rules call `dstack_close_before_block` which only closes
+      // BLOCK_P/LI/UL — an open inline tag on top of the dstack keeps it from
+      // firing, so the literal `[/code]` / `[/table]` text gets appended into
+      // the still-open inline element. Let parseInlineElement consume those.
+      if (this.peekBlockElement() && !this.peekStrayCodeOrTableClose()) break;
       if (this.peekNewline() && this.peekLineStartMarkerAfterNewline()) break;
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
     }
 
-    trimTrailingLineBreaks(children);
-
+    // Ruby's `[/b]` / `[/i]` / `[/s]` / `[/u]` / `[/sup]` / `[/sub]` rules
+    // just call `dstack_close_inline` — they don't eat the preceding
+    // newlines that the inline scanner already emitted as `<br>`. The
+    // `[/spoiler]` rule does have a `newline*` prefix, though, so its
+    // close eats the leading newlines that would otherwise survive as
+    // `<br>` inside the closed span. The caller signals that via
+    // `eatNewlinesBeforeClose`.
+    if (eatNewlinesBeforeClose) trimTrailingLineBreaks(children);
     return { type: nodeType, children } as InlineNode;
   }
 
@@ -1539,6 +1763,29 @@ export class DTextStateMachineParser {
       this.pos < this.input.length &&
       !this.matchString('[/color]', true)
     ) {
+      // Ragel's inline `newline{2,}` rule `fret`s the inline scanner; the
+      // surrounding INLINE_COLOR stays on the dstack and the next paragraph
+      // keeps writing into the same span. Mirror parseInlineContainer:
+      // drop the blank lines and resume in the same color scope.
+      if (this.peekDoubleNewline()) {
+        if (this.headerDepth > 0) break;
+        this.consumeBlankLines();
+        continue;
+      }
+      // In header_mode a single newline closes the header (ragel:
+      // `dstack_close_leaf_blocks; fret;`). Break before consuming so the
+      // header loop picks it up; emitting `<br>` here would slip into the
+      // still-open color span.
+      if (this.headerDepth > 0 && this.peekNewline()) break;
+      if (this.peekContainerClose()) break;
+      // Bracketed always-block opens (`[code]`, `[table]`, `[quote]`, ...)
+      // exit the inline scope via `fexec ts; fret;` — the surrounding main
+      // scope then promotes them into real blocks. Stray `[/code]` and
+      // `[/table]` are NOT exits; they're absorbed inline as literal text.
+      // Mirrors parseInlineContainer's break-set so a `[code]` inside a
+      // color span closes the span and lets the code block render.
+      if (this.peekBlockElement() && !this.peekStrayCodeOrTableClose()) break;
+      if (this.peekNewline() && this.peekLineStartMarkerAfterNewline()) break;
       const node = this.parseInlineElement();
       if (node) pushInlineMergingText(children, node);
     }
@@ -1584,15 +1831,12 @@ export class DTextStateMachineParser {
         }
       }
 
-      // ID pattern checking. Only check at the start of a "word" (start of
-      // buffer or after a non-alphanumeric character) to avoid a regex check
-      // at every char. Ruby's parser fires id-link detection after any
-      // non-word boundary including `(`, `[`, `,`, etc.
+      // ID pattern checking. Ragel's scanner has no preceding-word-boundary
+      // gate — at every position the longest rule wins, so `0post #5` glued
+      // directly after a digit run still tokenises as a post id-link. The
+      // sticky regex is hot, but it's cheaper than the divergence here.
       if (isAsciiAlpha(code)) {
-        const prevIsAlnum =
-          this.pos !== start &&
-          isAsciiAlphaNumeric(input.charCodeAt(this.pos - 1));
-        if (!prevIsAlnum && this.looksLikeIdPattern()) {
+        if (this.looksLikeIdPattern()) {
           break;
         }
       }
@@ -1706,25 +1950,16 @@ export class DTextStateMachineParser {
 
   private matchSpoilerBlockOpen(): boolean {
     // At block context (parseBlock is only entered at document start or after
-    // a paragraph break) `[spoiler]` opens a block spoiler when a matching
-    // close exists somewhere ahead. A spoiler embedded inside a paragraph
-    // (after a single newline or mid-line) stays inline; that case never
-    // reaches parseBlock, so the structural test here is sufficient.
-    //
-    // Pair-match by depth (mirroring ruby's dstack), not by close-form: a
-    // `[spoiler]x[/spoilers]` is a valid block, and a nested inline
-    // `[spoiler]` doesn't steal the outer's close. Matching both halves —
-    // open detection and the close-form picker — share `findMatchingSpoiler
-    // Close`, so the block decision and the inline scope agree.
+    // a paragraph break) `[spoiler]` opens a block spoiler — even when no
+    // matching close exists ahead. Ragel's `spoilers_open` rule fires
+    // unconditionally at main scope and EOI's dstack-flush closes whatever
+    // stayed open. A spoiler embedded inside a paragraph (after a single
+    // newline or mid-line) never reaches parseBlock, so the inline-vs-block
+    // split is owned entirely by the caller's entry point.
     let openLen: number;
     if (this.peekString('[spoilers]', true)) openLen = 10;
     else if (this.peekString('[spoiler]', true)) openLen = 9;
     else return false;
-    const saved = this.pos;
-    this.pos += openLen;
-    const close = this.findMatchingSpoilerClose();
-    this.pos = saved;
-    if (close === null) return false;
     this.pos += openLen;
     return true;
   }
@@ -2067,9 +2302,37 @@ export class DTextStateMachineParser {
     return null;
   }
 
+  // Eat one or more POSIX `space` characters (space, tab, VT, FF, CR, LF).
+  // Ragel uses POSIX space in several `space*` post-open eats (notably the
+  // plain `quote_open space*` rule) and the dmark skipWhitespace / matchNewlines
+  // pair only covers space+tab and the CRLF/LF/CR line terminators, missing VT
+  // and FF that ragel still strips here.
+  private skipPosixSpace(): void {
+    const input = this.input;
+    const len = input.length;
+    while (this.pos < len) {
+      const code = input.charCodeAt(this.pos);
+      if (
+        code === 0x20 /* ' ' */ ||
+        code === 0x09 /* \t */ ||
+        code === 0x0b /* \v */ ||
+        code === 0x0c /* \f */ ||
+        code === 0x0a /* \n */ ||
+        code === 0x0d /* \r */
+      ) {
+        this.pos++;
+        continue;
+      }
+      break;
+    }
+  }
+
   private matchNewlines(): boolean {
     // Consume only line terminators here. Horizontal whitespace must stay so
     // it can be picked up as paragraph content (ruby preserves indentation).
+    // Ragel `newline = '\r\n' | '\n'`, so a bare CR is NOT a newline at the
+    // block level — it falls into the `any` rule which opens `<p>` and lets
+    // the inline scanner translate the `\r` into a single space.
     const input = this.input;
     const len = input.length;
     const start = this.pos;
@@ -2077,7 +2340,7 @@ export class DTextStateMachineParser {
       const code = input.charCodeAt(this.pos);
       if (code === 0x0d && input.charCodeAt(this.pos + 1) === 0x0a) {
         this.pos += 2;
-      } else if (code === 0x0a || code === 0x0d) {
+      } else if (code === 0x0a) {
         this.pos += 1;
       } else {
         break;
@@ -2123,13 +2386,21 @@ export class DTextStateMachineParser {
   private consumeBlockCloseTail(): void {
     const input = this.input;
     const len = input.length;
-    while (this.pos < len && isHorizontalWhitespace(input.charCodeAt(this.pos))) {
-      this.pos++;
+    // Ragel `ws = ' ' | '\t'` — ASCII space and tab only. NBSP / ideographic
+    // space / em space, etc. survive into the next paragraph; bare CR is
+    // also kept (ragel `newline = '\r\n' | '\n'`).
+    while (this.pos < len) {
+      const c = input.charCodeAt(this.pos);
+      if (c === 0x20 || c === 0x09) {
+        this.pos++;
+        continue;
+      }
+      break;
     }
     const code = input.charCodeAt(this.pos);
     if (code === 0x0d && input.charCodeAt(this.pos + 1) === 0x0a) {
       this.pos += 2;
-    } else if (code === 0x0a || code === 0x0d) {
+    } else if (code === 0x0a) {
       this.pos += 1;
     }
   }
@@ -2305,7 +2576,10 @@ export class DTextStateMachineParser {
     let type = match.type;
     if (type === 'thumb') {
       this.thumbCount++;
-      if (this.options.maxThumbs && this.thumbCount > this.options.maxThumbs) {
+      if (
+        this.options.maxThumbs !== undefined &&
+        this.thumbCount > this.options.maxThumbs
+      ) {
         type = 'post';
       }
     }

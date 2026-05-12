@@ -387,13 +387,19 @@ function formatTable(
   const bodyRows: TableRowNode[] = [];
   for (const child of node.children) {
     if (child.type === 'table_head') {
-      headerRows.push(...(child as TableHeadNode).rows);
+      for (const r of (child as TableHeadNode).rows) {
+        if (r.type === 'table_row') headerRows.push(r);
+      }
     } else if (child.type === 'table_body') {
-      bodyRows.push(...(child as TableBodyNode).rows);
+      for (const r of (child as TableBodyNode).rows) {
+        if (r.type === 'table_row') bodyRows.push(r);
+      }
     } else if (child.type === 'table_row') {
       // Loose row (no head/body wrapper). Treat as body.
       bodyRows.push(child as TableRowNode);
     }
+    // `table_literal` fallout is dtext-only and not representable in markdown
+    // pipe-table syntax; drop it silently.
   }
 
   // Determine column count from the first available row.
@@ -467,20 +473,35 @@ function formatLTable(
       'LTableNode emitted as pipe-table approximation (first row → header, rest → body); the no-head/body distinction is lost.',
   });
 
-  if (node.rows.length === 0) {
+  // LTableNode now stores the parsed `[table]` body's children directly
+  // (head/body wrappers, rows, and stray-close fallout). Flatten to a row
+  // list, skipping any literal-fallout nodes since the markdown pipe-table
+  // syntax cannot carry them.
+  const rows: TableRowNode[] = [];
+  for (const child of node.children) {
+    if (child.type === 'table_head' || child.type === 'table_body') {
+      for (const r of child.rows) {
+        if (r.type === 'table_row') rows.push(r);
+      }
+    } else if (child.type === 'table_row') {
+      rows.push(child);
+    }
+  }
+
+  if (rows.length === 0) {
     out.push('|  |\n|---|');
     ctx.atLineStart = false;
     return;
   }
 
-  const colCount = node.rows[0].cells.length;
-  formatPipeTableRow(node.rows[0], out, ctx);
+  const colCount = rows[0].cells.length;
+  formatPipeTableRow(rows[0], out, ctx);
   out.push('\n|');
   for (let i = 0; i < colCount; i++) out.push('---|');
   ctx.atLineStart = true;
-  for (let i = 1; i < node.rows.length; i++) {
+  for (let i = 1; i < rows.length; i++) {
     out.push('\n');
-    formatPipeTableRow(node.rows[i], out, ctx);
+    formatPipeTableRow(rows[i], out, ctx);
   }
   ctx.atLineStart = false;
 }

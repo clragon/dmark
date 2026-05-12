@@ -37,3 +37,12 @@ export function rubyUriEscape(str: string): string {
     (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 }
+
+// Mirror ruby's `append_uri_escaped(..., '#')`: the whitelist keeps the `#`
+// byte literal in the encoded output. Used by wiki-tag emission where ragel
+// passes `'#'` as the whitelist character so a tag containing `#` (e.g. from
+// the leading-pipe form `[[|#]]`) keeps the byte in the href rather than
+// encoding it to `%23`.
+export function rubyUriEscapeWithHash(str: string): string {
+  return rubyUriEscape(str).replace(/%23/g, '#');
+}

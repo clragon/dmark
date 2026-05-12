@@ -17,7 +17,7 @@
 // source stays `bur` because `ID_TYPE_MAP` is case-insensitive).
 
 import type { IdType, LinkNode } from './index';
-import { asciiLowercase, rubyUriEscape } from './text';
+import { asciiLowercase, rubyUriEscape, rubyUriEscapeWithHash } from './text';
 
 // Link-id prefix patterns and the canonical type each maps to. Patterns
 // are regex source fragments (still escaped, e.g. `take\\s?down\\s+request`)
@@ -48,7 +48,7 @@ export const ID_PATTERNS: ReadonlyArray<{
   { pattern: 'blip', type: 'blip' },
   { pattern: 'takedown', type: 'takedown' },
   { pattern: 'take down', type: 'takedown' },
-  { pattern: 'take\\s?down\\s+request', type: 'takedown' },
+  { pattern: 'take\\s?down request', type: 'takedown' },
   { pattern: 'ticket', type: 'ticket' },
 ];
 
@@ -191,14 +191,11 @@ export interface WikiLinkInput {
 //   - The anchor-only form (`tag === ''`, anchor present) emits an in-page
 //     fragment href instead of a wiki-page url.
 export function buildWikiLink(input: WikiLinkInput): LinkNode {
-  const anchorHref = (anchor: string) =>
-    rubyUriEscape(asciiLowercase(anchor.replace(/ /g, '_'))).replace(
-      /%23/g,
-      '#',
-    );
-
   if (input.tag === '' && input.anchor !== undefined) {
-    const href = `#${anchorHref(input.anchor)}`;
+    // Ragel anchor-only branch (`tag[0] == '#'`): append literal `#` then
+    // `append_uri_escaped` of the rest with NO whitelist. Internal `#`
+    // bytes inside the anchor encode to `%23`.
+    const href = `#${rubyUriEscape(asciiLowercase(input.anchor.replace(/ /g, '_')))}`;
     const title = input.title ?? `#${input.anchor}`;
     return {
       type: 'link',
@@ -209,10 +206,16 @@ export function buildWikiLink(input: WikiLinkInput): LinkNode {
     };
   }
 
+  // Ragel's `append_wiki_link` passes the ENTIRE `tag#anchor` string as the
+  // single `normalized_tag` argument and then `append_uri_escaped` is called
+  // with `'#'` as the whitelist. Every `#` byte in the combined string stays
+  // literal — both the tag/anchor separator AND any internal `#` inside the
+  // anchor (e.g. `[[abc#xyz#more]]` keeps every `#`).
   const normalizedTag = asciiLowercase(input.tag.replace(/ /g, '_'));
-  let href = `/wiki_pages/show_or_new?title=${rubyUriEscape(normalizedTag)}`;
+  let href = `/wiki_pages/show_or_new?title=${rubyUriEscapeWithHash(normalizedTag)}`;
   if (input.anchor !== undefined) {
-    href += `#${anchorHref(input.anchor)}`;
+    const normalizedAnchor = asciiLowercase(input.anchor.replace(/ /g, '_'));
+    href += `#${rubyUriEscapeWithHash(normalizedAnchor)}`;
   }
   const title =
     input.title ??

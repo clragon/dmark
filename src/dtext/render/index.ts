@@ -32,6 +32,7 @@ import type {
   TableBodyNode,
   TableCellNode,
   TableHeadNode,
+  TableLiteralNode,
   TableNode,
   TableRowNode,
   TextNode,
@@ -153,12 +154,14 @@ function formatNode(
       formatSection(node as SectionNode, out, ctx);
       return;
     case 'code_block': {
-      // ADR-0007 emit. The parser eats one whitespace+newline run after
-      // `[code]`, so when content's first byte is itself whitespace we
-      // prepend `\n` to absorb the parser's consume on round-trip. Without
-      // it, content like `"\nhi"` reparses as `"hi"`.
+      // ADR-0007 emit. Canonical fenced layout when `content` ends with `\n`
+      // (closing `[/code]` sits on its own line, so open it on its own line
+      // too). Also prepend when content starts with whitespace so the
+      // parser's leading-whitespace eat doesn't shorten `content` on
+      // re-parse.
       const content = (node as CodeBlockNode).content;
-      const needsLeadingNewline = content.length > 0 && /^\s/.test(content);
+      const needsLeadingNewline =
+        content.length > 0 && (/^\s/.test(content) || content.endsWith('\n'));
       out.push('[code]');
       if (needsLeadingNewline) out.push('\n');
       out.push(content, '[/code]');
@@ -198,6 +201,14 @@ function formatNode(
       return;
     case 'table_cell':
       formatTableCell(node as TableCellNode, out, ctx);
+      return;
+    case 'table_literal':
+      // Stray bracketed close fallout captured by the dtext parser. Reachable
+      // only inside an `[ltable]` (where formatLTable already filters them
+      // out) or a `[table]` that was parsed from dtext source. Emit the
+      // captured tag verbatim so the original source surface re-appears
+      // around any structural rows.
+      out.push((node as TableLiteralNode).content);
       return;
 
     // Inline nodes
@@ -454,11 +465,27 @@ function formatLTable(
   out: string[],
   ctx: FormatContext,
 ): void {
-  // Cells joined by ' | ' (ADR-0009).
+  // Cells joined by a bare `|` because the parser preserves the whitespace
+  // hugging each pipe inside the cells themselves (oracle: `head1 | head2`
+  // parses as cells `head1 ` and ` head2`). Round-tripping with a bare `|`
+  // re-emits the original spacing verbatim. Walk the synthesised table's
+  // children (thead/tbody/row + literal fallout) and recover each row's
+  // cells; non-row literal fallout is skipped because the `[ltable]` source
+  // syntax cannot carry it.
   out.push('[ltable]\n');
-  for (const row of node.rows) {
+  const rows: TableRowNode[] = [];
+  for (const child of node.children) {
+    if (child.type === 'table_head' || child.type === 'table_body') {
+      for (const r of child.rows) {
+        if (r.type === 'table_row') rows.push(r);
+      }
+    } else if (child.type === 'table_row') {
+      rows.push(child);
+    }
+  }
+  for (const row of rows) {
     for (let i = 0; i < row.cells.length; i++) {
-      if (i > 0) out.push(' | ');
+      if (i > 0) out.push('|');
       formatInlines(row.cells[i].children, out, ctx);
     }
     out.push('\n');

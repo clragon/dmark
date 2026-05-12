@@ -90,24 +90,39 @@ export interface LiteralHtmlNode extends ASTNode {
   children: InlineNode[];
 }
 
+// Stray bracketed tags that don't match an open are rendered as literal
+// inside the surrounding scope (matching ruby's `dstack_close_block` fallback
+// which appends `{ ts, te }` when the close type doesn't match the top). Used
+// to capture orphan `[/tr]` / `[/thead]` / `[/td]` / etc seen inside a
+// `[table]` body so they re-emit verbatim between structural elements.
+export interface TableLiteralNode extends ASTNode {
+  type: 'table_literal';
+  content: string;
+}
+
 export interface TableNode extends ASTNode {
   type: 'table';
-  children: (TableHeadNode | TableBodyNode | TableRowNode)[];
+  children: (TableHeadNode | TableBodyNode | TableRowNode | TableLiteralNode)[];
 }
 
 export interface LTableNode extends ASTNode {
   type: 'ltable';
-  rows: TableRowNode[];
+  // Children of the synthesised `[table]` produced by ruby's
+  // `preprocess_for_tables`. Storing the full structure (instead of a flat
+  // row list) preserves the `<thead>` / `<tbody>` divide and the literal-text
+  // fallout that lives between them, while the formatter recovers a flat
+  // pipe-separated row source by walking the structural wrappers.
+  children: (TableHeadNode | TableBodyNode | TableRowNode | TableLiteralNode)[];
 }
 
 export interface TableHeadNode extends ASTNode {
   type: 'table_head';
-  rows: TableRowNode[];
+  rows: (TableRowNode | TableLiteralNode)[];
 }
 
 export interface TableBodyNode extends ASTNode {
   type: 'table_body';
-  rows: TableRowNode[];
+  rows: (TableRowNode | TableLiteralNode)[];
 }
 
 export interface TableRowNode extends ASTNode {

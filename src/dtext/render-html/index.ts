@@ -28,6 +28,7 @@ import type {
   TableBodyNode,
   TableCellNode,
   TableHeadNode,
+  TableLiteralNode,
   TableNode,
   TableRowNode,
   TextNode,
@@ -207,6 +208,9 @@ function renderNode(
       out.push('</', cell.cellType, '>');
       return;
     }
+    case 'table_literal':
+      out.push((node as TableLiteralNode).content);
+      return;
     case 'list':
       renderList(node as ListNode, out, context);
       return;
@@ -371,20 +375,17 @@ function renderLTable(
   out: string[],
   context: RenderContext,
 ): void {
-  // Oracle-verified quirks:
-  //   * Zero rows -> emit a literal `[/tbody]` between the table tags
-  //     (verified for `[ltable][/ltable]` and `[ltable]\n\n[/ltable]`).
-  //   * Any rows -> always emit `<tbody></tbody>` after `<thead>`, even
-  //     when there are no body rows beyond the single header.
-  if (node.rows.length === 0) {
+  // Empty `[ltable]` is an oracle quirk: ruby's `preprocess_for_tables`
+  // wraps zero rows in `[table][/tbody][/table]` so the unmatched
+  // `[/tbody]` reaches the output as literal text. We emit it directly so
+  // the body-parse step can stay lean.
+  if (node.children.length === 0) {
     out.push('<table class="striped">[/tbody]</table>');
     return;
   }
-  out.push('<table class="striped"><thead>');
-  renderNode(node.rows[0], out, context);
-  out.push('</thead><tbody>');
-  for (let i = 1; i < node.rows.length; i++) renderNode(node.rows[i], out, context);
-  out.push('</tbody></table>');
+  out.push('<table class="striped">');
+  renderNodes(node.children, out, context);
+  out.push('</table>');
 }
 
 function renderList(

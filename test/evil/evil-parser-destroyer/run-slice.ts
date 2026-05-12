@@ -51,15 +51,21 @@ export function runSlice(index: number): void {
             maxThumbs: c.maxThumbs ?? 75,
           });
           // Faithfulness invariant: dmark output must equal oracle output.
+          // When the oracle errors (e.g. NUL byte that ruby rejects as
+          // invalid UTF-8) it returns `{ error, html: undefined }`. The
+          // parity check still runs - dmark is expected to produce some
+          // defined string output, never the raw bytes that crashed ruby.
           // Comparison is done by hand (instead of expect(...).toBe(...)) so
           // that on mismatch only a short truncated diff is retained, never
           // the full HTML strings; thousands of failing tests with long
           // expected/received fields would otherwise OOM the worker.
-          if (dmark !== oracle.html) {
+          const oracleHtml = typeof oracle.html === 'string' ? oracle.html : '';
+          if (dmark !== oracleHtml) {
             const max = 80;
             const a = dmark.length > max ? dmark.slice(0, max) + '...' : dmark;
-            const b = oracle.html.length > max ? oracle.html.slice(0, max) + '...' : oracle.html;
-            throw new Error(`dmark != oracle (input=${JSON.stringify(c.input.slice(0, 60))}): dmark=${JSON.stringify(a)} oracle=${JSON.stringify(b)}`);
+            const b = oracleHtml.length > max ? oracleHtml.slice(0, max) + '...' : oracleHtml;
+            const errSuffix = oracle.error ? ` (oracle error: ${oracle.error})` : '';
+            throw new Error(`dmark != oracle (input=${JSON.stringify(c.input.slice(0, 60))})${errSuffix}: dmark=${JSON.stringify(a)} oracle=${JSON.stringify(b)}`);
           }
         });
       }
