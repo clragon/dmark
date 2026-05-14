@@ -6,8 +6,15 @@
 // `.oracle-cache/<sha>.json` on disk, and only hits the live oracle on a miss.
 // All workers share the same on-disk store, so subsequent runs are instant.
 
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,12 +46,21 @@ export async function diskRenderViaOracle(
     return JSON.parse(readFileSync(path, 'utf8')) as OracleRenderResult;
   }
   const result = await renderViaOracle(input, options);
-  // Concurrent writers all produce the same payload (oracle is deterministic
-  // for a given input+options), so a last-write-wins is fine.
+  // Write atomically: a plain writeFileSync truncates the destination before
+  // writing, so a concurrent reader can observe an empty file between the
+  // truncate and the write. Write to a temp file and rename, which is atomic
+  // on POSIX and lets last-write-wins resolve harmlessly (oracle is
+  // deterministic for a given input+options).
+  const tmp = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
   try {
-    writeFileSync(path, JSON.stringify(result));
+    writeFileSync(tmp, JSON.stringify(result));
+    renameSync(tmp, path);
   } catch {
-    /* lost the race; another worker already wrote the same payload */
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* nothing to clean up */
+    }
   }
   return result;
 }
