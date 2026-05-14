@@ -1,8 +1,9 @@
 node_modules/
 dist/
 
-# Downloaded test corpus (regenerate via `yarn corpus:fetch`).
+# Downloaded test corpus (regenerate via `yarn corpus:build`).
 corpus/golden/
+corpus/staging/
 corpus/db_export/
 
 # External reference clones (e.g. e621ng/dtext for Ragel grammar lookup).

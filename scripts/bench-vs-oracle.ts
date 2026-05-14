@@ -46,7 +46,7 @@ const ROOT = process.cwd();
 const GOLDEN = resolve(ROOT, 'corpus', 'golden');
 const INDEX = resolve(GOLDEN, 'index.json');
 if (!existsSync(INDEX)) {
-  console.error('corpus/golden/index.json missing. Run `yarn corpus:fetch`.');
+  console.error('corpus/golden/index.json missing. Run `yarn corpus:build`.');
   process.exit(1);
 }
 

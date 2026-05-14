@@ -1,12 +1,12 @@
-// Downloads the latest e621 db_export wiki_pages dump and selects a sample of
-// pages to use as golden test fixtures. Writes raw dtext to corpus/golden/.
+// Downloads the latest e621 db_export wiki_pages dump and writes every page
+// whose body clears MIN_BODY_BYTES to corpus/staging/ as .dtext fixtures.
 //
-// Idempotent: re-running with the same dump file skips the download. Selection
-// is deterministic given the same dump.
+// Idempotent: re-running with the same dump file skips the download.
 //
-// For phase 1: top-N by body byte-length, skipping empty/blank pages.
-// Feature-stratified sampling lands when the AST node-kind frequency analysis
-// is wired up.
+// Short pages (<MIN_BODY_BYTES) are skipped because they almost always lack
+// non-trivial formatting (less text = less formatting); their parser coverage
+// is already met by hand-curated unit fixtures. Curation from staging/ into
+// the smaller representative golden set lives in scripts/curate-corpus.ts.
 
 import { createWriteStream, existsSync, mkdirSync, rmSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -20,10 +20,9 @@ const USER_AGENT = "dmark-corpus-fetch/v1 (binaryfloof)";
 const DB_EXPORT_INDEX = "https://e621.net/db_export/";
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const CORPUS_DB_EXPORT = resolve(REPO_ROOT, "corpus", "db_export");
-const CORPUS_GOLDEN = resolve(REPO_ROOT, "corpus", "golden");
+const CORPUS_STAGING = resolve(REPO_ROOT, "corpus", "staging");
 
-const SAMPLE_SIZE = 50;
-const MIN_BODY_BYTES = 200; // skip stubs
+const MIN_BODY_BYTES = 1000; // skip stubs / formatting-light pages
 
 interface WikiPageRow {
   id: string;
@@ -113,15 +112,6 @@ async function selectAndWrite(dumpPath: string): Promise<CorpusEntry[]> {
           title: row.title ?? "",
           body,
         });
-        // Keep memory bounded: only the top SAMPLE_SIZE entries are needed.
-        if (all.length > SAMPLE_SIZE * 50) {
-          all.sort(
-            (a, b) =>
-              Buffer.byteLength(b.body, "utf8") -
-              Buffer.byteLength(a.body, "utf8"),
-          );
-          all.length = SAMPLE_SIZE * 10;
-        }
       }
     },
   );
@@ -131,17 +121,16 @@ async function selectAndWrite(dumpPath: string): Promise<CorpusEntry[]> {
     (a, b) =>
       Buffer.byteLength(b.body, "utf8") - Buffer.byteLength(a.body, "utf8"),
   );
-  const top = all.slice(0, SAMPLE_SIZE);
 
-  rmSync(CORPUS_GOLDEN, { recursive: true, force: true });
-  mkdirSync(CORPUS_GOLDEN, { recursive: true });
+  rmSync(CORPUS_STAGING, { recursive: true, force: true });
+  mkdirSync(CORPUS_STAGING, { recursive: true });
 
   const entries: CorpusEntry[] = [];
-  for (const row of top) {
+  for (const row of all) {
     const id = Number(row.id);
     const slug = slugify(row.title);
     const file = `${id}-${slug}.dtext`;
-    await writeFile(resolve(CORPUS_GOLDEN, file), row.body, "utf8");
+    await writeFile(resolve(CORPUS_STAGING, file), row.body, "utf8");
     entries.push({
       id,
       title: row.title,
@@ -152,7 +141,7 @@ async function selectAndWrite(dumpPath: string): Promise<CorpusEntry[]> {
   }
 
   await writeFile(
-    resolve(CORPUS_GOLDEN, "index.json"),
+    resolve(CORPUS_STAGING, "index.json"),
     JSON.stringify(
       { generated_at: new Date().toISOString(), entries },
       null,
