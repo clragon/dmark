@@ -214,7 +214,13 @@ function formatNode(
     // Inline nodes
     case 'text': {
       const content = (node as TextNode).content;
-      out.push(content);
+      // A literal backtick in text content would re-parse as the start
+      // of an `[inline_code]` span (parseInlineElement runs the `\`` rule
+      // before falling through to plain text). Emit the parser's
+      // backslash-backtick escape so the round-trip keeps the text node
+      // shape. No other characters need escaping today: the parser only
+      // recognises `\`` as a backslash escape.
+      out.push(content.includes('`') ? content.replace(/`/g, '\\`') : content);
       if (ctx.unsafeBareUrl && /\s/.test(content)) ctx.unsafeBareUrl = false;
       return;
     }
@@ -248,9 +254,13 @@ function formatNode(
       );
       return;
     case 'inline_code':
-      // Verbatim emit (ADR-0010). Backtick-bearing content is unrepresentable
-      // in dtext source; only the markdown to AST to dtext path produces it.
-      out.push('`', (node as InlineCodeNode).content, '`');
+      // The parser recognises `\`` as an escape sequence for a literal
+      // backtick inside an inline_code span (see parseInlineCode), so
+      // the formatter must emit the same escape for any backtick in
+      // the AST content to keep the round-trip exact. Verbatim emission
+      // would re-parse as two empty inline_code spans bracketing a
+      // text run.
+      out.push('`', (node as InlineCodeNode).content.replace(/`/g, '\\`'), '`');
       return;
     case 'color': {
       const color = node as ColorNode;
@@ -569,11 +579,19 @@ function formatUrlLink(
   trailing: string | undefined,
 ): void {
   const href = node.href;
-  if (
+  const needsDelim =
     /\s/.test(href) ||
     urlEndsAtBoundary(href) ||
-    !isSafeUrlFollow(trailing)
-  ) {
+    !isSafeUrlFollow(trailing);
+  // The `<URL>` delimited form (RE_DELIMITED_URL) cannot represent a
+  // URL whose path itself contains `<` or `>` (the parser stops at the
+  // first inner `>`). For those URLs we have to fall back to the bare
+  // form even when isSafeUrlFollow says it's unsafe: most "unsafe"
+  // trailings are boundary punctuation that trimUrlBoundaries peels
+  // back on re-parse, so the round-trip still recovers the original
+  // href in practice. Real failure modes (trailing alphanumeric glued
+  // to the URL) are vanishingly rare in the corpus.
+  if (needsDelim && !href.includes('<') && !href.includes('>')) {
     out.push('<', href, '>');
   } else {
     out.push(href);

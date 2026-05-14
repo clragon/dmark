@@ -389,8 +389,13 @@ function preprocessLTables(input: string): {
 // item at the offset of a matching close. Hoisted so V8 keeps a single
 // compiled regex across all calls; `lastIndex` is reset at the call site
 // since this is the only `/g`-style scanner here.
+//
+// The `(?<!\[)` lookbehind keeps `[[table]]` (a wiki link to "table")
+// from being misread as a `[table]` block opener: a `[` preceded by
+// another `[` is a wiki-link delimiter, not a container tag. Same for
+// `[[code]]`, `[[section]]`, etc.
 const RE_CONTAINER_TAG_GLOBAL =
-  /\[(\/?)(section|quote|spoilers?|code|ltable|table)\b[^\]]*\]/gi;
+  /(?<!\[)\[(\/?)(section|quote|spoilers?|code|ltable|table)\b[^\]]*\]/gi;
 
 // Line-start-only patterns: structural at column 0, ordinary text mid-line.
 //
@@ -949,6 +954,13 @@ export class DTextStateMachineParser {
         this.pos < this.input.length &&
         !this.peekString('[/quote]', true)
       ) {
+        // Outer-container close in scope (e.g. a `[/section]` while we
+        // are nested inside an unclosed quote inside a section) means
+        // this quote is implicitly terminated. Bail so the outer scope
+        // can consume its own close; otherwise parseBlock falls through
+        // to parseParagraph, which breaks at the same peekBlockElement
+        // and emits an empty paragraph each loop, spinning forever.
+        if (this.peekOuterContainerClose('quote')) break;
         // Inside a block container the stray code/table close emits a
         // literal-html node WITHOUT synthesising a `<p></p>` first
         // (`[quote][/table] tail[/quote]` -> `<blockquote>[/table]tail
@@ -990,6 +1002,7 @@ export class DTextStateMachineParser {
     this.spoilerBlockDepth++;
     try {
       while (this.pos < this.input.length && !this.peekSpoilerClose()) {
+        if (this.peekOuterContainerClose('spoiler')) break;
         if (this.consumeStrayCloseIfPresent(children, false)) continue;
         const node = this.parseBlock();
         if (node) {
@@ -1087,6 +1100,7 @@ export class DTextStateMachineParser {
         this.pos < this.input.length &&
         !this.peekString('[/section]', true)
       ) {
+        if (this.peekOuterContainerClose('section')) break;
         if (this.consumeStrayCloseIfPresent(children, false)) continue;
         const node = this.parseBlock();
         if (node) {
@@ -1150,6 +1164,17 @@ export class DTextStateMachineParser {
         children.push(this.parseTableBody());
       } else if (this.matchString('[tr]', true)) {
         children.push(this.parseTableRow());
+      } else if (
+        this.peekString('[td]', true) ||
+        this.peekString('[th]', true)
+      ) {
+        // Orphan cells directly inside `[table]` (no `[tr]` / `[tbody]`
+        // wrapper). Oracle emits them as bare `<td>` children of
+        // `<table>`, which parse5 then canonicalises into a synthetic
+        // `<tbody><tr>...</tr></tbody>`. parseLooseTableRow produces the
+        // same canonical shape on the dmark side. Symmetric with the
+        // orphan-cell handling in parseTableBody and parseTableHead.
+        children.push(this.parseLooseTableRow());
       } else {
         const stray = this.consumeStrayTableClose();
         if (stray !== null) {
@@ -1178,8 +1203,30 @@ export class DTextStateMachineParser {
     ) {
       this.skipWhitespace();
 
+      // Bail back to parseTable on a sibling section opener so the outer
+      // loop can emit `</thead><thead>` / `</thead><tbody>` rather than
+      // merging rows into one giant thead. Mirrors parseTableBody's
+      // nested-[thead] handling but in the opposite direction; necessary
+      // for sources like `[table][thead]row1[table][thead]row2`.
+      if (
+        this.peekString('[thead]', true) ||
+        this.peekString('[tbody]', true) ||
+        this.peekString('[table]', true)
+      ) {
+        break;
+      }
+
       if (this.matchString('[tr]', true)) {
         rows.push(this.parseTableRow());
+      } else if (
+        this.peekString('[th]', true) ||
+        this.peekString('[td]', true)
+      ) {
+        // Authors sometimes write `[thead][th]a[/th][th]b[/th][/thead]`
+        // (orphan cells without a `[tr]` wrapper). Oracle auto-wraps them
+        // in an implicit row; mirror that here. Symmetric with the
+        // parseTableBody handling of orphan cells.
+        rows.push(this.parseLooseTableRow());
       } else {
         const stray = this.consumeStrayTableClose();
         if (stray !== null) {
@@ -1198,7 +1245,7 @@ export class DTextStateMachineParser {
   }
 
   private parseTableBody(): TableBodyNode {
-    const rows: (TableRowNode | TableLiteralNode)[] = [];
+    const rows: (TableRowNode | TableLiteralNode | TableHeadNode)[] = [];
 
     this.skipWhitespace();
 
@@ -1208,8 +1255,26 @@ export class DTextStateMachineParser {
     ) {
       this.skipWhitespace();
 
+      // Bail back to parseTable on a sibling [tbody] or redundant
+      // [table] opener so the outer loop can re-segment the table.
+      // A nested [thead] is kept inline (see below) because oracle
+      // emits `<thead>` inside `<tbody>` for that source, and parse5
+      // canonicalises both forms to the same split-tbody shape.
+      if (
+        this.peekString('[tbody]', true) ||
+        this.peekString('[table]', true)
+      ) {
+        break;
+      }
+
       if (this.matchString('[tr]', true)) {
         rows.push(this.parseTableRow());
+      } else if (this.matchString('[thead]', true)) {
+        // Nested [thead] inside [tbody]: the oracle opens an inline
+        // <thead> element rather than closing the surrounding tbody.
+        // parse5 normalises both sides identically when canonicalising,
+        // so we mirror the same shape here.
+        rows.push(this.parseTableHead());
       } else if (
         this.peekString('[td]', true) ||
         this.peekString('[th]', true)
@@ -1240,7 +1305,16 @@ export class DTextStateMachineParser {
     const cells: TableCellNode[] = [];
 
     while (this.pos < this.input.length) {
+      // Skip inter-cell whitespace including newlines so that cells
+      // separated by a `\n` (very common in pretty-printed tables) still
+      // gather into one row. `skipWhitespace` alone only consumes spaces
+      // and tabs, which would break the cell run at the first newline.
       this.skipWhitespace();
+      while (this.peekNewline()) {
+        if (this.input.charCodeAt(this.pos) === 0x0d) this.pos++;
+        this.pos++;
+        this.skipWhitespace();
+      }
       if (this.matchString('[th]', true)) {
         cells.push(this.parseTableCell('th'));
       } else if (this.matchString('[td]', true)) {
@@ -1751,6 +1825,26 @@ export class DTextStateMachineParser {
         (this.peekString('[/spoiler]', true) ||
           this.peekString('[/spoilers]', true)))
     );
+  }
+
+  // True when an enclosing block container (not the named one) has its
+  // close at the cursor. Used by parseQuote / parseSpoilerBlock /
+  // parseSection to bail out before parseBlock falls through to
+  // parseParagraph and spins on an outer close it cannot consume.
+  private peekOuterContainerClose(
+    self: 'quote' | 'spoiler' | 'section',
+  ): boolean {
+    if (self !== 'section' && this.sectionDepth > 0 && this.peekString('[/section]', true))
+      return true;
+    if (self !== 'quote' && this.quoteDepth > 0 && this.peekString('[/quote]', true))
+      return true;
+    if (
+      self !== 'spoiler' &&
+      this.spoilerBlockDepth > 0 &&
+      (this.peekString('[/spoiler]', true) || this.peekString('[/spoilers]', true))
+    )
+      return true;
+    return false;
   }
 
   // True when the cursor sits on a single `\n` (or CRLF) immediately followed

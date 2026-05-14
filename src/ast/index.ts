@@ -128,7 +128,12 @@ export interface TableHeadNode extends ASTNode {
 
 export interface TableBodyNode extends ASTNode {
   type: 'table_body';
-  rows: (TableRowNode | TableLiteralNode)[];
+  // A `[tbody]` body can contain a nested `[thead]...[/thead]` group
+  // (some wiki authors use this to interleave header rows mid-table).
+  // The HTML rendering emits the nested `<thead>` inside `<tbody>`, which
+  // is invalid HTML but is what the ruby oracle produces; parse5 then
+  // canonicalises both sides identically (splits tbody around the thead).
+  rows: (TableRowNode | TableLiteralNode | TableHeadNode)[];
 }
 
 export interface TableRowNode extends ASTNode {
