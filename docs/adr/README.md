@@ -16,7 +16,7 @@ template, increment the number, and append a row to the table.
 | ADR-0007 | Code block verbatim emit (dtext) | `[code]<content>[/code]` emitted with `content` exactly as captured. | [file](ADR-0007-code-block-verbatim-emit.md) |
 | ADR-0008 | Table pretty-layout emit | One structural tag per line, each `[tr]...[/tr]` on its own line. | [file](ADR-0008-table-pretty-layout.md) |
 | ADR-0009 | Light-table cell separator | Cell separator is `' \| '` (space-pipe-space). | [file](ADR-0009-ltable-cell-separator.md) |
-| ADR-0010 | Inline code backtick divergence | Verbatim emit; markdown-originated backtick-bearing nodes pinned as documented divergence. | [file](ADR-0010-inline-code-backtick-divergence.md) |
+| ADR-0010 | Inline code backtick handling | Formatter escapes literal backticks in content as `\``; parser's `\`` rule recovers them on re-parse. Supersedes the 2026-05-09 verbatim-emit decision. | [file](ADR-0010-inline-code-backtick-divergence.md) |
 | ADR-0011 | Markdown section canonical emit form | BBCode `[section]` family is canonical on the markdown side. | [file](ADR-0011-markdown-section-canonical-form.md) |
 | ADR-0012 | LTable pipe-table approximation on markdown emit | Pipe-table approximation with `md.ltable_approximated` warning. | [file](ADR-0012-ltable-pipe-table-approximation.md) |
 | ADR-0013 | Dtext salvage passthrough on markdown emit | Verbatim passthrough with `md.dtext_salvage_passthrough` warning. | [file](ADR-0013-dtext-salvage-passthrough.md) |
@@ -26,3 +26,4 @@ template, increment the number, and append a row to the table.
 | ADR-0017 | Markdown text-content escape set | Selective backslash escape: always `*`, `_`, `` ` ``, `\`, `[`, `~~`, `\|\|`; line-start adds block sigils. | [file](ADR-0017-markdown-text-escape-set.md) |
 | ADR-0018 | Coloured quote uses BBCode survivor form | Colourless quote uses `>`; coloured quote uses `[quote=COLOR]`. | [file](ADR-0018-coloured-quote-bbcode-survivor.md) |
 | ADR-0019 | Table cell linebreak collapse on markdown emit | Replace `LineBreakNode` in cells with a single space, warn `md.table_cell_linebreak_collapsed`. | [file](ADR-0019-table-cell-linebreak-collapse.md) |
+| ADR-0020 | Dtext text-node backtick escape | Plain-text backticks emit as `\`` so the parser's `\`` rule round-trips them. Symmetric with ADR-0010 on inline-code. | [file](ADR-0020-dtext-text-node-backtick-escape.md) |
