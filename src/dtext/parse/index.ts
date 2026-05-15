@@ -256,6 +256,13 @@ const RE_QUOTE_CLOSE = /\[\/quote\]/iy;
 const RE_SECTION_CLOSE = /\[\/section\]/iy;
 const RE_TEXTILE_TITLE = /"[^"]+":/y;
 
+// Inline-spoiler close forms. Ragel's `spoilers_close = '[/spoiler' 's'? ']'i`
+// pair-matches by depth (dstack), not by spelling: an opener of either form
+// pairs with a closer of either form. The longer pattern is listed first so
+// `matchAnyClose` would prefer it if the two ever shared a prefix; today they
+// are disjoint and order is moot.
+const INLINE_SPOILER_CLOSES: readonly string[] = ['[/spoilers]', '[/spoiler]'];
+
 // Block-context patterns shared by `peekBlockElement`. Hoisted so the array
 // isn't rebuilt and the regexes aren't recompiled on every paragraph step.
 //
@@ -1628,13 +1635,14 @@ export class DTextStateMachineParser {
         return this.parseColorContainer(colorMatch);
       }
 
-      // Inline spoiler
+      // Inline spoiler. Ragel pairs `[spoiler]` / `[spoilers]` by dstack
+      // depth, not by spelling, so the close-matcher accepts either form and
+      // the natural recursion in parseInlineContainer handles depth.
       if (this.matchSpoilerOpen()) {
-        const closePattern = this.getSpoilerClosePattern();
         this.inlineSpoilerDepth++;
         try {
           return this.parseInlineContainer(
-            closePattern,
+            INLINE_SPOILER_CLOSES,
             'inline_spoiler',
             true,
           );
@@ -1705,7 +1713,7 @@ export class DTextStateMachineParser {
   }
 
   private parseInlineContainer(
-    closePattern: string,
+    closePattern: string | readonly string[],
     nodeType: string,
     eatNewlinesBeforeClose: boolean = false,
   ): InlineNode {
@@ -1713,7 +1721,7 @@ export class DTextStateMachineParser {
 
     while (
       this.pos < this.input.length &&
-      !this.matchString(closePattern, true)
+      !this.matchAnyClose(closePattern)
     ) {
       // Ragel `newline* spoilers_close` matches greedily over EVERY leading
       // newline before a stray `[/spoiler]`. When no inline spoiler is open,
@@ -2025,6 +2033,20 @@ export class DTextStateMachineParser {
     return true;
   }
 
+  // Case-insensitive match against either a single literal close pattern or
+  // any one of several. The single-string path is the hot path (every b/i/s/u/
+  // sup/sub/color container goes through it); the array path exists for the
+  // inline spoiler, whose ragel rule pairs `[/spoiler]` and `[/spoilers]` by
+  // depth rather than by spelling. Patterns are tried in array order; callers
+  // pass the longer form first when forms share a prefix.
+  private matchAnyClose(pattern: string | readonly string[]): boolean {
+    if (typeof pattern === 'string') return this.matchString(pattern, true);
+    for (const p of pattern) {
+      if (this.matchString(p, true)) return true;
+    }
+    return false;
+  }
+
   // Compare `pattern` against the input at `this.pos` without allocating.
   // CS path delegates to `String.prototype.startsWith(pattern, pos)`.
   //
@@ -2104,40 +2126,6 @@ export class DTextStateMachineParser {
       this.matchString('[/spoiler]', true) ||
       this.matchString('[/spoilers]', true)
     );
-  }
-
-  private getSpoilerClosePattern(): string {
-    // Resolve the close form for an inline spoiler that has just been opened:
-    // walk forward respecting depth and report the form of the close that
-    // pair-matches our open. Falls back to `[/spoiler]` if no close exists,
-    // matching the surrounding `parseInlineContainer` loop's failure mode
-    // (it won't find one and runs to EOF).
-    return this.findMatchingSpoilerClose() ?? '[/spoiler]';
-  }
-
-  // Walk forward from `this.pos` (assumed to sit just past a `[spoiler...]`
-  // open) and report the close form of the close that pair-matches by depth.
-  // Treats nested `[spoiler]` / `[spoilers]` as opens that increase depth and
-  // their matching closes as decreases. Returns null when no matching close
-  // exists ahead at any depth.
-  private findMatchingSpoilerClose(): '[/spoiler]' | '[/spoilers]' | null {
-    const re = /\[(\/?)spoilers?\]/gi;
-    re.lastIndex = this.pos;
-    let depth = 1;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(this.input)) !== null) {
-      if (m[1] === '/') {
-        depth--;
-        if (depth === 0) {
-          return m[0].toLowerCase() === '[/spoilers]'
-            ? '[/spoilers]'
-            : '[/spoiler]';
-        }
-      } else {
-        depth++;
-      }
-    }
-    return null;
   }
 
   private matchSection(): SectionMatch | null {
