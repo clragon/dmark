@@ -215,8 +215,30 @@ function isAcceptedTextileUrl(url: string): boolean {
 // only when their start equals `lastIndex`, so a leading `^` is implicit and
 // the `this.input.slice(this.pos)` allocations vanish. Hoisted to module
 // scope so each pattern compiles once per process.
+// Hot-path peek for `peekBlockElement`, which runs once per paragraph step
+// and only needs the two-state question "is `[/spoiler]` at the cursor?".
+// `scanStrayClose` is the general lookup, but its hit-object allocation
+// isn't free in a loop this hot.
 const RE_STRAY_SPOILER_CLOSE = /\[\/spoilers?\]/iy;
-const RE_STRAY_CODE_TABLE_CLOSE = /\[\/(code|table)\]/iy;
+// Backing regex for `scanStrayClose`. Matches any of the three block-close
+// kinds whose stray behaviour is grammar-specified (`spoilers?`, `code`,
+// `table`). The captured group is the tag-name fragment; the scanner
+// normalises it to a `StrayKind`.
+const RE_STRAY_CLOSE_ANY = /\[\/(spoilers?|code|table)\]/iy;
+
+type StrayKind = 'spoiler' | 'code' | 'table';
+
+interface StrayCloseHit {
+  kind: StrayKind;
+  /** Byte position of the close tag's `[` in `this.input`. */
+  closePos: number;
+  /** Byte position just past the close tag's `]` in `this.input`. */
+  endPos: number;
+  /** Verbatim slice from `this.pos` to `closePos` (the leading newline run). */
+  prefix: string;
+  /** The matched close tag text, case-preserved. */
+  closeText: string;
+}
 const RE_QUOTE_COLOR_OPEN = /\[quote=([^\]\n]*)\]/iy;
 const RE_HEADER = /h([123456])\.[ \t]*/iy;
 // Content runs to the first true line terminator (`\n` / `\r\n`). A bare
@@ -537,6 +559,52 @@ export class DTextStateMachineParser {
     return { type: 'document', children };
   }
 
+  // Locate a stray block-close tag at or near the cursor. Read-only; never
+  // mutates `this.pos`. With `acrossNewlines: true` the scanner steps past
+  // any number of leading `\r` / `\n` (CRLF counts as two steps) before
+  // looking for the close tag; horizontal whitespace is never spanned, since
+  // none of the ragel rules this scanner backs do that.
+  //
+  // The `kinds` set filters which close types qualify. Scope-awareness (a
+  // `[/spoiler]` reached while a matching block-spoiler open is in scope is
+  // *not* stray) is the caller's responsibility: most callers gate on
+  // `this.spoilerBlockDepth === 0` before scanning, but `parseParagraph`'s
+  // trailing-newline check intentionally wants to defer to the outer handler
+  // regardless of scope. Keeping the gate out of the scanner lets each
+  // caller spell its own policy.
+  private scanStrayClose(opts: {
+    kinds: ReadonlyArray<StrayKind>;
+    acrossNewlines?: boolean;
+  }): StrayCloseHit | null {
+    const input = this.input;
+    let p = this.pos;
+    if (opts.acrossNewlines) {
+      while (p < input.length) {
+        const code = input.charCodeAt(p);
+        if (code === 0x0a || code === 0x0d) {
+          p++;
+          continue;
+        }
+        break;
+      }
+    }
+    RE_STRAY_CLOSE_ANY.lastIndex = p;
+    const m = RE_STRAY_CLOSE_ANY.exec(input);
+    if (!m || m.index !== p) return null;
+    const matched = m[1].toLowerCase();
+    let kind: StrayKind;
+    if (matched === 'code' || matched === 'table') kind = matched;
+    else kind = 'spoiler';
+    if (!opts.kinds.includes(kind)) return null;
+    return {
+      kind,
+      closePos: p,
+      endPos: p + m[0].length,
+      prefix: input.slice(this.pos, p),
+      closeText: m[0],
+    };
+  }
+
   // True at a `[/spoiler]` or `[/spoilers]` close tag whose matching open is
   // NOT in scope. Such a close is a Ragel "scope killer" that ruby treats as
   // a paragraph break plus literal-text fallout. Stray `[/quote]`,
@@ -544,7 +612,7 @@ export class DTextStateMachineParser {
   // plain inline text inside the paragraph (oracle-verified).
   private peekStrayBlockClose(): boolean {
     if (this.spoilerBlockDepth > 0) return false;
-    return this.testSticky(RE_STRAY_SPOILER_CLOSE);
+    return this.scanStrayClose({ kinds: ['spoiler'] }) !== null;
   }
 
   // True at a stray `[/code]` or `[/table]`. Their behaviour differs from
@@ -552,16 +620,16 @@ export class DTextStateMachineParser {
   // emits an implicit `<p></p>` at pristine state, and renders the following
   // inline tail without a `<p>` wrap (oracle-verified).
   private peekStrayCodeOrTableClose(): boolean {
-    return this.testSticky(RE_STRAY_CODE_TABLE_CLOSE);
+    return this.scanStrayClose({ kinds: ['code', 'table'] }) !== null;
   }
 
   // Consume a stray `[/code]` or `[/table]`. `pristine` is true when the
   // surrounding container has not emitted any block yet, in which case ruby
   // synthesises an empty paragraph before the close.
   private consumeStrayCodeTableAsLiteral(pristine: boolean): LiteralHtmlNode {
-    const m = this.matchSticky(RE_STRAY_CODE_TABLE_CLOSE);
-    if (!m) return { type: 'literal_html', prefix: '', children: [] };
-    this.pos += m[0].length;
+    const hit = this.scanStrayClose({ kinds: ['code', 'table'] });
+    if (!hit) return { type: 'literal_html', prefix: '', children: [] };
+    this.pos = hit.endPos;
     // Ragel `'[/code]'i space*` / `'[/table]'i space*` — POSIX `space`
     // (covers VT and FF as well as space/tab/CR/LF).
     this.skipPosixSpace();
@@ -594,7 +662,7 @@ export class DTextStateMachineParser {
     // `<br>` because ruby's inline `newline` rule emits one for the
     // terminating line.
     if (exitedOnContainerClose) trimTrailingLineBreaks(children);
-    const prefix = (pristine ? '<p></p>' : '') + m[0];
+    const prefix = (pristine ? '<p></p>' : '') + hit.closeText;
     return { type: 'literal_html', prefix, children };
   }
 
@@ -621,9 +689,8 @@ export class DTextStateMachineParser {
   // `[/spoiler] alone at start` becomes `<p> alone at start</p>` and
   // `[/spoiler]\n\nafter` becomes `<p>after</p>`.
   private consumeStrayBlockCloseSilent(): void {
-    const m = this.matchSticky(RE_STRAY_SPOILER_CLOSE);
-    if (!m) return;
-    this.pos += m[0].length;
+    const hit = this.scanStrayClose({ kinds: ['spoiler'] });
+    if (hit) this.pos = hit.endPos;
   }
 
   // Emit a stray block-close after content. The leading `prefix` (any inter
@@ -634,10 +701,10 @@ export class DTextStateMachineParser {
   // break (`\n\n`) or at an in-scope `[/quote]` / `[/section]` so the
   // surrounding container can resume normally.
   private consumeStrayBlockCloseAsLiteral(prefix = ''): LiteralHtmlNode {
-    const m = this.matchSticky(RE_STRAY_SPOILER_CLOSE);
-    if (!m) return { type: 'literal_html', prefix, children: [] };
-    this.pos += m[0].length;
-    const fullPrefix = prefix + m[0];
+    const hit = this.scanStrayClose({ kinds: ['spoiler'] });
+    if (!hit) return { type: 'literal_html', prefix, children: [] };
+    this.pos = hit.endPos;
+    const fullPrefix = prefix + hit.closeText;
     const children: InlineNode[] = [];
     let exitedOnContainerClose = false;
     while (this.pos < this.input.length) {
@@ -678,21 +745,14 @@ export class DTextStateMachineParser {
     return { type: 'literal_html', prefix: fullPrefix, children };
   }
 
-  // Read-only variant of peekStrayBlockCloseAfterNewlines: same check, no
-  // pos mutation. Used to decide whether to consume the trailing newline at
-  // the end of a paragraph that broke on a stray close.
+  // True if a `[/spoiler]` sits past any leading newlines. Used by
+  // parseParagraph's trailing-newline decision and intentionally ungated:
+  // the newlines should defer to the outer handler whether the close is
+  // structurally stray or a genuine block-spoiler close.
   private peekStrayBlockCloseAfterAnyWs(): boolean {
-    let p = this.pos;
-    while (p < this.input.length) {
-      const code = this.input.charCodeAt(p);
-      if (code === 0x0a || code === 0x0d) {
-        p++;
-        continue;
-      }
-      break;
-    }
-    RE_STRAY_SPOILER_CLOSE.lastIndex = p;
-    return RE_STRAY_SPOILER_CLOSE.test(this.input);
+    return (
+      this.scanStrayClose({ kinds: ['spoiler'], acrossNewlines: true }) !== null
+    );
   }
 
   // Look ahead through zero or more newlines starting at pos. If a stray
@@ -703,21 +763,14 @@ export class DTextStateMachineParser {
   // space/tab as content that opens a paragraph, not as part of the stray
   // close's prefix.
   private peekStrayBlockCloseAfterWhitespace(): string | null {
-    let p = this.pos;
-    while (p < this.input.length) {
-      const code = this.input.charCodeAt(p);
-      if (code === 0x0a || code === 0x0d) {
-        p++;
-        continue;
-      }
-      break;
-    }
     if (this.spoilerBlockDepth !== 0) return null;
-    RE_STRAY_SPOILER_CLOSE.lastIndex = p;
-    if (!RE_STRAY_SPOILER_CLOSE.test(this.input)) return null;
-    const prefix = this.input.slice(this.pos, p);
-    this.pos = p;
-    return prefix;
+    const hit = this.scanStrayClose({
+      kinds: ['spoiler'],
+      acrossNewlines: true,
+    });
+    if (!hit) return null;
+    this.pos = hit.closePos;
+    return hit.prefix;
   }
 
   // Consume a stray block close tag at the current block-loop boundary, if
@@ -894,30 +947,15 @@ export class DTextStateMachineParser {
   // stray `[/spoiler]` / `[/spoilers]`, consume both ranges and return the
   // verbatim slice. Otherwise return null and leave pos unchanged.
   private consumeNewlinesIfFollowedByStraySpoilerClose(): string | null {
-    const input = this.input;
-    let p = this.pos;
-    while (p < input.length) {
-      const code = input.charCodeAt(p);
-      if (code === 0x0d && input.charCodeAt(p + 1) === 0x0a) {
-        p += 2;
-      } else if (code === 0x0a || code === 0x0d) {
-        p += 1;
-      } else {
-        break;
-      }
-    }
-    if (p === this.pos) return null;
-    const saved = this.pos;
-    this.pos = p;
-    const isStray = this.peekStrayBlockClose();
-    this.pos = saved;
-    if (!isStray) return null;
-    RE_STRAY_SPOILER_CLOSE.lastIndex = p;
-    const m = RE_STRAY_SPOILER_CLOSE.exec(input);
-    if (!m || m.index !== p) return null;
-    const consumed = input.slice(this.pos, p + m[0].length);
-    this.pos = p + m[0].length;
-    return consumed;
+    if (this.spoilerBlockDepth > 0) return null;
+    const hit = this.scanStrayClose({
+      kinds: ['spoiler'],
+      acrossNewlines: true,
+    });
+    if (!hit || hit.prefix.length === 0) return null;
+    const startPos = this.pos;
+    this.pos = hit.endPos;
+    return this.input.slice(startPos, hit.endPos);
   }
 
   // Recognise a coloured quote open like [quote=#00CCFF] or [quote=yellow]
@@ -1536,13 +1574,13 @@ export class DTextStateMachineParser {
     // them on `[/table]` first; the document/quote/section block loops
     // intercept the same close earlier via consumeStrayCodeTableAsLiteral.
     if (!basic) {
-      const inlineCT = this.matchSticky(RE_STRAY_CODE_TABLE_CLOSE);
+      const inlineCT = this.scanStrayClose({ kinds: ['code', 'table'] });
       if (inlineCT) {
-        this.pos += inlineCT[0].length;
-        // Ragel `'[/code]'i space*` / `'[/table]'i space*` — POSIX `space`
-        // includes VT and FF too, not only space/tab/CR/LF.
+        this.pos = inlineCT.endPos;
+        // Ragel `'[/code]'i space*` / `'[/table]'i space*`, where POSIX
+        // `space` includes VT and FF too, not only space/tab/CR/LF.
         this.skipPosixSpace();
-        return { type: 'text', content: inlineCT[0] };
+        return { type: 'text', content: inlineCT.closeText };
       }
 
       // Escaped backtick

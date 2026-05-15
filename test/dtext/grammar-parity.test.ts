@@ -167,9 +167,9 @@ describe('grammar parity (asymmetry)', () => {
     await expectMatchesOracle('[section]\n  hi\n[/section]');
   });
 
-  // Ragel pair-matches `[spoiler]` / `[spoilers]` by depth (dstack), not by
-  // close-form. The original RE_SPOILER_BLOCK and getSpoilerClosePattern
-  // picked "first `[/spoilers]` ahead wins", which loses nesting.
+  // Ragel pair-matches `[spoiler]` / `[spoilers]` by dstack depth, not by
+  // close-form spelling: a `[/spoilers]` later in the input pairs with the
+  // outer `[spoiler]` even when an inner `[/spoiler]` comes first.
   it('pair-matches nested spoilers by depth, not by close-form-first-ahead', async () => {
     await expectMatchesOracle('[spoiler]a [spoiler]b[/spoiler] c[/spoilers]');
   });
