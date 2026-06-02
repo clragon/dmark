@@ -67,7 +67,9 @@ jobs:
       - run: yarn build
 
       - name: publish to npm registry
-        run: npm publish
+        run: |
+          npm config set //npm.clynamic.net/:_authToken "${NODE_AUTH_TOKEN}"
+          npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
 
