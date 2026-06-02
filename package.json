@@ -1,9 +1,12 @@
 {
-  "name": "dmark",
+  "name": "@clynamic/dmark",
   "version": "0.0.6",
   "description": "Two-way dtext ↔ markdown parser with shared AST. Verified against the e621ng/dtext ruby renderer.",
   "license": "UNLICENSED",
   "author": "binaryfloof",
+  "publishConfig": {
+    "registry": "https://npm.clynamic.net/"
+  },
   "type": "module",
   "main": "dist/dmark.js",
   "module": "dist/dmark.js",

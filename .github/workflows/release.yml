@@ -66,6 +66,11 @@ jobs:
 
       - run: yarn build
 
+      - name: publish to npm registry
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+
       - name: refuse-overwrite check
         run: |
           existing=$(aws s3api list-objects-v2 \
