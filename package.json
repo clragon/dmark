@@ -8,14 +8,17 @@
     "registry": "https://npm.clynamic.net/"
   },
   "type": "module",
-  "main": "dist/dmark.js",
+  "main": "dist/dmark.cjs",
   "module": "dist/dmark.js",
   "types": "dist/types/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
-      "import": "./dist/dmark.js"
-    }
+      "import": "./dist/dmark.js",
+      "require": "./dist/dmark.cjs",
+      "default": "./dist/dmark.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
