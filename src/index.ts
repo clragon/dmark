@@ -27,5 +27,10 @@ export type {
   MarkdownFormatResult,
 } from './md/render';
 
+export {
+  parseDTextToMarkdown,
+  parseMarkdownToDText,
+} from './convert';
+
 export type * from './ast';
 export type { Diagnostic } from './diagnostics';
