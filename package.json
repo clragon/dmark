@@ -39,7 +39,7 @@
     "corpus:fetch": "tsx scripts/fetch-corpus.ts",
     "corpus:survey": "tsx scripts/corpus-survey.ts",
     "corpus:curate": "tsx scripts/curate-corpus.ts",
-    "corpus:build": "yarn corpus:fetch && yarn corpus:survey && yarn corpus:curate",
+    "corpus:build": "npm run corpus:fetch && npm run corpus:survey && npm run corpus:curate",
     "oracle:build": "docker build -t dmark-oracle:dev oracle",
     "oracle:smoke": "tsx scripts/oracle-smoke.ts"
   },

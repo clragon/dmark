@@ -38,7 +38,7 @@
 //   error    oracle endpoint errored or dmark renderer threw
 //   skipped  oracle checking disabled or parse/format chain failed
 //
-// Run via: yarn tsx scripts/corpus-survey.ts
+// Run via: npx tsx scripts/corpus-survey.ts
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";

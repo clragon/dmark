@@ -2,7 +2,7 @@
 // file. Used for iterating on regression fixes. Requires
 // DMARK_ORACLE_URL set (start a long-lived container manually).
 //
-// Usage: yarn tsx scripts/check-article.ts <path>
+// Usage: npx tsx scripts/check-article.ts <path>
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

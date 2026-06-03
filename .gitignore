@@ -1,7 +1,7 @@
 node_modules/
 dist/
 
-# Downloaded test corpus (regenerate via `yarn corpus:build`).
+# Downloaded test corpus (regenerate via `npm run corpus:build`).
 corpus/golden/
 corpus/staging/
 corpus/db_export/

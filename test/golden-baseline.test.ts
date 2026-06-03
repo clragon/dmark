@@ -13,7 +13,7 @@
 // the floor for the dtext → md → html target.
 //
 // If corpus/golden is missing, the suite is skipped with a clear message.
-// Run `yarn corpus:fetch` to populate it.
+// Run `npm run corpus:fetch` to populate it.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -55,7 +55,7 @@ const suite = index ? describe : describe.skip;
 
 suite('dtext baseline against ruby oracle', () => {
   if (!index) {
-    it('corpus is empty. Run `yarn corpus:fetch`', () => {
+    it('corpus is empty. Run `npm run corpus:fetch`', () => {
       expect.fail('corpus/golden/index.json not found');
     });
     return;

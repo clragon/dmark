@@ -562,7 +562,7 @@ function populateFixturePicker(select: HTMLSelectElement): void {
   ) {
     const opt = document.createElement('option');
     opt.value = '';
-    opt.textContent = '(no fixtures; run `yarn corpus:fetch`)';
+    opt.textContent = '(no fixtures; run `npm run corpus:fetch`)';
     opt.disabled = true;
     select.appendChild(opt);
   }

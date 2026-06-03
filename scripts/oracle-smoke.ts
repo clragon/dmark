@@ -1,6 +1,6 @@
 // Standalone smoke test for the dtext oracle container. Boots the same
 // container the vitest globalSetup uses, hits /health, runs one render, and
-// exits non-zero if anything looks off. CI runs this after `yarn test` as a
+// exits non-zero if anything looks off. CI runs this after `npm test` as a
 // sanity check that the oracle image still works outside the vitest harness.
 
 import { renderViaOracle, oracleHealth } from '../test/oracle';

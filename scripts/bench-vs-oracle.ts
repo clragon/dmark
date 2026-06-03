@@ -15,7 +15,7 @@
 // Usage:
 //   tsx scripts/bench-vs-oracle.ts [iters] [--max-bytes N]
 //
-// Requires the oracle image: `yarn oracle:build` once, then this script
+// Requires the oracle image: `npm run oracle:build` once, then this script
 // spawns a container automatically (testcontainers manages the lifecycle).
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -46,7 +46,7 @@ const ROOT = process.cwd();
 const GOLDEN = resolve(ROOT, 'corpus', 'golden');
 const INDEX = resolve(GOLDEN, 'index.json');
 if (!existsSync(INDEX)) {
-  console.error('corpus/golden/index.json missing. Run `yarn corpus:build`.');
+  console.error('corpus/golden/index.json missing. Run `npm run corpus:build`.');
   process.exit(1);
 }
 

@@ -51,7 +51,7 @@ const INDEX = resolve(GOLDEN, 'index.json');
 const SNAPSHOT_DIR = resolve(ROOT, 'scripts', 'bench-snapshots');
 
 if (!existsSync(INDEX)) {
-  console.error('corpus/golden/index.json missing, run yarn corpus:build');
+  console.error('corpus/golden/index.json missing, run npm run corpus:build');
   process.exit(1);
 }
 

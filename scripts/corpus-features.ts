@@ -3,7 +3,7 @@
 // the curated subset (companion to scripts/curate-corpus.ts).
 //
 // Heap-cap this when running, since some articles can balloon: e.g.
-//   NODE_OPTIONS=--max-old-space-size=1024 yarn tsx scripts/corpus-features.ts
+//   NODE_OPTIONS=--max-old-space-size=1024 npx tsx scripts/corpus-features.ts
 // The script does NOT spawn isolated workers; it skips the same files the
 // survey flagged as non-ok so it cannot hit the known crasher.
 

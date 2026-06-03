@@ -68,7 +68,7 @@ const suite = index ? describe : describe.skip;
 
 suite('dtext round-trip across golden corpus', () => {
   if (!index) {
-    it('corpus is empty. Run `yarn corpus:fetch`', () => {
+    it('corpus is empty. Run `npm run corpus:fetch`', () => {
       expect.fail('corpus/golden/index.json not found');
     });
     return;

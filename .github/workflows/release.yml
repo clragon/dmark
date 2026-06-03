@@ -32,13 +32,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: yarn
+          cache: npm
 
-      - run: yarn install --frozen-lockfile
+      - run: npm ci
 
-      - run: yarn typecheck
+      - run: npm run typecheck
 
-      - run: yarn oracle:build
+      - run: npm run oracle:build
 
       - name: today utc date
         id: utc_date
@@ -53,10 +53,10 @@ jobs:
             dmark-db-export-${{ hashFiles('scripts/fetch-corpus.ts') }}-
             dmark-db-export-
 
-      - run: yarn corpus:fetch
+      - run: npm run corpus:fetch
 
       - name: golden tests
-        run: yarn test test/golden-baseline.test.ts test/golden-roundtrip.test.ts
+        run: npm test -- test/golden-baseline.test.ts test/golden-roundtrip.test.ts
 
       - name: bump version
         run: |
@@ -64,7 +64,7 @@ jobs:
           NEW_VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$NEW_VERSION" >> $GITHUB_ENV
 
-      - run: yarn build
+      - run: npm run build
 
       - name: publish to npm registry
         run: |

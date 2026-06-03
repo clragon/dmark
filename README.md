@@ -55,17 +55,17 @@ Both pipelines are measured the way they are consumed: dmark in-process, the rub
 #    `corpus:build` runs fetch (full eligible set into staging/),
 #    survey (round-trip + oracle parity, fault-isolated), and curate
 #    (selects ~150 representatives into golden/).
-yarn corpus:build
+npm run corpus:build
 
 # 2. Build the oracle image once. Required for the cross-pipeline bench
 #    and the corpus survey's oracle parity check.
-yarn oracle:build
+npm run oracle:build
 
 # 3. Parse + render through dmark only. Fast, no docker.
-yarn tsx scripts/bench-parse.ts 30 --save --label local
+npx tsx scripts/bench-parse.ts 30 --save --label local
 
 # 4. Side-by-side dmark vs the ruby gem (spawns a container per run).
-yarn tsx scripts/bench-vs-oracle.ts 10
+npx tsx scripts/bench-vs-oracle.ts 10
 ```
 
 `scripts/bench-parse.ts --split` decomposes total time into parse vs render so a regression hunt knows which side moved.
