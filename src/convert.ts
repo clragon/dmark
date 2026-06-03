@@ -1,8 +1,3 @@
-// Cross-format convenience wrappers. dtext and markdown both lower to the
-// shared AST, so converting between them is parse-one-side then
-// format-the-other. Diagnostics from every stage that emits them are merged
-// into the result.
-
 import {
   parseDTextToAST,
   formatDText,
