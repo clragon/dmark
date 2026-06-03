@@ -1,0 +1,13 @@
+dist
+node_modules
+coverage
+*.min.js
+package-lock.json
+corpus
+ref
+oracle
+.evil-failures.json
+.evil-probe.json
+test/evil/evil-parser-destroyer/.oracle-cache
+test/evil/evil-parser-destroyer/.case-slices
+*.md
