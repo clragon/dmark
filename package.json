@@ -1,7 +1,7 @@
 {
   "name": "@clynamic/dmark",
   "version": "0.0.8",
-  "description": "Two-way dtext ↔ markdown parser with shared AST. Verified against the e621ng/dtext ruby renderer.",
+  "description": "The gold standard for rendering dtext on the web.",
   "license": "UNLICENSED",
   "author": "binaryfloof",
   "publishConfig": {
