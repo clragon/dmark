@@ -28,12 +28,20 @@ interface Pair {
 //   renderToHTML(parseMarkdown(markdown).document) DOM-equals oracle(dtext)
 const PAIRS: Pair[] = [
   { name: 'plain text', markdown: 'hello world', dtext: 'hello world' },
-  { name: 'bold + italic', markdown: '**bold** and *italic*', dtext: '[b]bold[/b] and [i]italic[/i]' },
+  {
+    name: 'bold + italic',
+    markdown: '**bold** and *italic*',
+    dtext: '[b]bold[/b] and [i]italic[/i]',
+  },
   { name: 'underline', markdown: '__under__', dtext: '[u]under[/u]' },
   { name: 'strikethrough', markdown: '~~strike~~', dtext: '[s]strike[/s]' },
   { name: 'inline code', markdown: 'use `foo` here', dtext: 'use `foo` here' },
   { name: 'header level 2', markdown: '## hello', dtext: 'h2. hello' },
-  { name: 'blockquote', markdown: '> quoted line', dtext: '[quote]quoted line[/quote]' },
+  {
+    name: 'blockquote',
+    markdown: '> quoted line',
+    dtext: '[quote]quoted line[/quote]',
+  },
   {
     name: 'unordered list (depth 1 + 2)',
     markdown: '- a\n  - b\n- c',

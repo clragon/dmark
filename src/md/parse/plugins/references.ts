@@ -119,10 +119,7 @@ function tagSearchInline(state: StateInline, silent: boolean): boolean {
 // it does not collide with wikilink (`[[`) or BBCode (`[sup]`). The name
 // terminates at the closing `]`; whitespace is rejected to avoid eating
 // markdown link-text spans like `[#1 in line]`.
-function internalAnchorInline(
-  state: StateInline,
-  silent: boolean,
-): boolean {
+function internalAnchorInline(state: StateInline, silent: boolean): boolean {
   const start = state.pos;
   const max = state.posMax;
   if (start + 3 > max) return false;

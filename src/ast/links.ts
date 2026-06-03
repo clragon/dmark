@@ -113,19 +113,17 @@ export const ID_ROUTES: Record<IdType, string> = {
 // regex metachars in `ID_PATTERNS` resolve to literal forms (`take\\s?down\\s+
 // request` becomes `take down request`). The contracted "takedown request"
 // alias is added explicitly; regex normalisation only touches patterns.
-export const ID_TYPE_MAP: ReadonlyMap<string, IdType> = new Map(
-  [
-    ...ID_PATTERNS.map(
-      (p) =>
-        [
-          p.pattern.replace(/\\s[?+*]?/g, ' ').replace(/\s+/g, ' '),
-          p.type,
-        ] as [string, IdType],
-    ),
-    // alias for the contracted form of takedown request
-    ['takedown request', 'takedown'],
-  ],
-);
+export const ID_TYPE_MAP: ReadonlyMap<string, IdType> = new Map([
+  ...ID_PATTERNS.map(
+    (p) =>
+      [p.pattern.replace(/\\s[?+*]?/g, ' ').replace(/\s+/g, ' '), p.type] as [
+        string,
+        IdType,
+      ],
+  ),
+  // alias for the contracted form of takedown request
+  ['takedown request', 'takedown'],
+]);
 
 // Canonical source spelling per id-type, derived from `ID_PATTERNS` by
 // taking the first pattern per type and literalising the regex-source
@@ -219,9 +217,7 @@ export function buildWikiLink(input: WikiLinkInput): LinkNode {
   }
   const title =
     input.title ??
-    (input.anchor !== undefined
-      ? `${input.tag}#${input.anchor}`
-      : input.tag);
+    (input.anchor !== undefined ? `${input.tag}#${input.anchor}` : input.tag);
   return {
     type: 'link',
     linkType: 'wiki',

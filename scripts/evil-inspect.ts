@@ -8,8 +8,12 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FILE = resolve(HERE, '..', '.evil-failures.json');
-const failures: Array<{ name: string; input: string; dmark: string; oracle: string }> =
-  JSON.parse(readFileSync(FILE, 'utf8'));
+const failures: Array<{
+  name: string;
+  input: string;
+  dmark: string;
+  oracle: string;
+}> = JSON.parse(readFileSync(FILE, 'utf8'));
 
 const re = new RegExp(process.argv[2] ?? '', 'i');
 const limit = Number(process.argv[3] ?? 20);

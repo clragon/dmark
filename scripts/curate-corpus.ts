@@ -43,11 +43,17 @@
 // the survey (kind "crash"), so the parser pass here is safe to run in
 // a single process with a moderate heap cap.
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  copyFileSync,
+} from 'node:fs';
+import { resolve } from 'node:path';
 
-import { parseDTextToAST } from "@dmark/dtext";
-import type { DocumentNode } from "../src/ast";
+import { parseDTextToAST } from '@dmark/dtext';
+import type { DocumentNode } from '../src/ast';
 
 interface CorpusEntry {
   id: number;
@@ -64,15 +70,15 @@ interface SurveyRecord {
   oracle?: string;
 }
 
-const REPO_ROOT = resolve(import.meta.dirname, "..");
-const CORPUS_STAGING = resolve(REPO_ROOT, "corpus", "staging");
-const CORPUS_GOLDEN = resolve(REPO_ROOT, "corpus", "golden");
-const STAGING_INDEX = resolve(CORPUS_STAGING, "index.json");
-const STAGING_SURVEY = resolve(CORPUS_STAGING, "survey.json");
-const KNOWN_DIVERGENCES = resolve(REPO_ROOT, "corpus", "known-divergences.md");
+const REPO_ROOT = resolve(import.meta.dirname, '..');
+const CORPUS_STAGING = resolve(REPO_ROOT, 'corpus', 'staging');
+const CORPUS_GOLDEN = resolve(REPO_ROOT, 'corpus', 'golden');
+const STAGING_INDEX = resolve(CORPUS_STAGING, 'index.json');
+const STAGING_SURVEY = resolve(CORPUS_STAGING, 'survey.json');
+const KNOWN_DIVERGENCES = resolve(REPO_ROOT, 'corpus', 'known-divergences.md');
 
-const TARGET_SIZE = Number(process.env.CURATE_TARGET_SIZE ?? "150");
-const K_COVERAGE = Number(process.env.CURATE_K_COVERAGE ?? "5");
+const TARGET_SIZE = Number(process.env.CURATE_TARGET_SIZE ?? '150');
+const K_COVERAGE = Number(process.env.CURATE_K_COVERAGE ?? '5');
 
 interface Candidate {
   entry: CorpusEntry;
@@ -83,33 +89,33 @@ interface SelectionRecord {
   file: string;
   bytes: number;
   features: number;
-  phase: "set-cover" | "k-coverage" | "density";
+  phase: 'set-cover' | 'k-coverage' | 'density';
   reason: string;
 }
 
 function walkFeatures(node: unknown, out: Set<string>): void {
-  if (!node || typeof node !== "object") return;
+  if (!node || typeof node !== 'object') return;
   if (Array.isArray(node)) {
     for (const item of node) walkFeatures(item, out);
     return;
   }
   const obj = node as Record<string, unknown>;
-  if (typeof obj.type === "string") {
+  if (typeof obj.type === 'string') {
     out.add(`type:${obj.type}`);
-    if (obj.type === "link" && typeof obj.linkType === "string") {
+    if (obj.type === 'link' && typeof obj.linkType === 'string') {
       out.add(`link:${obj.linkType}`);
-      if (obj.linkType === "id_link" && typeof obj.idType === "string") {
+      if (obj.linkType === 'id_link' && typeof obj.idType === 'string') {
         out.add(`id:${obj.idType}`);
       }
     }
-    if (obj.type === "header" && typeof obj.level === "number") {
+    if (obj.type === 'header' && typeof obj.level === 'number') {
       out.add(`header_level:${obj.level}`);
     }
   }
   for (const [k, v] of Object.entries(obj)) {
     // ltable raw source stash is not structural; skip.
-    if (k === "source") continue;
-    if (v && typeof v === "object") walkFeatures(v, out);
+    if (k === 'source') continue;
+    if (v && typeof v === 'object') walkFeatures(v, out);
   }
 }
 
@@ -123,31 +129,36 @@ function compareCandidatesDescGain(
 }
 
 function compareByDensity(a: Candidate, b: Candidate): number {
-  if (b.features.size !== a.features.size) return b.features.size - a.features.size;
+  if (b.features.size !== a.features.size)
+    return b.features.size - a.features.size;
   if (a.entry.bytes !== b.entry.bytes) return a.entry.bytes - b.entry.bytes;
   return a.entry.file.localeCompare(b.entry.file);
 }
 
 async function main(): Promise<void> {
-  const index = JSON.parse(readFileSync(STAGING_INDEX, "utf8")) as {
+  const index = JSON.parse(readFileSync(STAGING_INDEX, 'utf8')) as {
     generated_at: string;
     entries: CorpusEntry[];
   };
-  const survey = JSON.parse(readFileSync(STAGING_SURVEY, "utf8")) as {
+  const survey = JSON.parse(readFileSync(STAGING_SURVEY, 'utf8')) as {
     results: SurveyRecord[];
   };
   // An article is curation-eligible iff round-trip is "ok" AND oracle
   // parity is "ok" (or oracle was skipped, in which case we accept
   // round-trip alone but warn). Anything else is a regression seed.
-  const oracleChecked = survey.results.some((r) => r.oracle === "ok" || r.oracle === "diff");
+  const oracleChecked = survey.results.some(
+    (r) => r.oracle === 'ok' || r.oracle === 'diff',
+  );
   const cleanFiles = new Set(
     survey.results
-      .filter((r) => r.kind === "ok" && (oracleChecked ? r.oracle === "ok" : true))
+      .filter(
+        (r) => r.kind === 'ok' && (oracleChecked ? r.oracle === 'ok' : true),
+      )
       .map((r) => r.file),
   );
   if (!oracleChecked) {
     console.log(
-      "[curate] warning: survey has no oracle results; curation will only filter on round-trip parity",
+      '[curate] warning: survey has no oracle results; curation will only filter on round-trip parity',
     );
   }
 
@@ -164,7 +175,7 @@ async function main(): Promise<void> {
   const globalCounts = new Map<string, number>();
   let processed = 0;
   for (const entry of okEntries) {
-    const dtext = readFileSync(resolve(CORPUS_STAGING, entry.file), "utf8");
+    const dtext = readFileSync(resolve(CORPUS_STAGING, entry.file), 'utf8');
     const ast = parseDTextToAST(dtext, {
       allowColor: true,
       maxThumbs: 75,
@@ -175,7 +186,9 @@ async function main(): Promise<void> {
     for (const f of feats) globalCounts.set(f, (globalCounts.get(f) ?? 0) + 1);
     processed += 1;
     if (processed % 2000 === 0) {
-      console.log(`[curate] features extracted ${processed}/${okEntries.length}`);
+      console.log(
+        `[curate] features extracted ${processed}/${okEntries.length}`,
+      );
     }
   }
 
@@ -188,7 +201,11 @@ async function main(): Promise<void> {
   const selectedCounts = new Map<string, number>();
   const picks: SelectionRecord[] = [];
 
-  function recordPick(c: Candidate, phase: SelectionRecord["phase"], reason: string): void {
+  function recordPick(
+    c: Candidate,
+    phase: SelectionRecord['phase'],
+    reason: string,
+  ): void {
     selected.set(c.entry.file, c);
     for (const f of c.features) {
       selectedCounts.set(f, (selectedCounts.get(f) ?? 0) + 1);
@@ -225,7 +242,7 @@ async function main(): Promise<void> {
       if (cmp < 0) best = { candidate: c, gain };
     }
     if (best === null) break;
-    recordPick(best.candidate, "set-cover", `+${best.gain} new features`);
+    recordPick(best.candidate, 'set-cover', `+${best.gain} new features`);
   }
   console.log(
     `[curate] phase A set-cover: ${selected.size} articles, ${covered.size}/${allFeatures.size} features`,
@@ -244,7 +261,10 @@ async function main(): Promise<void> {
   for (const feat of featuresByRarity) {
     const have = selectedCounts.get(feat) ?? 0;
     if (have >= K_COVERAGE) continue;
-    const need = Math.min(K_COVERAGE - have, (globalCounts.get(feat) ?? 0) - have);
+    const need = Math.min(
+      K_COVERAGE - have,
+      (globalCounts.get(feat) ?? 0) - have,
+    );
     if (need <= 0) continue;
     const pool = candidates
       .filter((c) => !selected.has(c.entry.file) && c.features.has(feat))
@@ -252,7 +272,11 @@ async function main(): Promise<void> {
     let added = 0;
     for (const c of pool) {
       if (added >= need) break;
-      recordPick(c, "k-coverage", `boosts ${feat} (count ${(selectedCounts.get(feat) ?? 0) + 1})`);
+      recordPick(
+        c,
+        'k-coverage',
+        `boosts ${feat} (count ${(selectedCounts.get(feat) ?? 0) + 1})`,
+      );
       added += 1;
     }
   }
@@ -265,7 +289,7 @@ async function main(): Promise<void> {
       .sort(compareByDensity);
     for (const c of tail) {
       if (selected.size >= TARGET_SIZE) break;
-      recordPick(c, "density", `${c.features.size} distinct features`);
+      recordPick(c, 'density', `${c.features.size} distinct features`);
     }
   }
   console.log(`[curate] phase C density: ${selected.size} articles`);
@@ -277,12 +301,12 @@ async function main(): Promise<void> {
   }
 
   // Per-feature coverage summary in selected set.
-  console.log("\n[curate] feature coverage in selected set:");
+  console.log('\n[curate] feature coverage in selected set:');
   for (const feat of featuresByRarity) {
     const have = selectedCounts.get(feat) ?? 0;
     const total = globalCounts.get(feat) ?? 0;
     const clamped = total < K_COVERAGE;
-    const tag = clamped ? " (clamped)" : "";
+    const tag = clamped ? ' (clamped)' : '';
     console.log(
       `  ${feat.padEnd(28)}  selected=${String(have).padStart(3)}  corpus=${total}${tag}`,
     );
@@ -305,13 +329,13 @@ async function main(): Promise<void> {
   }
 
   writeFileSync(
-    resolve(CORPUS_GOLDEN, "index.json"),
+    resolve(CORPUS_GOLDEN, 'index.json'),
     JSON.stringify(
       { generated_at: new Date().toISOString(), entries: goldenEntries },
       null,
       2,
     ),
-    "utf8",
+    'utf8',
   );
 
   // Capture excluded articles. Split into two buckets:
@@ -323,7 +347,11 @@ async function main(): Promise<void> {
   const knownDivergenceSet = loadKnownDivergences();
   const indexByFile = new Map(index.entries.map((e) => [e.file, e]));
   const excluded = survey.results
-    .filter((r) => r.kind !== "ok" || (oracleChecked && r.oracle !== "ok" && r.oracle !== "skipped"))
+    .filter(
+      (r) =>
+        r.kind !== 'ok' ||
+        (oracleChecked && r.oracle !== 'ok' && r.oracle !== 'skipped'),
+    )
     .map((r) => ({
       file: r.file,
       bytes: r.bytes,
@@ -332,14 +360,16 @@ async function main(): Promise<void> {
       title: indexByFile.get(r.file)?.title,
     }))
     .sort((a, b) => a.bytes - b.bytes);
-  const knownDivergences = excluded.filter((r) => knownDivergenceSet.has(r.file));
+  const knownDivergences = excluded.filter((r) =>
+    knownDivergenceSet.has(r.file),
+  );
   const regressions = excluded.filter((r) => !knownDivergenceSet.has(r.file));
   console.log(
     `[curate] excluded=${excluded.length}  documented=${knownDivergences.length}  regressions=${regressions.length}`,
   );
 
   writeFileSync(
-    resolve(CORPUS_GOLDEN, "curation.json"),
+    resolve(CORPUS_GOLDEN, 'curation.json'),
     JSON.stringify(
       {
         generated_at: new Date().toISOString(),
@@ -355,17 +385,19 @@ async function main(): Promise<void> {
       null,
       2,
     ),
-    "utf8",
+    'utf8',
   );
 
-  console.log(`\n[curate] wrote ${goldenEntries.length} fixtures to ${CORPUS_GOLDEN}`);
+  console.log(
+    `\n[curate] wrote ${goldenEntries.length} fixtures to ${CORPUS_GOLDEN}`,
+  );
   console.log(`[curate] phases: ${tally(picks)}`);
 }
 
 function tally(picks: { phase: string }[]): string {
   const counts = new Map<string, number>();
   for (const p of picks) counts.set(p.phase, (counts.get(p.phase) ?? 0) + 1);
-  return [...counts.entries()].map(([k, v]) => `${k}=${v}`).join(" ");
+  return [...counts.entries()].map(([k, v]) => `${k}=${v}`).join(' ');
 }
 
 // Parse corpus/known-divergences.md for `.dtext` filename entries. The
@@ -374,7 +406,7 @@ function tally(picks: { phase: string }[]): string {
 // up from any markdown list item that looks like `` `<file>.dtext` ``.
 function loadKnownDivergences(): Set<string> {
   try {
-    const md = readFileSync(KNOWN_DIVERGENCES, "utf8");
+    const md = readFileSync(KNOWN_DIVERGENCES, 'utf8');
     const files = new Set<string>();
     for (const m of md.matchAll(/`([^`\n]+\.dtext)`/g)) {
       files.add(m[1]);

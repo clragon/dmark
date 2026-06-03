@@ -44,7 +44,10 @@ const INLINE_FIXTURES: Fixture[] = [
   { name: 'underline', dtext: '[u]hello[/u]' },
   { name: 'superscript', dtext: '[sup]x[/sup]' },
   { name: 'subscript', dtext: '[sub]x[/sub]' },
-  { name: 'inline spoiler in paragraph', dtext: 'before [spoiler]hi[/spoiler] after' },
+  {
+    name: 'inline spoiler in paragraph',
+    dtext: 'before [spoiler]hi[/spoiler] after',
+  },
   { name: 'inline code', dtext: '`code` here' },
   { name: 'color named', dtext: '[color=red]warning[/color]' },
   { name: 'color tag-category', dtext: '[color=character]name[/color]' },
@@ -56,7 +59,10 @@ const INLINE_FIXTURES: Fixture[] = [
 const LINK_FIXTURES: Fixture[] = [
   { name: 'bare url', dtext: 'see https://example.com/page now' },
   { name: 'textile link bare', dtext: '"text":https://example.com/page' },
-  { name: 'textile link bracketed', dtext: '"text":[https://example.com/path with space]' },
+  {
+    name: 'textile link bracketed',
+    dtext: '"text":[https://example.com/path with space]',
+  },
   { name: 'wikilink page only', dtext: '[[wolf]]' },
   { name: 'wikilink with anchor', dtext: '[[help#syntax]]' },
   { name: 'wikilink anchor only', dtext: '[[#footnotes]]' },
@@ -79,7 +85,10 @@ const BLOCK_FIXTURES: Fixture[] = [
   },
   { name: 'quote uncoloured', dtext: '[quote]\nan opinion\n[/quote]' },
   { name: 'quote red', dtext: '[quote=red]\nin red\n[/quote]' },
-  { name: 'quote tag-category', dtext: '[quote=character]\nin character colour\n[/quote]' },
+  {
+    name: 'quote tag-category',
+    dtext: '[quote=character]\nin character colour\n[/quote]',
+  },
   {
     name: 'quote hex',
     dtext: '[quote=#abc]\ncustom hex\n[/quote]',
@@ -122,7 +131,8 @@ const BLOCK_FIXTURES: Fixture[] = [
   },
   {
     name: 'table head + body',
-    dtext: '[table]\n[thead]\n[tr][th]a[/th][th]b[/th][/tr]\n[/thead]\n[tbody]\n[tr][td]1[/td][td]2[/td][/tr]\n[/tbody]\n[/table]',
+    dtext:
+      '[table]\n[thead]\n[tr][th]a[/th][th]b[/th][/tr]\n[/thead]\n[tbody]\n[tr][td]1[/td][td]2[/td][/tr]\n[/tbody]\n[/table]',
   },
   {
     name: 'ltable',

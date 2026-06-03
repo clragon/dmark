@@ -21,8 +21,16 @@ describe('pipe table', () => {
               {
                 type: 'table_row',
                 cells: [
-                  { type: 'table_cell', cellType: 'th', children: [{ type: 'text', content: 'a' }] },
-                  { type: 'table_cell', cellType: 'th', children: [{ type: 'text', content: 'b' }] },
+                  {
+                    type: 'table_cell',
+                    cellType: 'th',
+                    children: [{ type: 'text', content: 'a' }],
+                  },
+                  {
+                    type: 'table_cell',
+                    cellType: 'th',
+                    children: [{ type: 'text', content: 'b' }],
+                  },
                 ],
               },
             ],
@@ -33,8 +41,16 @@ describe('pipe table', () => {
               {
                 type: 'table_row',
                 cells: [
-                  { type: 'table_cell', cellType: 'td', children: [{ type: 'text', content: '1' }] },
-                  { type: 'table_cell', cellType: 'td', children: [{ type: 'text', content: '2' }] },
+                  {
+                    type: 'table_cell',
+                    cellType: 'td',
+                    children: [{ type: 'text', content: '1' }],
+                  },
+                  {
+                    type: 'table_cell',
+                    cellType: 'td',
+                    children: [{ type: 'text', content: '2' }],
+                  },
                 ],
               },
             ],
@@ -45,21 +61,22 @@ describe('pipe table', () => {
   });
 
   it('handles multiple body rows', () => {
-    const result = parseMarkdown(
-      '| h1 |\n|----|\n| r1 |\n| r2 |\n| r3 |',
-    );
-    const body = (result.document.children[0] as { children: { type: string; rows?: unknown[] }[] }).children
-      .find((c) => c.type === 'table_body') as { rows: unknown[] };
+    const result = parseMarkdown('| h1 |\n|----|\n| r1 |\n| r2 |\n| r3 |');
+    const body = (
+      result.document.children[0] as {
+        children: { type: string; rows?: unknown[] }[];
+      }
+    ).children.find((c) => c.type === 'table_body') as { rows: unknown[] };
     expect(body.rows).toHaveLength(3);
   });
 
   it('parses inline emphasis inside cell content', () => {
-    const result = parseMarkdown(
-      '| h |\n|---|\n| **bold** cell |',
-    );
-    const bodyRows = (result.document.children[0] as {
-      children: ({ type: string; rows?: { cells: unknown[] }[] })[];
-    }).children.find((c) => c.type === 'table_body')!.rows!;
+    const result = parseMarkdown('| h |\n|---|\n| **bold** cell |');
+    const bodyRows = (
+      result.document.children[0] as {
+        children: { type: string; rows?: { cells: unknown[] }[] }[];
+      }
+    ).children.find((c) => c.type === 'table_body')!.rows!;
     expect(bodyRows[0]).toEqual({
       type: 'table_row',
       cells: [
@@ -76,14 +93,14 @@ describe('pipe table', () => {
   });
 
   it('drops alignment from `:---:` separator without a diagnostic', () => {
-    const result = parseMarkdown(
-      '| a | b |\n|:--|:-:|\n| x | y |',
-    );
+    const result = parseMarkdown('| a | b |\n|:--|:-:|\n| x | y |');
     expect(result.diagnostics).toEqual([]);
     // No alignment field on cells; the AST has no slot.
-    const body = (result.document.children[0] as {
-      children: ({ type: string; rows?: { cells: { type: string }[] }[] })[];
-    }).children.find((c) => c.type === 'table_body')!.rows![0]!;
+    const body = (
+      result.document.children[0] as {
+        children: { type: string; rows?: { cells: { type: string }[] }[] }[];
+      }
+    ).children.find((c) => c.type === 'table_body')!.rows![0]!;
     expect(body.cells[0]).not.toHaveProperty('align');
   });
 });

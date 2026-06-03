@@ -100,8 +100,7 @@ export const SAMPLES: Sample[] = [
     id: 'md-table',
     label: 'Markdown: pipe table',
     side: 'md',
-    source:
-      '| Name | Score |\n| --- | --- |\n| Alpha | 42 |\n| Beta | 88 |',
+    source: '| Name | Score |\n| --- | --- |\n| Alpha | 42 |\n| Beta | 88 |',
   },
   {
     id: 'md-code',

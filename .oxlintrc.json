@@ -12,5 +12,12 @@
     "typescript/no-explicit-any": "warn",
     "typescript/consistent-type-imports": "off"
   },
-  "ignorePatterns": ["dist", "node_modules", "corpus", "ref", "oracle", "coverage"]
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "corpus",
+    "ref",
+    "oracle",
+    "coverage"
+  ]
 }

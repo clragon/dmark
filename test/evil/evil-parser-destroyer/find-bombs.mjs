@@ -9,7 +9,12 @@ import { dirname, resolve } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RUNNER = resolve(__dirname, 'bomb-runner.mjs');
 const REPO = resolve(__dirname, '..', '..', '..');
-const TSX = resolve(REPO, 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx');
+const TSX = resolve(
+  REPO,
+  'node_modules',
+  '.bin',
+  process.platform === 'win32' ? 'tsx.cmd' : 'tsx',
+);
 
 const cases = [
   ['url-trailing-dot', 'see https://example.com. yes'],
@@ -115,26 +120,29 @@ const MEM_MB = 512;
 
 async function runOne(name, input) {
   return new Promise((resolveP) => {
-    const child = spawn(
-      TSX,
-      [RUNNER],
-      {
-        cwd: REPO,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, NODE_OPTIONS: `--max-old-space-size=${MEM_MB}` },
-        shell: process.platform === 'win32',
-      },
-    );
+    const child = spawn(TSX, [RUNNER], {
+      cwd: REPO,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, NODE_OPTIONS: `--max-old-space-size=${MEM_MB}` },
+      shell: process.platform === 'win32',
+    });
     let out = '';
     let err = '';
     child.stdout.on('data', (b) => (out += b.toString()));
     child.stderr.on('data', (b) => (err += b.toString()));
     const t = setTimeout(() => {
-      try { child.kill('SIGKILL'); } catch {}
+      try {
+        child.kill('SIGKILL');
+      } catch {}
     }, TIMEOUT_MS);
     child.on('exit', (code, sig) => {
       clearTimeout(t);
-      resolveP({ code, sig, out: out.trim().slice(0, 200), err: err.trim().slice(0, 200) });
+      resolveP({
+        code,
+        sig,
+        out: out.trim().slice(0, 200),
+        err: err.trim().slice(0, 200),
+      });
     });
     child.stdin.write(JSON.stringify({ input }));
     child.stdin.end();

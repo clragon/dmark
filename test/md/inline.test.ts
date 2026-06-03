@@ -67,9 +67,7 @@ describe('strikethrough', () => {
 
 describe('inline code', () => {
   it('lowers backtick-delimited spans to InlineCodeNode', () => {
-    expect(inlineOf('`x`')).toEqual([
-      { type: 'inline_code', content: 'x' },
-    ]);
+    expect(inlineOf('`x`')).toEqual([{ type: 'inline_code', content: 'x' }]);
   });
 
   it('preserves whitespace inside the span exactly', () => {
@@ -128,7 +126,10 @@ describe('nested emphasis', () => {
         type: 'bold',
         children: [
           { type: 'text', content: 'bold ' },
-          { type: 'italic', children: [{ type: 'text', content: 'and italic' }] },
+          {
+            type: 'italic',
+            children: [{ type: 'text', content: 'and italic' }],
+          },
           { type: 'text', content: ' bold' },
         ],
       },

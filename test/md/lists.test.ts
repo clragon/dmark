@@ -16,9 +16,21 @@ describe('flat unordered list', () => {
       {
         type: 'list',
         items: [
-          { type: 'list_item', depth: 1, children: [{ type: 'text', content: 'a' }] },
-          { type: 'list_item', depth: 1, children: [{ type: 'text', content: 'b' }] },
-          { type: 'list_item', depth: 1, children: [{ type: 'text', content: 'c' }] },
+          {
+            type: 'list_item',
+            depth: 1,
+            children: [{ type: 'text', content: 'a' }],
+          },
+          {
+            type: 'list_item',
+            depth: 1,
+            children: [{ type: 'text', content: 'b' }],
+          },
+          {
+            type: 'list_item',
+            depth: 1,
+            children: [{ type: 'text', content: 'c' }],
+          },
         ],
       },
     ]);
@@ -40,7 +52,10 @@ describe('flat unordered list', () => {
             type: 'list_item',
             depth: 1,
             children: [
-              { type: 'bold', children: [{ type: 'text', content: 'bold item' }] },
+              {
+                type: 'bold',
+                children: [{ type: 'text', content: 'bold item' }],
+              },
             ],
           },
         ],
@@ -57,9 +72,21 @@ describe('nested unordered list', () => {
       {
         type: 'list',
         items: [
-          { type: 'list_item', depth: 1, children: [{ type: 'text', content: 'a' }] },
-          { type: 'list_item', depth: 2, children: [{ type: 'text', content: 'nested' }] },
-          { type: 'list_item', depth: 1, children: [{ type: 'text', content: 'c' }] },
+          {
+            type: 'list_item',
+            depth: 1,
+            children: [{ type: 'text', content: 'a' }],
+          },
+          {
+            type: 'list_item',
+            depth: 2,
+            children: [{ type: 'text', content: 'nested' }],
+          },
+          {
+            type: 'list_item',
+            depth: 1,
+            children: [{ type: 'text', content: 'c' }],
+          },
         ],
       },
     ]);
@@ -70,9 +97,21 @@ describe('nested unordered list', () => {
     expect(result.document.children[0]).toEqual({
       type: 'list',
       items: [
-        { type: 'list_item', depth: 1, children: [{ type: 'text', content: 'l1' }] },
-        { type: 'list_item', depth: 2, children: [{ type: 'text', content: 'l2' }] },
-        { type: 'list_item', depth: 3, children: [{ type: 'text', content: 'l3' }] },
+        {
+          type: 'list_item',
+          depth: 1,
+          children: [{ type: 'text', content: 'l1' }],
+        },
+        {
+          type: 'list_item',
+          depth: 2,
+          children: [{ type: 'text', content: 'l2' }],
+        },
+        {
+          type: 'list_item',
+          depth: 3,
+          children: [{ type: 'text', content: 'l3' }],
+        },
       ],
     });
   });
@@ -92,8 +131,16 @@ describe('ordered list', () => {
       {
         type: 'list',
         items: [
-          { type: 'list_item', depth: 1, children: [{ type: 'text', content: 'a' }] },
-          { type: 'list_item', depth: 1, children: [{ type: 'text', content: 'b' }] },
+          {
+            type: 'list_item',
+            depth: 1,
+            children: [{ type: 'text', content: 'a' }],
+          },
+          {
+            type: 'list_item',
+            depth: 1,
+            children: [{ type: 'text', content: 'b' }],
+          },
         ],
       },
     ]);

@@ -234,7 +234,9 @@ describe('inline spoiler `||...||`', () => {
     const result = parseMarkdown('||open and never closed');
     const para = result.document.children[0]!;
     if (para.type !== 'paragraph') throw new Error('expected paragraph');
-    expect(para.children.find((n) => n.type === 'inline_spoiler')).toBeUndefined();
+    expect(
+      para.children.find((n) => n.type === 'inline_spoiler'),
+    ).toBeUndefined();
   });
 
   it('does not eat a single bare `|` (which is not a spoiler delimiter)', () => {

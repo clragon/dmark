@@ -9,7 +9,11 @@
 // with output size. But it's enough to separate "oracle is slow because
 // HTTP" from "oracle is slow because ruby."
 
-import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
+import {
+  GenericContainer,
+  Wait,
+  type StartedTestContainer,
+} from 'testcontainers';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, basename } from 'node:path';
 
@@ -29,7 +33,10 @@ const fixtures = idx.entries.map((e) => ({
 
 const ITERS = 15;
 
-async function startOracle(): Promise<{ url: string; stop: () => Promise<void> }> {
+async function startOracle(): Promise<{
+  url: string;
+  stop: () => Promise<void>;
+}> {
   if (process.env.DMARK_ORACLE_URL) {
     return { url: process.env.DMARK_ORACLE_URL, stop: async () => {} };
   }
@@ -37,7 +44,9 @@ async function startOracle(): Promise<{ url: string; stop: () => Promise<void> }
   const c: StartedTestContainer = await new GenericContainer('dmark-oracle:dev')
     .withExposedPorts(4567)
     .withWaitStrategy(
-      Wait.forHttp('/health', 4567).forStatusCode(200).withStartupTimeout(30_000),
+      Wait.forHttp('/health', 4567)
+        .forStatusCode(200)
+        .withStartupTimeout(30_000),
     )
     .start();
   const url = `http://${c.getHost()}:${c.getMappedPort(4567)}`;
@@ -74,9 +83,12 @@ async function main() {
     // HTTP round-trip and ruby/sinatra dispatch. This serves as the baseline
     // overhead that every render call pays regardless of input.
     const floorSamples: number[] = [];
-    for (let i = 0; i < 30; i++) floorSamples.push(await timeRender(oracle.url, 'a'));
+    for (let i = 0; i < 30; i++)
+      floorSamples.push(await timeRender(oracle.url, 'a'));
     const floor = median(floorSamples);
-    console.log(`\nHTTP + ruby dispatch floor (input='a'): ${floor.toFixed(2)}ms`);
+    console.log(
+      `\nHTTP + ruby dispatch floor (input='a'): ${floor.toFixed(2)}ms`,
+    );
 
     // For a representative spread of fixture sizes, time both and report
     // the floor-subtracted value as the "ruby gem only" estimate.
@@ -91,7 +103,8 @@ async function main() {
     );
     for (const f of sample) {
       const samples: number[] = [];
-      for (let i = 0; i < ITERS; i++) samples.push(await timeRender(oracle.url, f.text));
+      for (let i = 0; i < ITERS; i++)
+        samples.push(await timeRender(oracle.url, f.text));
       const med = median(samples);
       const corrected = Math.max(0, med - floor);
       console.log(

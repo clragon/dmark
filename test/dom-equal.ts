@@ -139,7 +139,11 @@ function walkAndNormalize(
   // "<p> foo </p>" renders identically to "<p>foo</p>"). After normalizing
   // children, trim whitespace from the first/last text-node child of any
   // block element.
-  if (!childPreserve && isElement(node) && BLOCK_TAGS.has(node.tagName.toLowerCase())) {
+  if (
+    !childPreserve &&
+    isElement(node) &&
+    BLOCK_TAGS.has(node.tagName.toLowerCase())
+  ) {
     trimBlockEdges(node);
   }
 }

@@ -56,7 +56,10 @@ export async function renderViaOracle(
   return json;
 }
 
-export async function oracleHealth(): Promise<{ ok: boolean; dtext_version: string }> {
+export async function oracleHealth(): Promise<{
+  ok: boolean;
+  dtext_version: string;
+}> {
   const res = await fetch(`${oracleUrl()}/health`);
   if (!res.ok) throw new Error(`oracle /health: HTTP ${res.status}`);
   return (await res.json()) as { ok: boolean; dtext_version: string };

@@ -40,12 +40,16 @@
 //
 // Run via: npx tsx scripts/corpus-survey.ts
 
-import { spawn, type ChildProcess } from "node:child_process";
-import { createInterface } from "node:readline";
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawn, type ChildProcess } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
+import {
+  GenericContainer,
+  Wait,
+  type StartedTestContainer,
+} from 'testcontainers';
 
 interface CorpusEntry {
   id: number;
@@ -61,15 +65,15 @@ interface CorpusIndex {
 }
 
 type ResultKind =
-  | "ok"
-  | "diff"
-  | "parse-error"
-  | "format-error"
-  | "reparse-error"
-  | "crash"
-  | "timeout";
+  | 'ok'
+  | 'diff'
+  | 'parse-error'
+  | 'format-error'
+  | 'reparse-error'
+  | 'crash'
+  | 'timeout';
 
-type OracleKind = "ok" | "diff" | "error" | "skipped";
+type OracleKind = 'ok' | 'diff' | 'error' | 'skipped';
 
 interface ResultRecord {
   file: string;
@@ -93,22 +97,22 @@ interface SurveyReport {
   results: ResultRecord[];
 }
 
-const REPO_ROOT = resolve(import.meta.dirname, "..");
-const CORPUS_STAGING = resolve(REPO_ROOT, "corpus", "staging");
+const REPO_ROOT = resolve(import.meta.dirname, '..');
+const CORPUS_STAGING = resolve(REPO_ROOT, 'corpus', 'staging');
 const INDEX_PATH = process.env.SURVEY_INDEX
   ? resolve(process.env.SURVEY_INDEX)
-  : resolve(CORPUS_STAGING, "index.json");
+  : resolve(CORPUS_STAGING, 'index.json');
 const REPORT_PATH = process.env.SURVEY_REPORT
   ? resolve(process.env.SURVEY_REPORT)
-  : resolve(CORPUS_STAGING, "survey.json");
-const WORKER_PATH = resolve(REPO_ROOT, "scripts", "corpus-survey-worker.ts");
-const TSX_BIN = resolve(REPO_ROOT, "node_modules", ".bin", "tsx");
+  : resolve(CORPUS_STAGING, 'survey.json');
+const WORKER_PATH = resolve(REPO_ROOT, 'scripts', 'corpus-survey-worker.ts');
+const TSX_BIN = resolve(REPO_ROOT, 'node_modules', '.bin', 'tsx');
 
-const WORKER_HEAP_MB = Number(process.env.SURVEY_HEAP_MB ?? "512");
-const PER_FILE_TIMEOUT_MS = Number(process.env.SURVEY_TIMEOUT_MS ?? "30000");
-const PROGRESS_EVERY = Number(process.env.SURVEY_PROGRESS_EVERY ?? "100");
-const SKIP_ORACLE = process.env.SURVEY_SKIP_ORACLE === "1";
-const ORACLE_IMAGE = "dmark-oracle:dev";
+const WORKER_HEAP_MB = Number(process.env.SURVEY_HEAP_MB ?? '512');
+const PER_FILE_TIMEOUT_MS = Number(process.env.SURVEY_TIMEOUT_MS ?? '30000');
+const PROGRESS_EVERY = Number(process.env.SURVEY_PROGRESS_EVERY ?? '100');
+const SKIP_ORACLE = process.env.SURVEY_SKIP_ORACLE === '1';
+const ORACLE_IMAGE = 'dmark-oracle:dev';
 const ORACLE_INTERNAL_PORT = 4567;
 const ORACLE_HEALTH_TIMEOUT_MS = 30_000;
 
@@ -123,8 +127,8 @@ interface RunWorkerOutcome {
 }
 
 function loadIndex(): CorpusIndex {
-  if (!INDEX_PATH) throw new Error("missing index path");
-  const raw = readFileSync(INDEX_PATH, "utf8");
+  if (!INDEX_PATH) throw new Error('missing index path');
+  const raw = readFileSync(INDEX_PATH, 'utf8');
   return JSON.parse(raw) as CorpusIndex;
 }
 
@@ -135,28 +139,24 @@ function runWorker(
   onResult: (record: ResultRecord, absoluteIndex: number) => void,
 ): Promise<RunWorkerOutcome> {
   return new Promise<RunWorkerOutcome>((resolveOutcome) => {
-    const child: ChildProcess = spawn(
-      TSX_BIN,
-      [WORKER_PATH],
-      {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          NODE_OPTIONS: `--max-old-space-size=${WORKER_HEAP_MB}`,
-          SURVEY_ORACLE_URL: oracleUrl,
-        },
-        stdio: ["pipe", "pipe", "pipe"],
+    const child: ChildProcess = spawn(TSX_BIN, [WORKER_PATH], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        NODE_OPTIONS: `--max-old-space-size=${WORKER_HEAP_MB}`,
+        SURVEY_ORACLE_URL: oracleUrl,
       },
-    );
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
 
     if (!child.stdin || !child.stdout || !child.stderr) {
-      throw new Error("child stdio not piped");
+      throw new Error('child stdio not piped');
     }
 
     // Workers can die between two writes; swallow EPIPE so the driver
     // keeps draining stdout/stderr and synthesises the crash record from
     // the exit event instead.
-    child.stdin.on("error", () => {});
+    child.stdin.on('error', () => {});
 
     let currentIndex = startIndex;
     let pendingFile: string | null = null;
@@ -168,31 +168,37 @@ function runWorker(
       if (finished) return;
       finished = true;
       if (watchdog) clearInterval(watchdog);
-      if (!child.killed) child.kill("SIGKILL");
+      if (!child.killed) child.kill('SIGKILL');
       resolveOutcome(outcome);
     };
 
-    watchdog = setInterval(() => {
-      if (pendingFile !== null && Date.now() - lastActivity > PER_FILE_TIMEOUT_MS) {
-        const entry = entries[currentIndex];
-        const killer: ResultRecord = {
-          file: entry.file,
-          bytes: entry.bytes,
-          kind: "timeout",
-          oracle: "skipped",
-          error: `worker exceeded ${PER_FILE_TIMEOUT_MS}ms`,
-        };
-        finish({ nextIndex: currentIndex + 1, killer });
-      }
-    }, Math.min(2000, PER_FILE_TIMEOUT_MS));
+    watchdog = setInterval(
+      () => {
+        if (
+          pendingFile !== null &&
+          Date.now() - lastActivity > PER_FILE_TIMEOUT_MS
+        ) {
+          const entry = entries[currentIndex];
+          const killer: ResultRecord = {
+            file: entry.file,
+            bytes: entry.bytes,
+            kind: 'timeout',
+            oracle: 'skipped',
+            error: `worker exceeded ${PER_FILE_TIMEOUT_MS}ms`,
+          };
+          finish({ nextIndex: currentIndex + 1, killer });
+        }
+      },
+      Math.min(2000, PER_FILE_TIMEOUT_MS),
+    );
 
     const stderrChunks: string[] = [];
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk.toString("utf8"));
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderrChunks.push(chunk.toString('utf8'));
     });
 
     const rl = createInterface({ input: child.stdout, terminal: false });
-    rl.on("line", (line: string) => {
+    rl.on('line', (line: string) => {
       lastActivity = Date.now();
       const trimmed = line.trim();
       if (!trimmed.length) return;
@@ -202,11 +208,11 @@ function runWorker(
       } catch {
         return;
       }
-      if (event.event === "start" && typeof event.file === "string") {
+      if (event.event === 'start' && typeof event.file === 'string') {
         pendingFile = event.file;
         return;
       }
-      if (event.event === "done" && typeof event.file === "string") {
+      if (event.event === 'done' && typeof event.file === 'string') {
         const entry = entries[currentIndex];
         if (entry === undefined || entry.file !== event.file) {
           // Out-of-sync; treat as crash and bail.
@@ -219,13 +225,17 @@ function runWorker(
         const record: ResultRecord = {
           file: event.file,
           bytes: entry.bytes,
-          kind: (event.kind as ResultKind) ?? "diff",
-          ms: typeof event.ms === "number" ? event.ms : undefined,
-          diff: typeof event.diff === "string" ? event.diff : undefined,
-          error: typeof event.error === "string" ? event.error : undefined,
-          oracle: (event.oracle as OracleKind) ?? "skipped",
-          oracleDiff: typeof event.oracleDiff === "string" ? event.oracleDiff : undefined,
-          oracleError: typeof event.oracleError === "string" ? event.oracleError : undefined,
+          kind: (event.kind as ResultKind) ?? 'diff',
+          ms: typeof event.ms === 'number' ? event.ms : undefined,
+          diff: typeof event.diff === 'string' ? event.diff : undefined,
+          error: typeof event.error === 'string' ? event.error : undefined,
+          oracle: (event.oracle as OracleKind) ?? 'skipped',
+          oracleDiff:
+            typeof event.oracleDiff === 'string' ? event.oracleDiff : undefined,
+          oracleError:
+            typeof event.oracleError === 'string'
+              ? event.oracleError
+              : undefined,
         };
         onResult(record, currentIndex);
         pendingFile = null;
@@ -236,19 +246,19 @@ function runWorker(
       }
     });
 
-    child.on("exit", (code, signal) => {
+    child.on('exit', (code, signal) => {
       if (finished) return;
       if (pendingFile !== null) {
         const entry = entries[currentIndex];
-        const stderrText = stderrChunks.join("").trim();
+        const stderrText = stderrChunks.join('').trim();
         const killer: ResultRecord = {
           file: entry.file,
           bytes: entry.bytes,
-          kind: "crash",
-          oracle: "skipped",
+          kind: 'crash',
+          oracle: 'skipped',
           error: stderrText.length
-            ? `worker died (code=${code ?? "?"} signal=${signal ?? "?"}): ${stderrText.slice(-400)}`
-            : `worker died (code=${code ?? "?"} signal=${signal ?? "?"})`,
+            ? `worker died (code=${code ?? '?'} signal=${signal ?? '?'}): ${stderrText.slice(-400)}`
+            : `worker died (code=${code ?? '?'} signal=${signal ?? '?'})`,
         };
         finish({ nextIndex: currentIndex + 1, killer });
       } else {
@@ -264,7 +274,7 @@ function runWorker(
         absPath: resolve(CORPUS_STAGING, entry.file),
         bytes: entry.bytes,
       };
-      child.stdin.write(JSON.stringify(job) + "\n");
+      child.stdin.write(JSON.stringify(job) + '\n');
     }
     child.stdin.end();
   });
@@ -278,7 +288,7 @@ interface OracleHandle {
 
 async function startOracle(): Promise<OracleHandle | null> {
   if (SKIP_ORACLE) {
-    console.log("[survey] oracle checking disabled (SURVEY_SKIP_ORACLE=1)");
+    console.log('[survey] oracle checking disabled (SURVEY_SKIP_ORACLE=1)');
     return null;
   }
   if (process.env.SURVEY_ORACLE_URL) {
@@ -287,14 +297,16 @@ async function startOracle(): Promise<OracleHandle | null> {
       ok: boolean;
       dtext_version: string;
     };
-    console.log(`[survey] using existing oracle at ${url} (dtext ${health.dtext_version})`);
+    console.log(
+      `[survey] using existing oracle at ${url} (dtext ${health.dtext_version})`,
+    );
     return { url, version: health.dtext_version, stop: async () => undefined };
   }
   console.log(`[survey] starting oracle container (${ORACLE_IMAGE})`);
   const started: StartedTestContainer = await new GenericContainer(ORACLE_IMAGE)
     .withExposedPorts(ORACLE_INTERNAL_PORT)
     .withWaitStrategy(
-      Wait.forHttp("/health", ORACLE_INTERNAL_PORT)
+      Wait.forHttp('/health', ORACLE_INTERNAL_PORT)
         .forStatusCode(200)
         .withStartupTimeout(ORACLE_HEALTH_TIMEOUT_MS),
     )
@@ -306,7 +318,9 @@ async function startOracle(): Promise<OracleHandle | null> {
     ok: boolean;
     dtext_version: string;
   };
-  console.log(`[survey] oracle ready at ${url} (dtext ${health.dtext_version})`);
+  console.log(
+    `[survey] oracle ready at ${url} (dtext ${health.dtext_version})`,
+  );
   return {
     url,
     version: health.dtext_version,
@@ -322,7 +336,7 @@ async function main(): Promise<void> {
   );
 
   const oracle = await startOracle();
-  const oracleUrl = oracle?.url ?? "";
+  const oracleUrl = oracle?.url ?? '';
 
   const results: ResultRecord[] = [];
   let nextIndex = 0;
@@ -335,7 +349,7 @@ async function main(): Promise<void> {
       const counts = tally(results);
       const oc = tallyOracle(results);
       console.log(
-        `[survey] ${idx + 1}/${entries.length}  rt: ok=${counts.ok} diff=${counts.diff} parse-err=${counts["parse-error"]} reparse-err=${counts["reparse-error"]} fmt-err=${counts["format-error"]} crash=${counts.crash} timeout=${counts.timeout}  oracle: ok=${oc.ok} diff=${oc.diff} error=${oc.error} skipped=${oc.skipped}`,
+        `[survey] ${idx + 1}/${entries.length}  rt: ok=${counts.ok} diff=${counts.diff} parse-err=${counts['parse-error']} reparse-err=${counts['reparse-error']} fmt-err=${counts['format-error']} crash=${counts.crash} timeout=${counts.timeout}  oracle: ok=${oc.ok} diff=${oc.diff} error=${oc.error} skipped=${oc.skipped}`,
       );
     }
   };
@@ -364,7 +378,7 @@ async function main(): Promise<void> {
     oracleVersion: oracle?.version,
     results,
   };
-  writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2), "utf8");
+  writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2), 'utf8');
   console.log(`[survey] wrote ${REPORT_PATH}`);
   console.log(`[survey] round-trip: ${JSON.stringify(report.counts)}`);
   console.log(`[survey] oracle:     ${JSON.stringify(report.oracleCounts)}`);
@@ -374,9 +388,9 @@ function tally(results: ResultRecord[]): Record<ResultKind, number> {
   const counts: Record<ResultKind, number> = {
     ok: 0,
     diff: 0,
-    "parse-error": 0,
-    "format-error": 0,
-    "reparse-error": 0,
+    'parse-error': 0,
+    'format-error': 0,
+    'reparse-error': 0,
     crash: 0,
     timeout: 0,
   };
@@ -385,7 +399,12 @@ function tally(results: ResultRecord[]): Record<ResultKind, number> {
 }
 
 function tallyOracle(results: ResultRecord[]): Record<OracleKind, number> {
-  const counts: Record<OracleKind, number> = { ok: 0, diff: 0, error: 0, skipped: 0 };
+  const counts: Record<OracleKind, number> = {
+    ok: 0,
+    diff: 0,
+    error: 0,
+    skipped: 0,
+  };
   for (const r of results) counts[r.oracle] += 1;
   return counts;
 }

@@ -140,7 +140,9 @@ describe('grammar parity (asymmetry)', () => {
   });
 
   it('handles a stray `\\n[/spoiler]` inside a table cell the same way', async () => {
-    await expectMatchesOracle('[table][tr][td]hello\n[/spoiler] world[/td][/tr][/table]');
+    await expectMatchesOracle(
+      '[table][tr][td]hello\n[/spoiler] world[/td][/tr][/table]',
+    );
   });
 
   // After `consumeStrayBlockCloseAsLiteral` emits a literal-html close, its

@@ -20,9 +20,7 @@ describe('quote `>` line-prefix form', () => {
         children: [
           {
             type: 'paragraph',
-            children: [
-              { type: 'text', content: 'a single line of quote' },
-            ],
+            children: [{ type: 'text', content: 'a single line of quote' }],
           },
         ],
       },
@@ -93,9 +91,7 @@ describe('quote BBCode form', () => {
   });
 
   it('captures tag-category colour with case preserved', () => {
-    const result = parseMarkdown(
-      '[quote=Character]\nhi\n[/quote]',
-    );
+    const result = parseMarkdown('[quote=Character]\nhi\n[/quote]');
     expect(result.document.children[0]).toEqual({
       type: 'quote',
       color: 'Character',
@@ -143,9 +139,7 @@ describe('quote BBCode form', () => {
   });
 
   it('recursively tokenises inner block content (header inside quote)', () => {
-    const result = parseMarkdown(
-      '[quote=red]\n# Title\n\nbody\n[/quote]',
-    );
+    const result = parseMarkdown('[quote=red]\n# Title\n\nbody\n[/quote]');
     expect(result.document.children[0]).toEqual({
       type: 'quote',
       color: 'red',
@@ -168,6 +162,8 @@ describe('quote BBCode form', () => {
     // Open didn't pair; markdown-it absorbs the bracket lines as paragraph
     // text. The exact AST shape depends on tokenisation, but the contract
     // is "no QuoteNode emitted, no throw."
-    expect(result.document.children.find((n) => n.type === 'quote')).toBeUndefined();
+    expect(
+      result.document.children.find((n) => n.type === 'quote'),
+    ).toBeUndefined();
   });
 });

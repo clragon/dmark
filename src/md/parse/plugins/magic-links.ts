@@ -19,9 +19,7 @@ import { ID_PATTERNS, ID_TYPE_MAP } from '../../../ast/links';
 // per match loop because `exec` with the `g` flag carries `lastIndex`
 // state.
 const PATTERN_SOURCE =
-  '\\b(' +
-  ID_PATTERNS.map((p) => p.pattern).join('|') +
-  ')\\s+#(\\d+)\\b';
+  '\\b(' + ID_PATTERNS.map((p) => p.pattern).join('|') + ')\\s+#(\\d+)\\b';
 
 interface MagicMatch {
   start: number;
@@ -51,10 +49,7 @@ function findMagicLinks(text: string): MagicMatch[] {
 // Replace one `text` token with a sequence of `text` and `id_link` tokens
 // reflecting the matches found in its content. If no matches are present
 // the original token is returned unchanged.
-function splitTextToken(
-  textTok: Token,
-  state: StateCore,
-): Token[] {
+function splitTextToken(textTok: Token, state: StateCore): Token[] {
   const matches = findMagicLinks(textTok.content);
   if (matches.length === 0) return [textTok];
 

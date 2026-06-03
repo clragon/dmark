@@ -74,69 +74,66 @@ suite('dtext round-trip across golden corpus', () => {
     return;
   }
 
-  it(
-    `round-trip pass rate >= ${(ROUND_TRIP_FLOOR * 100).toFixed(0)}% across ${index.entries.length} fixtures`,
-    () => {
-      let passed = 0;
-      const mismatches: { file: string; bytes: number; diff: string }[] = [];
-      const skipped: { file: string; bytes: number; reason: string }[] = [];
+  it(`round-trip pass rate >= ${(ROUND_TRIP_FLOOR * 100).toFixed(0)}% across ${index.entries.length} fixtures`, () => {
+    let passed = 0;
+    const mismatches: { file: string; bytes: number; diff: string }[] = [];
+    const skipped: { file: string; bytes: number; reason: string }[] = [];
 
-      for (const entry of index.entries) {
-        const skipReason = SKIP_FILES.get(entry.file);
-        if (skipReason !== undefined) {
-          skipped.push({
-            file: entry.file,
-            bytes: entry.bytes,
-            reason: skipReason,
-          });
-          continue;
-        }
-
-        const dtext = readFileSync(resolve(CORPUS_GOLDEN, entry.file), 'utf8');
-        // Wiki render options to match `golden-baseline` (so any parser
-        // option-sensitive shapes stay consistent across the two harnesses).
-        const opts = { allowColor: true, maxThumbs: 75 };
-        const ast1 = parseDTextToAST(dtext, opts) as DocumentNode;
-        const formatted = formatDText(ast1).output;
-        const ast2 = parseDTextToAST(formatted, opts) as DocumentNode;
-        const cmp = astEqual(ast1, ast2);
-        if (cmp.equal) {
-          passed++;
-        } else {
-          mismatches.push({
-            file: entry.file,
-            bytes: entry.bytes,
-            diff: cmp.diff?.slice(0, MAX_DIFF_CHARS) ?? '',
-          });
-        }
+    for (const entry of index.entries) {
+      const skipReason = SKIP_FILES.get(entry.file);
+      if (skipReason !== undefined) {
+        skipped.push({
+          file: entry.file,
+          bytes: entry.bytes,
+          reason: skipReason,
+        });
+        continue;
       }
 
-      const total = index.entries.length;
-      const pct = passed / total;
-      const lines: string[] = [
-        `[golden-roundtrip] ${passed}/${total} (${(pct * 100).toFixed(1)}%) pass, ${mismatches.length} mismatch, ${skipped.length} skipped`,
-      ];
-      if (skipped.length > 0) {
-        lines.push('[golden-roundtrip] skipped (documented divergences):');
-        for (const s of skipped.sort((a, b) => a.bytes - b.bytes)) {
-          lines.push(`  ${s.bytes}b  ${s.file}  -- ${s.reason}`);
-        }
+      const dtext = readFileSync(resolve(CORPUS_GOLDEN, entry.file), 'utf8');
+      // Wiki render options to match `golden-baseline` (so any parser
+      // option-sensitive shapes stay consistent across the two harnesses).
+      const opts = { allowColor: true, maxThumbs: 75 };
+      const ast1 = parseDTextToAST(dtext, opts) as DocumentNode;
+      const formatted = formatDText(ast1).output;
+      const ast2 = parseDTextToAST(formatted, opts) as DocumentNode;
+      const cmp = astEqual(ast1, ast2);
+      if (cmp.equal) {
+        passed++;
+      } else {
+        mismatches.push({
+          file: entry.file,
+          bytes: entry.bytes,
+          diff: cmp.diff?.slice(0, MAX_DIFF_CHARS) ?? '',
+        });
       }
-      if (mismatches.length > 0) {
-        lines.push('[golden-roundtrip] AST mismatches:');
-        for (const m of mismatches.sort((a, b) => a.bytes - b.bytes)) {
-          lines.push(`  ${m.bytes}b  ${m.file}\n    ${m.diff}`);
-        }
-      }
-      const summary = '\n' + lines.join('\n');
-      // eslint-disable-next-line no-console
-      console.log(summary);
+    }
 
-      if (pct < ROUND_TRIP_FLOOR) {
-        expect.fail(
-          `round-trip pass rate ${(pct * 100).toFixed(1)}% below floor ${(ROUND_TRIP_FLOOR * 100).toFixed(0)}%${summary}`,
-        );
+    const total = index.entries.length;
+    const pct = passed / total;
+    const lines: string[] = [
+      `[golden-roundtrip] ${passed}/${total} (${(pct * 100).toFixed(1)}%) pass, ${mismatches.length} mismatch, ${skipped.length} skipped`,
+    ];
+    if (skipped.length > 0) {
+      lines.push('[golden-roundtrip] skipped (documented divergences):');
+      for (const s of skipped.sort((a, b) => a.bytes - b.bytes)) {
+        lines.push(`  ${s.bytes}b  ${s.file}  -- ${s.reason}`);
       }
-    },
-  );
+    }
+    if (mismatches.length > 0) {
+      lines.push('[golden-roundtrip] AST mismatches:');
+      for (const m of mismatches.sort((a, b) => a.bytes - b.bytes)) {
+        lines.push(`  ${m.bytes}b  ${m.file}\n    ${m.diff}`);
+      }
+    }
+    const summary = '\n' + lines.join('\n');
+    // eslint-disable-next-line no-console
+    console.log(summary);
+
+    if (pct < ROUND_TRIP_FLOOR) {
+      expect.fail(
+        `round-trip pass rate ${(pct * 100).toFixed(1)}% below floor ${(ROUND_TRIP_FLOOR * 100).toFixed(0)}%${summary}`,
+      );
+    }
+  });
 });

@@ -20,7 +20,11 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, basename } from 'node:path';
-import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
+import {
+  GenericContainer,
+  Wait,
+  type StartedTestContainer,
+} from 'testcontainers';
 
 import { parseDText } from '../src/dtext';
 
@@ -40,13 +44,17 @@ const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const iters = Number(positional[0] ?? 10);
 const maxBytesIdx = process.argv.indexOf('--max-bytes');
 const maxBytes =
-  maxBytesIdx >= 0 ? Number(process.argv[maxBytesIdx + 1]) : Number.POSITIVE_INFINITY;
+  maxBytesIdx >= 0
+    ? Number(process.argv[maxBytesIdx + 1])
+    : Number.POSITIVE_INFINITY;
 
 const ROOT = process.cwd();
 const GOLDEN = resolve(ROOT, 'corpus', 'golden');
 const INDEX = resolve(GOLDEN, 'index.json');
 if (!existsSync(INDEX)) {
-  console.error('corpus/golden/index.json missing. Run `npm run corpus:build`.');
+  console.error(
+    'corpus/golden/index.json missing. Run `npm run corpus:build`.',
+  );
   process.exit(1);
 }
 
@@ -66,7 +74,9 @@ if (fixtures.length === 0) {
 
 function pct(arr: number[], p: number): number {
   const sorted = [...arr].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length * p) / 100))];
+  return sorted[
+    Math.min(sorted.length - 1, Math.floor((sorted.length * p) / 100))
+  ];
 }
 const median = (a: number[]) => pct(a, 50);
 const fmt = (n: number) => n.toFixed(2).padStart(9);
@@ -79,17 +89,24 @@ interface Row {
   oracle: number[];
 }
 
-async function startOracle(): Promise<{ url: string; stop: () => Promise<void> }> {
+async function startOracle(): Promise<{
+  url: string;
+  stop: () => Promise<void>;
+}> {
   if (process.env.DMARK_ORACLE_URL) {
     const url = process.env.DMARK_ORACLE_URL;
     console.log(`[oracle] using preset DMARK_ORACLE_URL=${url}`);
     return { url, stop: async () => {} };
   }
   console.log('[oracle] starting container dmark-oracle:dev ...');
-  const container: StartedTestContainer = await new GenericContainer('dmark-oracle:dev')
+  const container: StartedTestContainer = await new GenericContainer(
+    'dmark-oracle:dev',
+  )
     .withExposedPorts(4567)
     .withWaitStrategy(
-      Wait.forHttp('/health', 4567).forStatusCode(200).withStartupTimeout(30_000),
+      Wait.forHttp('/health', 4567)
+        .forStatusCode(200)
+        .withStartupTimeout(30_000),
     )
     .start();
   const host = container.getHost();
@@ -150,9 +167,7 @@ async function main() {
       `bench-vs-oracle: ${fixtures.length} fixtures, ${iters} iters each` +
         (Number.isFinite(maxBytes) ? `, maxBytes=${maxBytes}` : ''),
     );
-    console.log(
-      '   bytes      dmark      oracle    ratio  fixture',
-    );
+    console.log('   bytes      dmark      oracle    ratio  fixture');
     let totDm = 0;
     let totOr = 0;
     for (const r of rows) {
@@ -169,7 +184,9 @@ async function main() {
     console.log(`aggregate sum-of-medians:`);
     console.log(`  dmark   ${fmt(totDm)}ms`);
     console.log(`  oracle  ${fmt(totOr)}ms`);
-    console.log(`  ratio   ${(totOr / totDm).toFixed(2)}x  (oracle / dmark; >1 means dmark is faster)`);
+    console.log(
+      `  ratio   ${(totOr / totDm).toFixed(2)}x  (oracle / dmark; >1 means dmark is faster)`,
+    );
 
     const allDm = rows.map((r) => median(r.dmark));
     const allOr = rows.map((r) => median(r.oracle));
@@ -184,8 +201,14 @@ async function main() {
     if (cohort20kb.length > 0) {
       const c20Dm = median(cohort20kb.map((r) => median(r.dmark)));
       const c20Or = median(cohort20kb.map((r) => median(r.oracle)));
-      const c20DmP95 = pct(cohort20kb.flatMap((r) => r.dmark), 95);
-      const c20OrP95 = pct(cohort20kb.flatMap((r) => r.oracle), 95);
+      const c20DmP95 = pct(
+        cohort20kb.flatMap((r) => r.dmark),
+        95,
+      );
+      const c20OrP95 = pct(
+        cohort20kb.flatMap((r) => r.oracle),
+        95,
+      );
       console.log(
         `\n≤20KB cohort (${cohort20kb.length} fixtures):` +
           `\n  dmark   median ${fmt(c20Dm)}ms  p95 ${fmt(c20DmP95)}ms` +

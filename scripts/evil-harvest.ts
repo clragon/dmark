@@ -39,7 +39,8 @@ interface Failure {
 
 function loadSlice(i: number): Case[] {
   const file = resolve(SLICES_DIR, `slice-${i}.json`);
-  if (!existsSync(file)) throw new Error(`missing slice ${i}; run build-slices.mjs`);
+  if (!existsSync(file))
+    throw new Error(`missing slice ${i}; run build-slices.mjs`);
   return JSON.parse(readFileSync(file, 'utf8')) as Case[];
 }
 

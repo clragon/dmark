@@ -11,7 +11,9 @@ async function main(): Promise<void> {
   try {
     const health = await oracleHealth();
     if (!health.ok) {
-      throw new Error(`oracle /health returned ok=false: ${JSON.stringify(health)}`);
+      throw new Error(
+        `oracle /health returned ok=false: ${JSON.stringify(health)}`,
+      );
     }
     console.log(`[smoke] oracle healthy, dtext ${health.dtext_version}`);
 
@@ -20,7 +22,9 @@ async function main(): Promise<void> {
       throw new Error(`oracle /render returned error: ${result.error}`);
     }
     if (!result.html.includes('hi')) {
-      throw new Error(`oracle /render html missing expected content: ${result.html}`);
+      throw new Error(
+        `oracle /render html missing expected content: ${result.html}`,
+      );
     }
     console.log(`[smoke] render ok: ${result.html}`);
   } finally {

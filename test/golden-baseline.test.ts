@@ -61,73 +61,70 @@ suite('dtext baseline against ruby oracle', () => {
     return;
   }
 
-  it(
-    `pass rate >= ${(PHASE_1_FLOOR * 100).toFixed(0)}% across ${index.entries.length} fixtures`,
-    async () => {
-      let passed = 0;
-      const mismatches: { file: string; bytes: number; diff: string }[] = [];
-      const skipped: { file: string; bytes: number; reason: string }[] = [];
+  it(`pass rate >= ${(PHASE_1_FLOOR * 100).toFixed(0)}% across ${index.entries.length} fixtures`, async () => {
+    let passed = 0;
+    const mismatches: { file: string; bytes: number; diff: string }[] = [];
+    const skipped: { file: string; bytes: number; reason: string }[] = [];
 
-      for (const entry of index.entries) {
-        const skipReason = SKIP_FILES.get(entry.file);
-        if (skipReason !== undefined) {
-          skipped.push({
-            file: entry.file,
-            bytes: entry.bytes,
-            reason: skipReason,
-          });
-          continue;
-        }
-
-        const dtext = readFileSync(resolve(CORPUS_GOLDEN, entry.file), 'utf8');
-        // Wiki pages render with these options on production e621:
-        //   format_text(body, allow_color: true, max_thumbs: 75)
-        // (app/views/wiki_pages/show.html.erb). Both sides match that.
-        const renderOpts = { allow_color: true, max_thumbs: 75 };
-        const oracleHtml = (await renderViaOracle(dtext, renderOpts)).html;
-        const dmarkHtml = parseDText(dtext, {
-          allowColor: renderOpts.allow_color,
-          maxThumbs: renderOpts.max_thumbs,
+    for (const entry of index.entries) {
+      const skipReason = SKIP_FILES.get(entry.file);
+      if (skipReason !== undefined) {
+        skipped.push({
+          file: entry.file,
+          bytes: entry.bytes,
+          reason: skipReason,
         });
-        const cmp = domEqual(dmarkHtml, oracleHtml);
-
-        if (cmp.equal) {
-          passed++;
-        } else {
-          mismatches.push({
-            file: entry.file,
-            bytes: entry.bytes,
-            diff: cmp.diff?.slice(0, MAX_DIFF_CHARS) ?? '',
-          });
-        }
+        continue;
       }
 
-      const total = index.entries.length;
-      const pct = passed / total;
-      const lines: string[] = [
-        `[golden-baseline] ${passed}/${total} (${(pct * 100).toFixed(1)}%) pass, ${mismatches.length} mismatch, ${skipped.length} skipped`,
-      ];
-      if (skipped.length > 0) {
-        lines.push('[golden-baseline] skipped (known parser bugs):');
-        for (const s of skipped.sort((a, b) => a.bytes - b.bytes)) {
-          lines.push(`  ${s.bytes}b  ${s.file}  -- ${s.reason}`);
-        }
-      }
-      if (mismatches.length > 0) {
-        lines.push('[golden-baseline] dom mismatches:');
-        for (const m of mismatches.sort((a, b) => a.bytes - b.bytes)) {
-          lines.push(`  ${m.bytes}b  ${m.file}\n    ${m.diff}`);
-        }
-      }
-      const summary = '\n' + lines.join('\n');
-      // eslint-disable-next-line no-console
-      console.log(summary);
+      const dtext = readFileSync(resolve(CORPUS_GOLDEN, entry.file), 'utf8');
+      // Wiki pages render with these options on production e621:
+      //   format_text(body, allow_color: true, max_thumbs: 75)
+      // (app/views/wiki_pages/show.html.erb). Both sides match that.
+      const renderOpts = { allow_color: true, max_thumbs: 75 };
+      const oracleHtml = (await renderViaOracle(dtext, renderOpts)).html;
+      const dmarkHtml = parseDText(dtext, {
+        allowColor: renderOpts.allow_color,
+        maxThumbs: renderOpts.max_thumbs,
+      });
+      const cmp = domEqual(dmarkHtml, oracleHtml);
 
-      if (pct < PHASE_1_FLOOR) {
-        expect.fail(
-          `pass rate ${(pct * 100).toFixed(1)}% below floor ${(PHASE_1_FLOOR * 100).toFixed(0)}%${summary}`,
-        );
+      if (cmp.equal) {
+        passed++;
+      } else {
+        mismatches.push({
+          file: entry.file,
+          bytes: entry.bytes,
+          diff: cmp.diff?.slice(0, MAX_DIFF_CHARS) ?? '',
+        });
       }
-    },
-  );
+    }
+
+    const total = index.entries.length;
+    const pct = passed / total;
+    const lines: string[] = [
+      `[golden-baseline] ${passed}/${total} (${(pct * 100).toFixed(1)}%) pass, ${mismatches.length} mismatch, ${skipped.length} skipped`,
+    ];
+    if (skipped.length > 0) {
+      lines.push('[golden-baseline] skipped (known parser bugs):');
+      for (const s of skipped.sort((a, b) => a.bytes - b.bytes)) {
+        lines.push(`  ${s.bytes}b  ${s.file}  -- ${s.reason}`);
+      }
+    }
+    if (mismatches.length > 0) {
+      lines.push('[golden-baseline] dom mismatches:');
+      for (const m of mismatches.sort((a, b) => a.bytes - b.bytes)) {
+        lines.push(`  ${m.bytes}b  ${m.file}\n    ${m.diff}`);
+      }
+    }
+    const summary = '\n' + lines.join('\n');
+    // eslint-disable-next-line no-console
+    console.log(summary);
+
+    if (pct < PHASE_1_FLOOR) {
+      expect.fail(
+        `pass rate ${(pct * 100).toFixed(1)}% below floor ${(PHASE_1_FLOOR * 100).toFixed(0)}%${summary}`,
+      );
+    }
+  });
 });

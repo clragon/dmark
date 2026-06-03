@@ -138,7 +138,10 @@ function walkBlocksRange(
         // same tag, so an info diagnostic flags that the round-trip emits
         // ATX form. The clamp guards against malformed `tag` values.
         const close = findContainerClose(tokens, i);
-        const level = Math.min(6, Math.max(1, parseInt(tok.tag.slice(1), 10) || 1));
+        const level = Math.min(
+          6,
+          Math.max(1, parseInt(tok.tag.slice(1), 10) || 1),
+        );
         const inline = tokens[i + 1];
         const children =
           inline && inline.type === 'inline' && inline.children
@@ -186,14 +189,20 @@ function walkBlocksRange(
             message: `Code block language hint \`${tok.info.trim()}\` dropped (AST has no slot for it).`,
           });
         }
-        const node: CodeBlockNode = { type: 'code_block', content: tok.content };
+        const node: CodeBlockNode = {
+          type: 'code_block',
+          content: tok.content,
+        };
         out.push(node);
         break;
       }
       case 'code_block': {
         // Indented (4-space) code block. No language hint is possible by
         // construction, so no diagnostic is needed.
-        const node: CodeBlockNode = { type: 'code_block', content: tok.content };
+        const node: CodeBlockNode = {
+          type: 'code_block',
+          content: tok.content,
+        };
         out.push(node);
         break;
       }
@@ -201,12 +210,7 @@ function walkBlocksRange(
         // Both BBCode `[section]` and HTML `<details>` forms emit this
         // token type from the sections plugin (see ADR-0011).
         const close = findContainerClose(tokens, i);
-        const children = walkBlocksRange(
-          tokens,
-          i + 1,
-          close,
-          diagnostics,
-        );
+        const children = walkBlocksRange(tokens, i + 1, close, diagnostics);
         const titleAttr = tok.attrGet('title');
         const expandedAttr = tok.attrGet('expanded');
         const node: SectionNode = {
@@ -238,12 +242,7 @@ function walkBlocksRange(
         // structure. Per-cell alignment from the header separator (`:---:`)
         // is dropped silently — the AST has no slot for it.
         const close = findContainerClose(tokens, i);
-        const children = walkTableChildren(
-          tokens,
-          i + 1,
-          close,
-          diagnostics,
-        );
+        const children = walkTableChildren(tokens, i + 1, close, diagnostics);
         const node: TableNode = { type: 'table', children };
         out.push(node);
         i = close;
@@ -288,10 +287,7 @@ function walkBlocksRange(
 // Containers like `**bold**` arrive as paired `strong_open` / `strong_close`
 // markers in the same flat list with `text` tokens in between; the walker
 // matches the close, recurses on the slice, and bridges past it.
-function walkInline(
-  tokens: Token[],
-  diagnostics: Diagnostic[],
-): InlineNode[] {
+function walkInline(tokens: Token[], diagnostics: Diagnostic[]): InlineNode[] {
   return walkInlineRange(tokens, 0, tokens.length, diagnostics);
 }
 
@@ -644,10 +640,7 @@ function walkNestedListsInItem(
 ): void {
   for (let i = start; i < end; i++) {
     const tok = tokens[i]!;
-    if (
-      tok.type === 'bullet_list_open' ||
-      tok.type === 'ordered_list_open'
-    ) {
+    if (tok.type === 'bullet_list_open' || tok.type === 'ordered_list_open') {
       if (tok.type === 'ordered_list_open') {
         emitOrderedDemoted(diagnostics);
       }

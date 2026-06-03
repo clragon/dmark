@@ -52,9 +52,7 @@ describe('section BBCode form', () => {
   });
 
   it('captures both title and expanded from `[section,expanded=Title]`', () => {
-    const result = parseMarkdown(
-      '[section,expanded=Notes]\nhello\n[/section]',
-    );
+    const result = parseMarkdown('[section,expanded=Notes]\nhello\n[/section]');
     expect(result.document.children[0]).toEqual({
       type: 'section',
       title: 'Notes',
@@ -104,10 +102,7 @@ describe('section BBCode form', () => {
     );
     expect(result.document.children[0]).toMatchObject({
       type: 'section',
-      children: [
-        { type: 'header', level: 1 },
-        { type: 'list' },
-      ],
+      children: [{ type: 'header', level: 1 }, { type: 'list' }],
     });
   });
 
@@ -122,7 +117,9 @@ describe('section BBCode form', () => {
   it('does not open a section when the close is missing', () => {
     expect(() => parseMarkdown('[section]\nno end')).not.toThrow();
     const result = parseMarkdown('[section]\nno end');
-    expect(result.document.children.find((c) => c.type === 'section')).toBeUndefined();
+    expect(
+      result.document.children.find((c) => c.type === 'section'),
+    ).toBeUndefined();
   });
 });
 
@@ -224,14 +221,15 @@ describe('section HTML form `<details>`', () => {
     const html = parseMarkdown(
       '<details open><summary>X</summary>\nbody\n</details>',
     ).document.children[0];
-    const bbcode = parseMarkdown(
-      '[section,expanded=X]\nbody\n[/section]',
-    ).document.children[0];
+    const bbcode = parseMarkdown('[section,expanded=X]\nbody\n[/section]')
+      .document.children[0];
     expect(html).toEqual(bbcode);
   });
 
   it('rejects unsupported attributes (falls through to text)', () => {
     const result = parseMarkdown('<details class="foo">\nx\n</details>');
-    expect(result.document.children.find((c) => c.type === 'section')).toBeUndefined();
+    expect(
+      result.document.children.find((c) => c.type === 'section'),
+    ).toBeUndefined();
   });
 });

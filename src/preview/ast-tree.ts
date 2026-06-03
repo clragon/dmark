@@ -7,7 +7,9 @@
 
 type Plain = string | number | boolean | null | undefined;
 
-function isASTNodeLike(v: unknown): v is { type: string } & Record<string, unknown> {
+function isASTNodeLike(
+  v: unknown,
+): v is { type: string } & Record<string, unknown> {
   return (
     typeof v === 'object' &&
     v !== null &&
@@ -52,7 +54,10 @@ function renderNode(
   const header = document.createElement('div');
   wrap.appendChild(header);
 
-  const childGroups: Array<{ key: string; nodes: Array<{ type: string } & Record<string, unknown>> }> = [];
+  const childGroups: Array<{
+    key: string;
+    nodes: Array<{ type: string } & Record<string, unknown>>;
+  }> = [];
   const scalarParts: Array<{ key: string; value: Plain }> = [];
 
   for (const [key, raw] of Object.entries(node)) {
@@ -60,7 +65,10 @@ function renderNode(
     if (isASTNodeLike(raw)) {
       childGroups.push({ key, nodes: [raw] });
     } else if (isASTNodeArray(raw)) {
-      childGroups.push({ key, nodes: raw as Array<{ type: string } & Record<string, unknown>> });
+      childGroups.push({
+        key,
+        nodes: raw as Array<{ type: string } & Record<string, unknown>>,
+      });
     } else if (
       raw === undefined ||
       raw === null ||

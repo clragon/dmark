@@ -30,7 +30,8 @@ const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const flagValues = new Set<string>();
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i];
-  if (a === '--label' || a === '--compare') flagValues.add(process.argv[i + 1] ?? '');
+  if (a === '--label' || a === '--compare')
+    flagValues.add(process.argv[i + 1] ?? '');
 }
 const cleanPositional = positional.filter((a) => !flagValues.has(a));
 const itersArg = Number(cleanPositional[0] ?? 15);
@@ -73,7 +74,10 @@ const opts = { allowColor: true, maxThumbs: 75 };
 
 function pct(arr: number[], p: number): number {
   const sorted = [...arr].sort((a, b) => a - b);
-  const idx = Math.min(sorted.length - 1, Math.floor((sorted.length * p) / 100));
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.floor((sorted.length * p) / 100),
+  );
   return sorted[idx];
 }
 function median(arr: number[]): number {
@@ -94,7 +98,13 @@ for (const f of fixtures) {
 if (SPLIT) {
   // Diagnostic mode: time parse-only and render-only separately to surface
   // which side dominates. Skips the comparison/save flow.
-  const splitResults: { name: string; bytes: number; pMed: number; rMed: number; tMed: number }[] = [];
+  const splitResults: {
+    name: string;
+    bytes: number;
+    pMed: number;
+    rMed: number;
+    tMed: number;
+  }[] = [];
   for (const f of fixtures) {
     const parseS: number[] = [];
     const renderS: number[] = [];
@@ -174,9 +184,7 @@ console.log(
     Number.isFinite(maxBytesArg) ? maxBytesArg : 'inf'
   }`,
 );
-console.log(
-  '  bytes      median       p95      best  fixture',
-);
+console.log('  bytes      median       p95      best  fixture');
 for (const r of results.slice(0, 20)) {
   console.log(
     `  ${fmtInt(r.bytes)}  ${fmt(r.median)}ms ${fmt(r.p95)}ms ${fmt(r.best)}ms  ${basename(r.name)}`,
@@ -187,22 +195,32 @@ if (results.length > 20) {
 }
 
 const aggMedian = median(results.map((r) => r.median));
-const aggP95 = pct(results.map((r) => r.p95), 95);
+const aggP95 = pct(
+  results.map((r) => r.p95),
+  95,
+);
 const aggMax = Math.max(...results.map((r) => r.median));
 const totalMs = allIters.reduce((a, b) => a + b, 0);
 
 console.log('');
-console.log(`aggregate (per-fixture median across ${results.length} fixtures):`);
+console.log(
+  `aggregate (per-fixture median across ${results.length} fixtures):`,
+);
 console.log(`  median-of-medians  ${fmt(aggMedian)}ms`);
 console.log(`  p95-of-p95s        ${fmt(aggP95)}ms`);
 console.log(`  worst median       ${fmt(aggMax)}ms`);
-console.log(`  total time         ${fmt(totalMs)}ms across ${allIters.length} parses`);
+console.log(
+  `  total time         ${fmt(totalMs)}ms across ${allIters.length} parses`,
+);
 console.log('');
 
 const under20kb = results.filter((r) => r.bytes <= 20480);
 if (under20kb.length > 0) {
   const m20 = median(under20kb.map((r) => r.median));
-  const p95_20 = pct(under20kb.map((r) => r.p95), 95);
+  const p95_20 = pct(
+    under20kb.map((r) => r.p95),
+    95,
+  );
   console.log(
     `≤20KB cohort (${under20kb.length} fixtures): median ${fmt(m20)}ms, p95 ${fmt(p95_20)}ms ` +
       `(targets: <10ms, <25ms)`,
@@ -248,7 +266,14 @@ if (COMPARE) {
     results: { name: string; median: number; p95: number; bytes: number }[];
   };
   const prevByName = new Map(prev.results.map((r) => [r.name, r]));
-  const deltas: { name: string; pctMedian: number; deltaMs: number; bytes: number; before: number; after: number }[] = [];
+  const deltas: {
+    name: string;
+    pctMedian: number;
+    deltaMs: number;
+    bytes: number;
+    before: number;
+    after: number;
+  }[] = [];
   for (const r of results) {
     const p = prevByName.get(r.name);
     if (!p) continue;
@@ -270,9 +295,12 @@ if (COMPARE) {
       `  ${fmtInt(d.bytes)} ${fmt(d.before)}ms ${fmt(d.after)}ms ${fmt(d.deltaMs)}ms ${d.pctMedian.toFixed(1).padStart(6)}%  ${basename(d.name)}`,
     );
   }
-  if (deltas.length > 10) console.log(`  ... ${deltas.length - 10} more (top 10 fastest shown)`);
+  if (deltas.length > 10)
+    console.log(`  ... ${deltas.length - 10} more (top 10 fastest shown)`);
   console.log('worst regressions (top 10 slowest):');
-  for (const d of [...deltas].sort((a, b) => b.pctMedian - a.pctMedian).slice(0, 10)) {
+  for (const d of [...deltas]
+    .sort((a, b) => b.pctMedian - a.pctMedian)
+    .slice(0, 10)) {
     console.log(
       `  ${fmtInt(d.bytes)} ${fmt(d.before)}ms ${fmt(d.after)}ms ${fmt(d.deltaMs)}ms ${d.pctMedian.toFixed(1).padStart(6)}%  ${basename(d.name)}`,
     );

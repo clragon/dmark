@@ -62,9 +62,7 @@ describe('spoiler-block BBCode form', () => {
   });
 
   it('recursively tokenises inner block content', () => {
-    const result = parseMarkdown(
-      '[spoiler]\n# Title\n\nbody\n[/spoiler]',
-    );
+    const result = parseMarkdown('[spoiler]\n# Title\n\nbody\n[/spoiler]');
     expect(result.document.children[0]).toEqual({
       type: 'spoiler_block',
       children: [

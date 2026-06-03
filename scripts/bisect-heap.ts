@@ -16,7 +16,10 @@ if (!fixture || !startStr || !endStr) {
 const start = Number(startStr);
 const end = Number(endStr);
 const budgetMs = budgetStr ? Number(budgetStr) : 4000;
-const text = readFileSync(resolve(process.cwd(), fixture), 'utf8').slice(start, end);
+const text = readFileSync(resolve(process.cwd(), fixture), 'utf8').slice(
+  start,
+  end,
+);
 
 const t0 = Date.now();
 const timer = setTimeout(() => {

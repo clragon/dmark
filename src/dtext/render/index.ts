@@ -371,11 +371,7 @@ function formatHeader(
   formatInlines(node.children, out, ctx);
 }
 
-function formatQuote(
-  node: QuoteNode,
-  out: string[],
-  ctx: FormatContext,
-): void {
+function formatQuote(node: QuoteNode, out: string[], ctx: FormatContext): void {
   if (node.color !== undefined) {
     out.push('[quote=', node.color, ']\n');
   } else {
@@ -412,11 +408,7 @@ function formatSection(
   out.push('\n[/section]');
 }
 
-function formatTable(
-  node: TableNode,
-  out: string[],
-  ctx: FormatContext,
-): void {
+function formatTable(node: TableNode, out: string[], ctx: FormatContext): void {
   // Pretty layout (ADR-0008): structural tags on their own lines, rows on
   // their own lines, cells inline within the row.
   out.push('[table]\n');
@@ -515,11 +507,7 @@ function formatLTable(
   out.push('[/ltable]');
 }
 
-function formatList(
-  node: ListNode,
-  out: string[],
-  ctx: FormatContext,
-): void {
+function formatList(node: ListNode, out: string[], ctx: FormatContext): void {
   // Depth maps to asterisk-count, mirroring the parser's `(\*+)[ \t]+` rule.
   // One line per item; no container framing.
   for (let i = 0; i < node.items.length; i++) {
@@ -580,9 +568,7 @@ function formatUrlLink(
 ): void {
   const href = node.href;
   const needsDelim =
-    /\s/.test(href) ||
-    urlEndsAtBoundary(href) ||
-    !isSafeUrlFollow(trailing);
+    /\s/.test(href) || urlEndsAtBoundary(href) || !isSafeUrlFollow(trailing);
   // The `<URL>` delimited form (RE_DELIMITED_URL) cannot represent a
   // URL whose path itself contains `<` or `>` (the parser stops at the
   // first inner `>`). For those URLs we have to fall back to the bare

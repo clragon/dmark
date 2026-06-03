@@ -10,7 +10,11 @@
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
+import {
+  GenericContainer,
+  Wait,
+  type StartedTestContainer,
+} from 'testcontainers';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(HERE, '..', '.evil-probe.json');
@@ -25,14 +29,21 @@ interface ProbeResult {
   html: string;
 }
 
-async function startOracle(): Promise<{ url: string; stop: () => Promise<void> }> {
+async function startOracle(): Promise<{
+  url: string;
+  stop: () => Promise<void>;
+}> {
   if (process.env.DMARK_ORACLE_URL) {
     return { url: process.env.DMARK_ORACLE_URL, stop: async () => {} };
   }
-  const container: StartedTestContainer = await new GenericContainer('dmark-oracle:dev')
+  const container: StartedTestContainer = await new GenericContainer(
+    'dmark-oracle:dev',
+  )
     .withExposedPorts(4567)
     .withWaitStrategy(
-      Wait.forHttp('/health', 4567).forStatusCode(200).withStartupTimeout(30_000),
+      Wait.forHttp('/health', 4567)
+        .forStatusCode(200)
+        .withStartupTimeout(30_000),
     )
     .start();
   const host = container.getHost();

@@ -33,7 +33,10 @@ function tagSignature(input: string): string {
 }
 
 function nameStem(name: string): string {
-  return name.split(/[\s/_-]+/).slice(0, 2).join(' ');
+  return name
+    .split(/[\s/_-]+/)
+    .slice(0, 2)
+    .join(' ');
 }
 
 function diffPrefix(a: string, b: string): string {

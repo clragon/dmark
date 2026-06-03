@@ -6,7 +6,13 @@
 // Usage:
 //   npx tsx test/evil/evil-parser-destroyer/build-slices.mjs
 
-import { mkdirSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
+import {
+  mkdirSync,
+  writeFileSync,
+  existsSync,
+  readdirSync,
+  unlinkSync,
+} from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

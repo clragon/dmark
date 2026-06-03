@@ -29,10 +29,7 @@ describe('domEqual', () => {
   });
 
   it('preserves whitespace inside <pre>', () => {
-    const r = domEqual(
-      '<pre>line1\n  line2</pre>',
-      '<pre>line1 line2</pre>',
-    );
+    const r = domEqual('<pre>line1\n  line2</pre>', '<pre>line1 line2</pre>');
     expect(r.equal).toBe(false);
     expect(r.diff).toContain('line1');
   });

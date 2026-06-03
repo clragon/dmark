@@ -449,7 +449,9 @@ function renderLink(
 
   // Ruby's dtext renderer omits rel="nofollow" on id_link anchors (post #N,
   // comment #N, etc.) but adds it on every other link type.
-  out.push(node.linkType === 'id_link' ? '<a class="' : '<a rel="nofollow" class="');
+  out.push(
+    node.linkType === 'id_link' ? '<a class="' : '<a rel="nofollow" class="',
+  );
   appendLinkClasses(node, out);
   out.push('"');
 
@@ -503,4 +505,3 @@ function appendLinkClasses(node: LinkNode, out: string[]): void {
       break;
   }
 }
-

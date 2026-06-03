@@ -381,7 +381,9 @@ function preprocessLTables(input: string): {
     const closeMatch = closeRe.exec(input);
     const contentEnd = closeMatch !== null ? closeMatch.index : input.length;
     const nextCursor =
-      closeMatch !== null ? closeMatch.index + closeMatch[0].length : input.length;
+      closeMatch !== null
+        ? closeMatch.index + closeMatch[0].length
+        : input.length;
     const contents = input.slice(contentStart, contentEnd).trim();
 
     ltableSources.set(result.length, contents);
@@ -473,15 +475,12 @@ export class DTextStateMachineParser {
   // `[ltable]` source survives (`preprocessLTables` did the textual swap).
   private ltableSources: Map<number, string>;
 
-
   // Single compiled regex for all ID patterns. Ruby requires exactly one
   // ASCII space or NBSP between the prefix word and `#` (oracle-verified:
   // `pool#1234`, `pool  #1234`, and `pool\t#1234` all stay literal, while
   // `pool #1234` and `pool #1234` link).
   private static readonly COMPILED_ID_PATTERN = new RegExp(
-    '^(' +
-      ID_PATTERNS.map((p) => p.pattern).join('|') +
-      ') #(\\d+)',
+    '^(' + ID_PATTERNS.map((p) => p.pattern).join('|') + ') #(\\d+)',
     'i',
   );
 
@@ -490,9 +489,7 @@ export class DTextStateMachineParser {
   // alternation regex. `^` is dropped since sticky already anchors to
   // `lastIndex`.
   private static readonly COMPILED_ID_PATTERN_STICKY = new RegExp(
-    '(' +
-      ID_PATTERNS.map((p) => p.pattern).join('|') +
-      ') #(\\d+)',
+    '(' + ID_PATTERNS.map((p) => p.pattern).join('|') + ') #(\\d+)',
     'iy',
   );
 
@@ -909,31 +906,34 @@ export class DTextStateMachineParser {
 
     this.headerDepth++;
     try {
-    while (this.pos < this.input.length) {
-      if (this.peekNewline()) {
-        // Ruby's inline scanner has `newline* spoilers_close` as a single
-        // token: a stray `[/spoiler]` (with any number of leading newlines)
-        // is appended verbatim into the open header, and the header stays
-        // open. Other stray block-closes (`[/code]`, `[/table]`) lack the
-        // `newline*` prefix in the grammar, so they don't get this
-        // treatment — the bare newline closes the header first.
-        const consumed = this.consumeNewlinesIfFollowedByStraySpoilerClose();
-        if (consumed !== null) {
-          pushInlineMergingText(children, { type: 'text', content: consumed });
-          continue;
+      while (this.pos < this.input.length) {
+        if (this.peekNewline()) {
+          // Ruby's inline scanner has `newline* spoilers_close` as a single
+          // token: a stray `[/spoiler]` (with any number of leading newlines)
+          // is appended verbatim into the open header, and the header stays
+          // open. Other stray block-closes (`[/code]`, `[/table]`) lack the
+          // `newline*` prefix in the grammar, so they don't get this
+          // treatment — the bare newline closes the header first.
+          const consumed = this.consumeNewlinesIfFollowedByStraySpoilerClose();
+          if (consumed !== null) {
+            pushInlineMergingText(children, {
+              type: 'text',
+              content: consumed,
+            });
+            continue;
+          }
+          break;
         }
-        break;
+        // Ragel `header` calls `fcall inline`, and the inline scanner exits
+        // (`fexec ts; fret;`) on bracketed always-block opens: `[code]`,
+        // `[table]`, `[quote]`, `[section]`. The matching close stays
+        // unconsumed so the surrounding block scope promotes it into a real
+        // block. Stray `[/code]` / `[/table]` are NOT exits — they're absorbed
+        // inline as literal text (mirrors parseInlineContainer).
+        if (this.peekBlockElement() && !this.peekStrayCodeOrTableClose()) break;
+        const node = this.parseInlineElement();
+        if (node) pushInlineMergingText(children, node);
       }
-      // Ragel `header` calls `fcall inline`, and the inline scanner exits
-      // (`fexec ts; fret;`) on bracketed always-block opens: `[code]`,
-      // `[table]`, `[quote]`, `[section]`. The matching close stays
-      // unconsumed so the surrounding block scope promotes it into a real
-      // block. Stray `[/code]` / `[/table]` are NOT exits — they're absorbed
-      // inline as literal text (mirrors parseInlineContainer).
-      if (this.peekBlockElement() && !this.peekStrayCodeOrTableClose()) break;
-      const node = this.parseInlineElement();
-      if (node) pushInlineMergingText(children, node);
-    }
     } finally {
       this.headerDepth--;
     }
@@ -1083,9 +1083,12 @@ export class DTextStateMachineParser {
     while (this.pos < this.input.length) {
       const code = this.input.charCodeAt(this.pos);
       if (
-        code === 0x20 || code === 0x09 ||
-        code === 0x0a || code === 0x0d ||
-        code === 0x0b || code === 0x0c
+        code === 0x20 ||
+        code === 0x09 ||
+        code === 0x0a ||
+        code === 0x0d ||
+        code === 0x0b ||
+        code === 0x0c
       ) {
         this.pos++;
         continue;
@@ -1176,9 +1179,11 @@ export class DTextStateMachineParser {
   // untouched.
   private consumeStrayTableClose(): { literal: string } | null {
     const saved = this.pos;
-    if (this.matchString('[/tr]', true) ||
-        this.matchString('[/thead]', true) ||
-        this.matchString('[/tbody]', true)) {
+    if (
+      this.matchString('[/tr]', true) ||
+      this.matchString('[/thead]', true) ||
+      this.matchString('[/tbody]', true)
+    ) {
       return { literal: this.input.slice(saved, this.pos) };
     }
     if (this.matchString('[/th]', true) || this.matchString('[/td]', true)) {
@@ -1422,15 +1427,24 @@ export class DTextStateMachineParser {
           continue;
         }
         if (this.matchString('[/thead]', true)) {
-          pushInlineMergingText(children, { type: 'text', content: '[/thead]' });
+          pushInlineMergingText(children, {
+            type: 'text',
+            content: '[/thead]',
+          });
           continue;
         }
         if (this.matchString('[/tbody]', true)) {
-          pushInlineMergingText(children, { type: 'text', content: '[/tbody]' });
+          pushInlineMergingText(children, {
+            type: 'text',
+            content: '[/tbody]',
+          });
           continue;
         }
         if (this.matchString('[/table]', true)) {
-          pushInlineMergingText(children, { type: 'text', content: '[/table]' });
+          pushInlineMergingText(children, {
+            type: 'text',
+            content: '[/table]',
+          });
           continue;
         }
         this.pos++;
@@ -1757,10 +1771,7 @@ export class DTextStateMachineParser {
   ): InlineNode {
     const children: InlineNode[] = [];
 
-    while (
-      this.pos < this.input.length &&
-      !this.matchAnyClose(closePattern)
-    ) {
+    while (this.pos < this.input.length && !this.matchAnyClose(closePattern)) {
       // Ragel `newline* spoilers_close` matches greedily over EVERY leading
       // newline before a stray `[/spoiler]`. When no inline spoiler is open,
       // `dstack_close_block(BLOCK_SPOILER, ...)` returns false and appends
@@ -1880,14 +1891,23 @@ export class DTextStateMachineParser {
   private peekOuterContainerClose(
     self: 'quote' | 'spoiler' | 'section',
   ): boolean {
-    if (self !== 'section' && this.sectionDepth > 0 && this.peekString('[/section]', true))
+    if (
+      self !== 'section' &&
+      this.sectionDepth > 0 &&
+      this.peekString('[/section]', true)
+    )
       return true;
-    if (self !== 'quote' && this.quoteDepth > 0 && this.peekString('[/quote]', true))
+    if (
+      self !== 'quote' &&
+      this.quoteDepth > 0 &&
+      this.peekString('[/quote]', true)
+    )
       return true;
     if (
       self !== 'spoiler' &&
       this.spoilerBlockDepth > 0 &&
-      (this.peekString('[/spoiler]', true) || this.peekString('[/spoilers]', true))
+      (this.peekString('[/spoiler]', true) ||
+        this.peekString('[/spoilers]', true))
     )
       return true;
     return false;
@@ -2423,7 +2443,8 @@ export class DTextStateMachineParser {
     if (basicMatch) {
       const trimmed = trimUrlBoundaries(basicMatch[2]);
       if (!isAcceptedTextileUrl(trimmed)) return null;
-      const consumed = basicMatch[0].length - (basicMatch[2].length - trimmed.length);
+      const consumed =
+        basicMatch[0].length - (basicMatch[2].length - trimmed.length);
       this.pos += consumed;
       return { title: basicMatch[1], url: trimmed };
     }
@@ -2577,7 +2598,10 @@ export class DTextStateMachineParser {
     const len = input.length;
     while (this.pos < len) {
       let lookahead = this.pos;
-      while (lookahead < len && isHorizontalWhitespace(input.charCodeAt(lookahead))) {
+      while (
+        lookahead < len &&
+        isHorizontalWhitespace(input.charCodeAt(lookahead))
+      ) {
         lookahead++;
       }
       const code = input.charCodeAt(lookahead);
@@ -2668,8 +2692,7 @@ export class DTextStateMachineParser {
     // Some block markers (h1., * item, etc.) are only structural at the
     // start of a line. Mid-line they are ordinary text. Bracketed tags
     // ([code], [/code], ...) break paragraphs regardless of position.
-    const atLineStart =
-      this.pos === 0 || this.input[this.pos - 1] === '\n';
+    const atLineStart = this.pos === 0 || this.input[this.pos - 1] === '\n';
 
     // `[spoiler]` is never a block-context promoter from inside an inline run.
     // The block-vs-inline split is owned by parseBlock: `matchSpoilerBlockOpen`
@@ -2682,10 +2705,8 @@ export class DTextStateMachineParser {
     // matching open is in scope. Outside of one, ruby treats them as
     // ordinary inline text; otherwise parseBlock would infinite-loop since
     // no branch consumes them.
-    if (this.quoteDepth > 0 && this.testSticky(RE_QUOTE_CLOSE))
-      return true;
-    if (this.sectionDepth > 0 && this.testSticky(RE_SECTION_CLOSE))
-      return true;
+    if (this.quoteDepth > 0 && this.testSticky(RE_QUOTE_CLOSE)) return true;
+    if (this.sectionDepth > 0 && this.testSticky(RE_SECTION_CLOSE)) return true;
     if (this.spoilerBlockDepth > 0 && this.testSticky(RE_STRAY_SPOILER_CLOSE))
       return true;
 

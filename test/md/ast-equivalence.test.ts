@@ -45,29 +45,73 @@ const INLINE_PAIRS: Pair[] = [
   },
   { name: 'sup', dtext: '[sup]hi[/sup]', markdown: '[sup]hi[/sup]' },
   { name: 'sub', dtext: '[sub]hi[/sub]', markdown: '[sub]hi[/sub]' },
-  { name: 'color', dtext: '[color=red]hi[/color]', markdown: '[color=red]hi[/color]' },
+  {
+    name: 'color',
+    dtext: '[color=red]hi[/color]',
+    markdown: '[color=red]hi[/color]',
+  },
 ];
 
 // Reference constructs (links + wikilinks + tag search + magic links).
 const REFERENCE_PAIRS: Pair[] = [
   { name: 'wikilink: page', dtext: '[[page]]', markdown: '[[page]]' },
-  { name: 'wikilink: page|title', dtext: '[[wolf|the wolf]]', markdown: '[[wolf|the wolf]]' },
-  { name: 'wikilink: page#anchor', dtext: '[[wolf#types]]', markdown: '[[wolf#types]]' },
-  { name: 'wikilink: anchor only', dtext: '[[#footnotes]]', markdown: '[[#footnotes]]' },
-  { name: 'tag search: bare', dtext: '{{wolf solo}}', markdown: '{{wolf solo}}' },
-  { name: 'tag search: with title', dtext: '{{wolf|the wolf tag}}', markdown: '{{wolf|the wolf tag}}' },
-  { name: 'magic link: post', dtext: 'see post #1234', markdown: 'see post #1234' },
+  {
+    name: 'wikilink: page|title',
+    dtext: '[[wolf|the wolf]]',
+    markdown: '[[wolf|the wolf]]',
+  },
+  {
+    name: 'wikilink: page#anchor',
+    dtext: '[[wolf#types]]',
+    markdown: '[[wolf#types]]',
+  },
+  {
+    name: 'wikilink: anchor only',
+    dtext: '[[#footnotes]]',
+    markdown: '[[#footnotes]]',
+  },
+  {
+    name: 'tag search: bare',
+    dtext: '{{wolf solo}}',
+    markdown: '{{wolf solo}}',
+  },
+  {
+    name: 'tag search: with title',
+    dtext: '{{wolf|the wolf tag}}',
+    markdown: '{{wolf|the wolf tag}}',
+  },
+  {
+    name: 'magic link: post',
+    dtext: 'see post #1234',
+    markdown: 'see post #1234',
+  },
   { name: 'magic link: pool', dtext: 'see pool #5', markdown: 'see pool #5' },
-  { name: 'magic link: bur (uppercases)', dtext: 'bur #99', markdown: 'bur #99' },
-  { name: 'magic link: take down request', dtext: 'take down request #7', markdown: 'take down request #7' },
-  { name: 'internal anchor definition', dtext: '[#footnotes]', markdown: '[#footnotes]' },
+  {
+    name: 'magic link: bur (uppercases)',
+    dtext: 'bur #99',
+    markdown: 'bur #99',
+  },
+  {
+    name: 'magic link: take down request',
+    dtext: 'take down request #7',
+    markdown: 'take down request #7',
+  },
+  {
+    name: 'internal anchor definition',
+    dtext: '[#footnotes]',
+    markdown: '[#footnotes]',
+  },
 ];
 
 // Block constructs.
 const BLOCK_PAIRS: Pair[] = [
   { name: 'header level 1', dtext: 'h1. title', markdown: '# title' },
   { name: 'header level 3', dtext: 'h3. title', markdown: '### title' },
-  { name: 'blockquote (single line)', dtext: '[quote]hi[/quote]', markdown: '> hi' },
+  {
+    name: 'blockquote (single line)',
+    dtext: '[quote]hi[/quote]',
+    markdown: '> hi',
+  },
   {
     name: 'blockquote BBCode form (colourless)',
     dtext: '[quote]hi[/quote]',
@@ -106,8 +150,7 @@ const BLOCK_PAIRS: Pair[] = [
   {
     name: 'section: HTML form matches BBCode form',
     dtext: '[section,expanded=Notes]\nhello\n[/section]',
-    markdown:
-      '<details open><summary>Notes</summary>\nhello\n</details>',
+    markdown: '<details open><summary>Notes</summary>\nhello\n</details>',
   },
   // NOTE: fenced code block is intentionally absent. See "Documented
   // divergences" below for the trailing-newline shape difference.
@@ -171,20 +214,17 @@ runPairs('composition equivalence', COMPOSITION_PAIRS);
 // up into a `Pair` array.
 // -------------------------------------------------------------------------
 describe('documented AST divergences (asymmetric on purpose)', () => {
-  it.skip(
-    'CodeBlockNode.content trailing newline differs between dtext and markdown',
-    () => {
-      // dtext `[code]x[/code]` -> content "x" (verbatim slice between tags).
-      // markdown ```\nx\n``` -> content "x\n" (markdown-it appends \n by
-      // convention). Both render identically through the AST→html path.
-      // Equivalence on this construct would require either the dtext side
-      // to append a trailing \n or the markdown side to strip one. Neither
-      // captures all input shapes (e.g. `[code]x\n\n[/code]` vs the
-      // markdown form with two trailing blank lines), so the divergence
-      // is left in place and verification on this construct rests on the
-      // rendered-html oracle path (#10) rather than AST equivalence.
-    },
-  );
+  it.skip('CodeBlockNode.content trailing newline differs between dtext and markdown', () => {
+    // dtext `[code]x[/code]` -> content "x" (verbatim slice between tags).
+    // markdown ```\nx\n``` -> content "x\n" (markdown-it appends \n by
+    // convention). Both render identically through the AST→html path.
+    // Equivalence on this construct would require either the dtext side
+    // to append a trailing \n or the markdown side to strip one. Neither
+    // captures all input shapes (e.g. `[code]x\n\n[/code]` vs the
+    // markdown form with two trailing blank lines), so the divergence
+    // is left in place and verification on this construct rests on the
+    // rendered-html oracle path (#10) rather than AST equivalence.
+  });
 });
 
 // -------------------------------------------------------------------------
@@ -196,21 +236,15 @@ describe('documented AST divergences (asymmetric on purpose)', () => {
 // into a `Pair` array above.
 // -------------------------------------------------------------------------
 describe('dtext-only constructs (markdown cannot produce, by design)', () => {
-  it.skip(
-    '[ltable] -> LTableNode (markdown pipe tables map to TableNode; ADR-0012)',
-    () => {
-      // No assertion. Inventory only.
-    },
-  );
-  it.skip(
-    'literal_html / raw_block_text from stray dtext close tags',
-    () => {
-      // These are oracle-quirk salvage paths on the dtext parser. The
-      // markdown side never produces them because its rejection mechanism
-      // is the diagnostic catalog (md.legacy_bbcode etc.), not literal-text
-      // fallout from container-pair mismatches.
-    },
-  );
+  it.skip('[ltable] -> LTableNode (markdown pipe tables map to TableNode; ADR-0012)', () => {
+    // No assertion. Inventory only.
+  });
+  it.skip('literal_html / raw_block_text from stray dtext close tags', () => {
+    // These are oracle-quirk salvage paths on the dtext parser. The
+    // markdown side never produces them because its rejection mechanism
+    // is the diagnostic catalog (md.legacy_bbcode etc.), not literal-text
+    // fallout from container-pair mismatches.
+  });
   it.skip('FragmentNode from over-deep [sup]/[sub] containers', () => {
     // Same rationale: a markdown adapter quirk that does not arise in
     // markdown source.

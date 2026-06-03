@@ -79,10 +79,7 @@ function spoilerInline(state: StateInline, silent: boolean): boolean {
   // character is required.
   let closePos = -1;
   for (let scan = start + 2; scan + 1 < max; scan++) {
-    if (
-      src.charCodeAt(scan) === PIPE &&
-      src.charCodeAt(scan + 1) === PIPE
-    ) {
+    if (src.charCodeAt(scan) === PIPE && src.charCodeAt(scan + 1) === PIPE) {
       closePos = scan;
       break;
     }

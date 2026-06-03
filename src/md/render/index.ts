@@ -79,11 +79,7 @@ export function formatMarkdown(
   return { output: out.join(''), diagnostics: ctx.diagnostics };
 }
 
-function formatNode(
-  node: ASTNode,
-  out: string[],
-  ctx: FormatContext,
-): void {
+function formatNode(node: ASTNode, out: string[], ctx: FormatContext): void {
   switch (node.type) {
     case 'document':
       formatBlocks((node as DocumentNode).children, out, ctx);
@@ -253,11 +249,7 @@ function formatHeader(
   formatInlines(node.children, out, ctx);
 }
 
-function formatQuote(
-  node: QuoteNode,
-  out: string[],
-  ctx: FormatContext,
-): void {
+function formatQuote(node: QuoteNode, out: string[], ctx: FormatContext): void {
   // Per ADR-0018: colourless uses `> ` prefix, coloured uses
   // `[quote=<color>]...[/quote]`.
   if (node.color !== undefined) {
@@ -375,11 +367,7 @@ function formatLiteralHtml(
   formatInlines(node.children, out, ctx);
 }
 
-function formatTable(
-  node: TableNode,
-  out: string[],
-  ctx: FormatContext,
-): void {
+function formatTable(node: TableNode, out: string[], ctx: FormatContext): void {
   // Pipe-table form. The header separator row (`|---|---|`) is structurally
   // required by markdown-it; emit one even when no `TableHeadNode` is
   // present (a header-less table still needs the separator to re-parse).
@@ -528,11 +516,7 @@ function formatTableCellFallback(
   ctx.inTableCell = wasInCell;
 }
 
-function formatList(
-  node: ListNode,
-  out: string[],
-  ctx: FormatContext,
-): void {
+function formatList(node: ListNode, out: string[], ctx: FormatContext): void {
   // ADR-0016: `- ` marker, two-space indent per nesting level (depth 1 is
   // the top level, so `item.depth - 1` indents).
   for (let i = 0; i < node.items.length; i++) {
@@ -568,11 +552,7 @@ function formatLineBreak(out: string[], ctx: FormatContext): void {
   ctx.atLineStart = true;
 }
 
-function formatLink(
-  node: LinkNode,
-  out: string[],
-  ctx: FormatContext,
-): void {
+function formatLink(node: LinkNode, out: string[], ctx: FormatContext): void {
   ctx.atLineStart = false;
   switch (node.linkType) {
     case 'url':

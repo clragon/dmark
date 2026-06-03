@@ -14,30 +14,87 @@ export interface Case {
 export const cases: Case[] = [
   // URL trim boundaries
   { name: 'url with trailing dot', input: 'see https://example.com. yes' },
-  { name: 'url with trailing two dots', input: 'see https://example.com.. yes' },
-  { name: 'url with trailing ellipsis', input: 'see https://example.com... yes' },
-  { name: 'url with trailing closing paren', input: 'see https://example.com/a) yes' },
-  { name: 'url with trailing paren-comma', input: 'see https://example.com/a), yes' },
-  { name: 'url with trailing question mark', input: 'see https://example.com? yes' },
-  { name: 'url with trailing exclamation', input: 'see https://example.com! yes' },
-  { name: 'url with trailing semicolon', input: 'see https://example.com; yes' },
+  {
+    name: 'url with trailing two dots',
+    input: 'see https://example.com.. yes',
+  },
+  {
+    name: 'url with trailing ellipsis',
+    input: 'see https://example.com... yes',
+  },
+  {
+    name: 'url with trailing closing paren',
+    input: 'see https://example.com/a) yes',
+  },
+  {
+    name: 'url with trailing paren-comma',
+    input: 'see https://example.com/a), yes',
+  },
+  {
+    name: 'url with trailing question mark',
+    input: 'see https://example.com? yes',
+  },
+  {
+    name: 'url with trailing exclamation',
+    input: 'see https://example.com! yes',
+  },
+  {
+    name: 'url with trailing semicolon',
+    input: 'see https://example.com; yes',
+  },
   { name: 'url with trailing colon', input: 'see https://example.com: yes' },
-  { name: 'url with trailing right-bracket', input: 'see https://example.com/a] yes' },
-  { name: 'url with trailing right-brace', input: 'see https://example.com/a} yes' },
+  {
+    name: 'url with trailing right-bracket',
+    input: 'see https://example.com/a] yes',
+  },
+  {
+    name: 'url with trailing right-brace',
+    input: 'see https://example.com/a} yes',
+  },
 
   // Color edges
   { name: 'color short hex', input: '[color=#abc]x[/color]', allowColor: true },
-  { name: 'color uppercase hex', input: '[color=#ABCDEF]x[/color]', allowColor: true },
-  { name: 'color mixed-case CSS name', input: '[color=Red]x[/color]', allowColor: true },
-  { name: 'color uppercase artist alias', input: '[color=ART]x[/color]', allowColor: true },
-  { name: 'color full uppercase artist alias', input: '[color=ARTIST]x[/color]', allowColor: true },
-  { name: 'color invalid 7-digit hex', input: '[color=#1234567]x[/color]', allowColor: true },
+  {
+    name: 'color uppercase hex',
+    input: '[color=#ABCDEF]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color mixed-case CSS name',
+    input: '[color=Red]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color uppercase artist alias',
+    input: '[color=ART]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color full uppercase artist alias',
+    input: '[color=ARTIST]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color invalid 7-digit hex',
+    input: '[color=#1234567]x[/color]',
+    allowColor: true,
+  },
   { name: 'color empty value', input: '[color=]x[/color]', allowColor: true },
-  { name: 'color disabled with allowColor false', input: '[color=red]x[/color]', allowColor: false },
+  {
+    name: 'color disabled with allowColor false',
+    input: '[color=red]x[/color]',
+    allowColor: false,
+  },
 
   // Sup/sub nesting cap
-  { name: 'sup nested 4 deep', input: '[sup][sup][sup][sup]x[/sup][/sup][/sup][/sup]' },
-  { name: 'interleaved sub/sup 4 deep', input: '[sub][sup][sub][sup]x[/sup][/sub][/sup][/sub]' },
+  {
+    name: 'sup nested 4 deep',
+    input: '[sup][sup][sup][sup]x[/sup][/sup][/sup][/sup]',
+  },
+  {
+    name: 'interleaved sub/sup 4 deep',
+    input: '[sub][sup][sub][sup]x[/sup][/sub][/sup][/sub]',
+  },
 
   // Stray closes
   { name: 'stray quote close', input: 'before [/quote] after' },
@@ -59,7 +116,10 @@ export const cases: Case[] = [
 
   // Code block with markup
   { name: 'code block with bold', input: '[code][b]bold[/b][/code]' },
-  { name: 'code block with html-like', input: '[code]<script>alert("x")</script>[/code]' },
+  {
+    name: 'code block with html-like',
+    input: '[code]<script>alert("x")</script>[/code]',
+  },
   { name: 'code block with backticks', input: '[code]`inline`[/code]' },
 
   // ID link edges
@@ -107,7 +167,10 @@ export const cases: Case[] = [
   { name: 'list item without space', input: '*x\n*y\n' },
   { name: 'list with blank line between', input: '* a\n\n* b\n' },
   { name: 'list deeply nested triple', input: '*** deep one\n*** deep two\n' },
-  { name: 'list with inline format', input: '* item with [b]bold[/b]\n* plain\n' },
+  {
+    name: 'list with inline format',
+    input: '* item with [b]bold[/b]\n* plain\n',
+  },
 
   // Anchors
   { name: 'anchor uppercase', input: '[#UPPER_anchor]' },
@@ -116,15 +179,24 @@ export const cases: Case[] = [
 
   // Textile links
   { name: 'textile link bare hostname', input: '"link":example.com' },
-  { name: 'textile link with trailing dot', input: '"link":https://example.com.' },
-  { name: 'textile link bracketed with space', input: '"link":[/path with space]' },
+  {
+    name: 'textile link with trailing dot',
+    input: '"link":https://example.com.',
+  },
+  {
+    name: 'textile link bracketed with space',
+    input: '"link":[/path with space]',
+  },
   { name: 'textile link empty title', input: '"":https://example.com' },
   { name: 'textile link no url', input: '"link":' },
   { name: 'textile relative link', input: '"users":/users' },
 
   // Tables
   { name: 'table empty', input: '[table][/table]' },
-  { name: 'table loose newlines', input: '[table]\n[tr]\n[td]cell[/td]\n[/tr]\n[/table]' },
+  {
+    name: 'table loose newlines',
+    input: '[table]\n[tr]\n[td]cell[/td]\n[/tr]\n[/table]',
+  },
 
   // Mixed / chained
   { name: 'header followed by quote', input: 'h1. title\n[quote]q[/quote]' },
@@ -149,23 +221,74 @@ export const cases: Case[] = [
   { name: 'anchor doubled', input: '[#a][#b]' },
 
   // Boundary char URL trims
-  { name: 'url right-paren full-width trim', input: 'see https://example.com／a） yes' },
+  {
+    name: 'url right-paren full-width trim',
+    input: 'see https://example.com／a） yes',
+  },
 
   // ===== Wave 2: amplify proven divergence patterns =====
 
   // Invalid color values (oracle treats as literal text)
-  { name: 'color uppercase css name BLUE', input: '[color=BLUE]x[/color]', allowColor: true },
-  { name: 'color camelcase css name', input: '[color=DarkRed]x[/color]', allowColor: true },
-  { name: 'color hex 4 digits', input: '[color=#abcd]x[/color]', allowColor: true },
-  { name: 'color hex 5 digits', input: '[color=#abcde]x[/color]', allowColor: true },
-  { name: 'color hex with non-hex chars', input: '[color=#xyzxyz]x[/color]', allowColor: true },
-  { name: 'color hex 3 with non-hex', input: '[color=#abG]x[/color]', allowColor: true },
-  { name: 'color hex empty after hash', input: '[color=#]x[/color]', allowColor: true },
-  { name: 'color name with trailing space', input: '[color=red ]x[/color]', allowColor: true },
-  { name: 'color name with leading space', input: '[color= red]x[/color]', allowColor: true },
-  { name: 'color name with digits', input: '[color=red123]x[/color]', allowColor: true },
-  { name: 'color name with underscore', input: '[color=hot_pink]x[/color]', allowColor: true },
-  { name: 'color hex no hash', input: '[color=ff0000]x[/color]', allowColor: true },
+  {
+    name: 'color uppercase css name BLUE',
+    input: '[color=BLUE]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color camelcase css name',
+    input: '[color=DarkRed]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color hex 4 digits',
+    input: '[color=#abcd]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color hex 5 digits',
+    input: '[color=#abcde]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color hex with non-hex chars',
+    input: '[color=#xyzxyz]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color hex 3 with non-hex',
+    input: '[color=#abG]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color hex empty after hash',
+    input: '[color=#]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color name with trailing space',
+    input: '[color=red ]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color name with leading space',
+    input: '[color= red]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color name with digits',
+    input: '[color=red123]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color name with underscore',
+    input: '[color=hot_pink]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color hex no hash',
+    input: '[color=ff0000]x[/color]',
+    allowColor: true,
+  },
 
   // Capitalized ID-link prefixes (oracle lowercases display text)
   { name: 'id link Pool', input: 'Pool #1234' },
@@ -198,23 +321,44 @@ export const cases: Case[] = [
 
   // Wiki anchor with whitespace (oracle uses _ in href)
   { name: 'wiki anchor multi-word', input: '[[wiki#a b c]]' },
-  { name: 'wiki anchor with title and space', input: '[[wiki#some anchor|Display]]' },
+  {
+    name: 'wiki anchor with title and space',
+    input: '[[wiki#some anchor|Display]]',
+  },
   { name: 'wiki anchor with tabs', input: '[[wiki#a\tb]]' },
 
   // Textile bracketed link with space (oracle leaves literal)
-  { name: 'textile bracketed url with space middle', input: '"link":[/foo bar]' },
-  { name: 'textile bracketed url with multiple spaces', input: '"link":[/foo  bar]' },
-  { name: 'textile bracketed http with space', input: '"link":[https://e.com/foo bar]' },
+  {
+    name: 'textile bracketed url with space middle',
+    input: '"link":[/foo bar]',
+  },
+  {
+    name: 'textile bracketed url with multiple spaces',
+    input: '"link":[/foo  bar]',
+  },
+  {
+    name: 'textile bracketed http with space',
+    input: '"link":[https://e.com/foo bar]',
+  },
   { name: 'textile bracketed leading space', input: '"link":[ /path]' },
   { name: 'textile bracketed trailing space', input: '"link":[/path ]' },
 
   // Stray block-close after content (proven pattern: spoiler split)
   { name: 'stray spoiler close mid-text', input: 'hello [/spoiler] world' },
-  { name: 'stray spoiler close start of doc', input: '[/spoiler] alone at start' },
-  { name: 'stray spoiler close after format', input: '[b]bold[/b] [/spoiler] more' },
+  {
+    name: 'stray spoiler close start of doc',
+    input: '[/spoiler] alone at start',
+  },
+  {
+    name: 'stray spoiler close after format',
+    input: '[b]bold[/b] [/spoiler] more',
+  },
 
   // Unclosed code variants (oracle keeps everything inside)
-  { name: 'unclosed code with multiline', input: '[code]line one\nline two and end' },
+  {
+    name: 'unclosed code with multiline',
+    input: '[code]line one\nline two and end',
+  },
   { name: 'unclosed code with bracket close', input: '[code]some]end' },
   { name: 'unclosed code with newlines', input: '[code]\nfirst\nsecond' },
 
@@ -250,13 +394,22 @@ export const cases: Case[] = [
 
   // ===== Wave 4: textile & wiki extras =====
 
-  { name: 'textile bracketed url with tab', input: '"link":[/path\twith\ttab]' },
+  {
+    name: 'textile bracketed url with tab',
+    input: '"link":[/path\twith\ttab]',
+  },
   { name: 'textile bracketed empty url', input: '"link":[]' },
   { name: 'textile bracketed only space', input: '"link":[ ]' },
   { name: 'textile bracketed nested brackets', input: '"link":[/a[b]c]' },
 
-  { name: 'wiki anchor with multiple inner spaces', input: '[[t#one two three]]' },
-  { name: 'wiki anchor with mixed-case spaces', input: '[[T#Some Long Anchor]]' },
+  {
+    name: 'wiki anchor with multiple inner spaces',
+    input: '[[t#one two three]]',
+  },
+  {
+    name: 'wiki anchor with mixed-case spaces',
+    input: '[[T#Some Long Anchor]]',
+  },
 
   // ===== Wave 5: stray spoiler diversity =====
 
@@ -278,11 +431,26 @@ export const cases: Case[] = [
   { name: 'caps and no-space mixed', input: 'Post #1 then pool#2' },
   { name: 'three no-space ids', input: 'pool#1 topic#2 comment#3' },
 
-  { name: 'invalid color wrapping bold', input: '[color=Red][b]bold[/b][/color]', allowColor: true },
-  { name: 'invalid color hex wrapping italic', input: '[color=#1234567][i]ital[/i][/color]', allowColor: true },
-  { name: 'mixed-case color closer', input: '[color=valid_invalid]x[/color]', allowColor: true },
+  {
+    name: 'invalid color wrapping bold',
+    input: '[color=Red][b]bold[/b][/color]',
+    allowColor: true,
+  },
+  {
+    name: 'invalid color hex wrapping italic',
+    input: '[color=#1234567][i]ital[/i][/color]',
+    allowColor: true,
+  },
+  {
+    name: 'mixed-case color closer',
+    input: '[color=valid_invalid]x[/color]',
+    allowColor: true,
+  },
 
-  { name: 'two stray spoilers split', input: 'a [/spoiler] b\n\nc [/spoiler] d' },
+  {
+    name: 'two stray spoilers split',
+    input: 'a [/spoiler] b\n\nc [/spoiler] d',
+  },
   { name: 'two unclosed codes attempt', input: '[code]first[code]second' },
 
   // ID with weird boundaries
@@ -301,8 +469,14 @@ export const cases: Case[] = [
   { name: 'section uppercase tag', input: '[SECTION]hi[/SECTION]' },
 
   // Spoiler stray with surrounding markdown-like
-  { name: 'stray spoiler in quote', input: '[quote]hi [/spoiler] there[/quote]' },
-  { name: 'stray spoiler followed by formatting', input: '[/spoiler] [b]bold[/b]' },
+  {
+    name: 'stray spoiler in quote',
+    input: '[quote]hi [/spoiler] there[/quote]',
+  },
+  {
+    name: 'stray spoiler followed by formatting',
+    input: '[/spoiler] [b]bold[/b]',
+  },
 
   // ===== Wave 8: spam ID variants with multi-spaces, carriage returns, tabs =====
 
@@ -327,14 +501,42 @@ export const cases: Case[] = [
 
   // ===== Wave 10: more invalid colors =====
 
-  { name: 'color name with hyphen', input: '[color=hot-pink]x[/color]', allowColor: true },
-  { name: 'color name with dot', input: '[color=red.blue]x[/color]', allowColor: true },
-  { name: 'color name with slash', input: '[color=red/blue]x[/color]', allowColor: true },
-  { name: 'color name single uppercase', input: '[color=R]x[/color]', allowColor: true },
-  { name: 'color name digit only', input: '[color=42]x[/color]', allowColor: true },
-  { name: 'color hash plus name', input: '[color=#red]x[/color]', allowColor: true },
+  {
+    name: 'color name with hyphen',
+    input: '[color=hot-pink]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color name with dot',
+    input: '[color=red.blue]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color name with slash',
+    input: '[color=red/blue]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color name single uppercase',
+    input: '[color=R]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color name digit only',
+    input: '[color=42]x[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color hash plus name',
+    input: '[color=#red]x[/color]',
+    allowColor: true,
+  },
   { name: 'color quoted', input: '[color="red"]x[/color]', allowColor: true },
-  { name: 'color rgb-style', input: '[color=rgb(1,2,3)]x[/color]', allowColor: true },
+  {
+    name: 'color rgb-style',
+    input: '[color=rgb(1,2,3)]x[/color]',
+    allowColor: true,
+  },
   { name: 'color empty pair', input: '[color]x[/color]', allowColor: true },
 
   // ===== Wave 11: more wiki link malformed =====
@@ -348,8 +550,14 @@ export const cases: Case[] = [
   // ===== Wave 12: more textile bracketed with whitespace =====
 
   { name: 'textile bracketed url newline inside', input: '"link":[/foo\nbar]' },
-  { name: 'textile bracketed url with double quote', input: '"link":[/foo"bar]' },
-  { name: 'textile bracketed url two segments space', input: '"label":[/a b/c d]' },
+  {
+    name: 'textile bracketed url with double quote',
+    input: '"link":[/foo"bar]',
+  },
+  {
+    name: 'textile bracketed url two segments space',
+    input: '"label":[/a b/c d]',
+  },
   { name: 'textile bracketed url cr', input: '"link":[/foo\rbar]' },
 
   // ===== Wave 13: more wiki anchor whitespace variants =====
@@ -362,16 +570,25 @@ export const cases: Case[] = [
   // ===== Wave 14: more unclosed code =====
 
   { name: 'unclosed code with code-like', input: '[code]console.log("hi")' },
-  { name: 'unclosed code with long content', input: '[code]' + 'x'.repeat(100) },
+  {
+    name: 'unclosed code with long content',
+    input: '[code]' + 'x'.repeat(100),
+  },
   { name: 'unclosed code with html tags', input: '[code]<div>hello</div>' },
-  { name: 'unclosed code preceded by text', input: 'before [code]middle and end' },
+  {
+    name: 'unclosed code preceded by text',
+    input: 'before [code]middle and end',
+  },
 
   // ===== Wave 15: more stray spoiler =====
 
   { name: 'stray spoiler at line start', input: 'hello\n[/spoiler] world' },
   { name: 'stray spoiler in header', input: 'h1. title [/spoiler] tail\n' },
   { name: 'stray spoiler tabbed', input: 'a\t[/spoiler]\tb' },
-  { name: 'stray spoiler nested in bold', input: '[b]hello [/spoiler] there[/b]' },
+  {
+    name: 'stray spoiler nested in bold',
+    input: '[b]hello [/spoiler] there[/b]',
+  },
   { name: 'stray spoiler followed by id-link', input: '[/spoiler] post #1234' },
 
   // ===== Wave 16: cap-prefix + various trailing punctuation =====
@@ -398,14 +615,33 @@ export const cases: Case[] = [
 
   { name: 'stray spoiler then caps id', input: '[/spoiler] Pool #1234' },
   { name: 'caps id then stray spoiler', input: 'Topic #1234 [/spoiler]' },
-  { name: 'stray spoiler with no-space id', input: 'pool#1 [/spoiler] topic#2' },
+  {
+    name: 'stray spoiler with no-space id',
+    input: 'pool#1 [/spoiler] topic#2',
+  },
 
   // ===== Wave 19: invalid colors with content variations =====
 
-  { name: 'color invalid with id link inside', input: '[color=BLUE]Pool #1[/color]', allowColor: true },
-  { name: 'color invalid with no-space id', input: '[color=Red]pool#1[/color]', allowColor: true },
-  { name: 'color invalid with newlines', input: '[color=BadName]\nx\n[/color]', allowColor: true },
-  { name: 'color invalid wrapping unclosed code', input: '[color=Red][code]hi', allowColor: true },
+  {
+    name: 'color invalid with id link inside',
+    input: '[color=BLUE]Pool #1[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color invalid with no-space id',
+    input: '[color=Red]pool#1[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color invalid with newlines',
+    input: '[color=BadName]\nx\n[/color]',
+    allowColor: true,
+  },
+  {
+    name: 'color invalid wrapping unclosed code',
+    input: '[color=Red][code]hi',
+    allowColor: true,
+  },
 
   // ===== Wave 20: textile bracketed with whitespace, more =====
 
@@ -423,10 +659,19 @@ export const cases: Case[] = [
 
   // ===== Wave 22: unclosed code with embedded patterns =====
 
-  { name: 'unclosed code embedded id link', input: '[code]post #1234 still open' },
+  {
+    name: 'unclosed code embedded id link',
+    input: '[code]post #1234 still open',
+  },
   { name: 'unclosed code embedded wiki', input: '[code][[wiki]] open' },
-  { name: 'unclosed code embedded color', input: '[code][color=red]x[/color] open' },
-  { name: 'unclosed code embedded close-quote', input: '[code]hi[/quote] still' },
+  {
+    name: 'unclosed code embedded color',
+    input: '[code][color=red]x[/color] open',
+  },
+  {
+    name: 'unclosed code embedded close-quote',
+    input: '[code]hi[/quote] still',
+  },
 ];
 
 // ===== Wave 23: mass-generated caps × punctuation =====
@@ -648,7 +893,18 @@ for (const cp of CAPS_PREFIXES.slice(0, 10)) {
 }
 
 // ===== Wave 34: caps prefix with various id-number lengths =====
-const NUM_VARIANTS = ['0', '00', '01', '10', '100', '1000', '10000', '100000', '1000000', '9876543210'];
+const NUM_VARIANTS = [
+  '0',
+  '00',
+  '01',
+  '10',
+  '100',
+  '1000',
+  '10000',
+  '100000',
+  '1000000',
+  '9876543210',
+];
 for (const p of CAPS_PREFIXES) {
   for (const id of NUM_VARIANTS) {
     cases.push({
@@ -784,7 +1040,17 @@ for (const p of NOSPACE_PREFIXES) {
 }
 
 // ===== Wave 46: caps prefix with prefix-itself capitalization =====
-const CAPS_VARIANTS = ['POOL', 'TOPIC', 'COMMENT', 'NOTE', 'SET', 'FORUM', 'BLIP', 'FLAG', 'TICKET'];
+const CAPS_VARIANTS = [
+  'POOL',
+  'TOPIC',
+  'COMMENT',
+  'NOTE',
+  'SET',
+  'FORUM',
+  'BLIP',
+  'FLAG',
+  'TICKET',
+];
 for (const p of CAPS_VARIANTS) {
   for (const [punctName, punct] of PUNCT_SUFFIXES) {
     cases.push({
@@ -795,7 +1061,28 @@ for (const p of CAPS_VARIANTS) {
 }
 
 // ===== Wave 47: more numbers for caps =====
-const MORE_NUMS = ['2', '3', '4', '5', '6', '8', '9', '13', '17', '23', '29', '31', '37', '41', '43', '47', '53', '59', '61', '67'];
+const MORE_NUMS = [
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '8',
+  '9',
+  '13',
+  '17',
+  '23',
+  '29',
+  '31',
+  '37',
+  '41',
+  '43',
+  '47',
+  '53',
+  '59',
+  '61',
+  '67',
+];
 for (const p of CAPS_PREFIXES.slice(0, 12)) {
   for (const id of MORE_NUMS) {
     cases.push({
@@ -905,7 +1192,12 @@ for (const v of INVALID_COLOR_VALUES.slice(0, 14)) {
 
 // ===== Wave 55: caps with leading punctuation =====
 for (const p of CAPS_PREFIXES) {
-  for (const [pname, punct] of [['lparen', '('], ['lbracket', '['], ['quote', '"'], ['squote', "'"]] as Array<[string, string]>) {
+  for (const [pname, punct] of [
+    ['lparen', '('],
+    ['lbracket', '['],
+    ['quote', '"'],
+    ['squote', "'"],
+  ] as Array<[string, string]>) {
     cases.push({
       name: `caps ${p} leading ${pname}`,
       input: `${punct}${p} #1234`,
@@ -1202,7 +1494,43 @@ for (const p of NOSPACE_PREFIXES.slice(0, 8)) {
 }
 
 // ===== Wave 80: huge id range for caps prefixes =====
-const HUGE_IDS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '20', '25', '30', '40', '50', '75', '100', '150', '200', '300', '500', '750', '1000', '2000', '5000', '10000', '50000', '100000', '500000', '1234567'];
+const HUGE_IDS = [
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  '10',
+  '11',
+  '12',
+  '13',
+  '14',
+  '15',
+  '20',
+  '25',
+  '30',
+  '40',
+  '50',
+  '75',
+  '100',
+  '150',
+  '200',
+  '300',
+  '500',
+  '750',
+  '1000',
+  '2000',
+  '5000',
+  '10000',
+  '50000',
+  '100000',
+  '500000',
+  '1234567',
+];
 for (const p of CAPS_PREFIXES) {
   for (const id of HUGE_IDS) {
     cases.push({
@@ -1508,14 +1836,7 @@ for (const base of ANCHOR_BASES) {
 }
 
 // ===== Wave 99: textile bracketed with whitespace amplification =====
-const TEXTILE_LABELS = [
-  'link',
-  'a link',
-  'click here',
-  'ref',
-  'See',
-  'X',
-];
+const TEXTILE_LABELS = ['link', 'a link', 'click here', 'ref', 'See', 'X'];
 const TEXTILE_PATHS = [
   '/path with space',
   '/foo bar',
@@ -1764,13 +2085,32 @@ for (const base of WIKI_MALF_BASES) {
 
 // ===== Wave 109: wiki anchor with whitespace, big amplification =====
 const ANCHOR_BASES_BIG = [
-  'wiki', 'mammal', 'foo bar', 'a', 'long_wiki_name', 'WIKI', 'Foo',
-  'Some Page', 'snake_case', 'SCREAMING', 'with-dash', 'normal',
+  'wiki',
+  'mammal',
+  'foo bar',
+  'a',
+  'long_wiki_name',
+  'WIKI',
+  'Foo',
+  'Some Page',
+  'snake_case',
+  'SCREAMING',
+  'with-dash',
+  'normal',
 ];
 const ANCHOR_FRAG_BIG = [
-  'a b', 'some anchor', 'one two three', 'A B', 'Foo Bar',
-  'tab\there', '  leading', 'trailing  ', 'multi  spaces',
-  'four word anchor here', 'mixed Case Anchor', 'snake_with space',
+  'a b',
+  'some anchor',
+  'one two three',
+  'A B',
+  'Foo Bar',
+  'tab\there',
+  '  leading',
+  'trailing  ',
+  'multi  spaces',
+  'four word anchor here',
+  'mixed Case Anchor',
+  'snake_with space',
 ];
 for (const base of ANCHOR_BASES_BIG) {
   for (const frag of ANCHOR_FRAG_BIG) {
@@ -1802,11 +2142,29 @@ for (const base of ANCHOR_BASES_BIG.slice(0, 6)) {
 }
 
 // ===== Wave 111: textile bracketed with whitespace, big =====
-const TEXTILE_LABELS_BIG = ['link', 'a link', 'click here', 'ref', 'See', 'X', 'docs', 'help'];
+const TEXTILE_LABELS_BIG = [
+  'link',
+  'a link',
+  'click here',
+  'ref',
+  'See',
+  'X',
+  'docs',
+  'help',
+];
 const TEXTILE_PATHS_BIG = [
-  '/path with space', '/foo bar', '/a b c', '/two\twords',
-  '/x y z/qux', '/leading space', '/trailing ', '/  many  spaces',
-  '/A B', '/x\ty', '/hello world', '/multi word path here',
+  '/path with space',
+  '/foo bar',
+  '/a b c',
+  '/two\twords',
+  '/x y z/qux',
+  '/leading space',
+  '/trailing ',
+  '/  many  spaces',
+  '/A B',
+  '/x\ty',
+  '/hello world',
+  '/multi word path here',
 ];
 for (const label of TEXTILE_LABELS_BIG) {
   for (const path of TEXTILE_PATHS_BIG) {
@@ -1831,17 +2189,43 @@ for (const label of TEXTILE_LABELS_BIG.slice(0, 4)) {
 
 // ===== Wave 113: stray spoiler ULTRA AMPLIFICATION =====
 const SPOILER_LEAD: string[] = [
-  '', 'a', 'hello', 'lead text', 'word ', 'one two three',
-  'sentence one. ', '"quote"', '(note) ', '[bracketed] ',
-  'inline post #1', 'mention pool#1', '[b]bold[/b] ',
-  '[i]italic[/i] ', 'formatted [s]strike[/s] ', 'header h1.',
-  'list:\n* a\n* b\n', 'quote: [quote]q[/quote]\n',
+  '',
+  'a',
+  'hello',
+  'lead text',
+  'word ',
+  'one two three',
+  'sentence one. ',
+  '"quote"',
+  '(note) ',
+  '[bracketed] ',
+  'inline post #1',
+  'mention pool#1',
+  '[b]bold[/b] ',
+  '[i]italic[/i] ',
+  'formatted [s]strike[/s] ',
+  'header h1.',
+  'list:\n* a\n* b\n',
+  'quote: [quote]q[/quote]\n',
 ];
 const SPOILER_TAIL: string[] = [
-  '', ' a', ' tail', ' more text', ' end.', ' tail post #1',
-  ' more pool#1', ' [b]formatted[/b]', '\nnext line',
-  '\n\nnext paragraph', ', tail', '. tail', '! tail', '? tail',
-  '... tail', '"quoted tail"', '(parenthetical tail)',
+  '',
+  ' a',
+  ' tail',
+  ' more text',
+  ' end.',
+  ' tail post #1',
+  ' more pool#1',
+  ' [b]formatted[/b]',
+  '\nnext line',
+  '\n\nnext paragraph',
+  ', tail',
+  '. tail',
+  '! tail',
+  '? tail',
+  '... tail',
+  '"quoted tail"',
+  '(parenthetical tail)',
 ];
 let cnt = 0;
 for (const lead of SPOILER_LEAD) {
@@ -1856,12 +2240,28 @@ for (const lead of SPOILER_LEAD) {
 
 // ===== Wave 114: malformed wiki ULTRA AMPLIFICATION =====
 const WIKI_MALF_BIG: string[] = [
-  '[[a|b|c]]', '[[a|b|c|d]]', '[[a|b|c|d|e]]', '[[a|b|c|d|e|f]]',
-  '[[a||b]]', '[[a||]]', '[[||b]]', '[[|||]]',
-  '[[a|]]', '[[|a]]', '[[|]]', '[[||]]',
-  '[[abc#x#y]]', '[[abc#]]', '[[#xyz]]', '[[#]]',
-  '[[A|]]', '[[A||B]]', '[[FOO|BAR|BAZ]]',
-  '[[X|Y|Z|W]]', '[[1|2|3]]', '[[a|b|c|d|e|f|g]]',
+  '[[a|b|c]]',
+  '[[a|b|c|d]]',
+  '[[a|b|c|d|e]]',
+  '[[a|b|c|d|e|f]]',
+  '[[a||b]]',
+  '[[a||]]',
+  '[[||b]]',
+  '[[|||]]',
+  '[[a|]]',
+  '[[|a]]',
+  '[[|]]',
+  '[[||]]',
+  '[[abc#x#y]]',
+  '[[abc#]]',
+  '[[#xyz]]',
+  '[[#]]',
+  '[[A|]]',
+  '[[A||B]]',
+  '[[FOO|BAR|BAZ]]',
+  '[[X|Y|Z|W]]',
+  '[[1|2|3]]',
+  '[[a|b|c|d|e|f|g]]',
 ];
 for (const w of WIKI_MALF_BIG) {
   for (const lead of SPOILER_LEAD.slice(0, 8)) {
@@ -1888,15 +2288,37 @@ for (const w of WIKI_MALF_BIG.slice(0, 12)) {
 
 // ===== Wave 116: wiki anchor with whitespace ULTRA =====
 const ANCHOR_BIG_BASES: string[] = [
-  'wiki', 'mammal', 'foo', 'bar', 'baz', 'a', 'A', 'long_name',
-  'WIKI', 'Foo Bar', 'snake_case', 'normal', 'page', 'article',
-  'topic_page', 'guide',
+  'wiki',
+  'mammal',
+  'foo',
+  'bar',
+  'baz',
+  'a',
+  'A',
+  'long_name',
+  'WIKI',
+  'Foo Bar',
+  'snake_case',
+  'normal',
+  'page',
+  'article',
+  'topic_page',
+  'guide',
 ];
 const ANCHOR_BIG_FRAGS: string[] = [
-  'a b', 'one two', 'A B', 'foo bar', 'hello world',
-  'multiple words here', 'two\twords', 'mixed Case',
-  '  leading_space', 'trailing_space  ', 'a  b',
-  'three word anchor', 'four words exact match',
+  'a b',
+  'one two',
+  'A B',
+  'foo bar',
+  'hello world',
+  'multiple words here',
+  'two\twords',
+  'mixed Case',
+  '  leading_space',
+  'trailing_space  ',
+  'a  b',
+  'three word anchor',
+  'four words exact match',
 ];
 for (const base of ANCHOR_BIG_BASES) {
   for (const frag of ANCHOR_BIG_FRAGS) {
@@ -1909,14 +2331,30 @@ for (const base of ANCHOR_BIG_BASES) {
 
 // ===== Wave 117: textile bracketed with whitespace ULTRA =====
 const TEXTILE_BIG_LABELS: string[] = [
-  'a', 'link', 'click', 'see', 'docs', 'help', 'X',
-  'a link', 'click here', 'view docs', 'go to',
+  'a',
+  'link',
+  'click',
+  'see',
+  'docs',
+  'help',
+  'X',
+  'a link',
+  'click here',
+  'view docs',
+  'go to',
 ];
 const TEXTILE_BIG_PATHS: string[] = [
-  '/a b', '/x y z', '/path with space', '/a\tb',
-  '/  many  spaces', '/two words', '/a  b  c',
-  '/leading space', '/trailing ',
-  '/x y/a b', '/p q/r s/t u',
+  '/a b',
+  '/x y z',
+  '/path with space',
+  '/a\tb',
+  '/  many  spaces',
+  '/two words',
+  '/a  b  c',
+  '/leading space',
+  '/trailing ',
+  '/x y/a b',
+  '/p q/r s/t u',
 ];
 for (const label of TEXTILE_BIG_LABELS) {
   for (const path of TEXTILE_BIG_PATHS) {
@@ -1959,23 +2397,56 @@ for (const a of ANCHOR_BIG_FRAGS.slice(0, 8)) {
 
 // ===== Wave 121: malformed wiki MEGA bases × leads × tails =====
 const WIKI_MALF_HUGE: string[] = [
-  '[[a|b|c]]', '[[a|b|c|d]]', '[[a|b|c|d|e]]', '[[a|b|c|d|e|f]]',
-  '[[a|b|c|d|e|f|g]]', '[[a|b|c|d|e|f|g|h]]',
-  '[[a||b]]', '[[a||]]', '[[||b]]', '[[|||]]',
-  '[[a|]]', '[[|a]]', '[[|]]', '[[||]]',
-  '[[abc#x#y]]', '[[abc#x#y#z]]', '[[abc#]]', '[[#xyz]]', '[[#]]',
-  '[[A|]]', '[[A||B]]', '[[FOO|BAR|BAZ]]',
-  '[[X|Y|Z|W]]', '[[1|2|3]]', '[[a|b|c|d|e|f|g]]',
-  '[[abc|def|ghi]]', '[[abc|def|ghi|jkl]]',
-  '[[Foo Bar|Baz Qux]]', '[[Foo Bar||Baz]]',
+  '[[a|b|c]]',
+  '[[a|b|c|d]]',
+  '[[a|b|c|d|e]]',
+  '[[a|b|c|d|e|f]]',
+  '[[a|b|c|d|e|f|g]]',
+  '[[a|b|c|d|e|f|g|h]]',
+  '[[a||b]]',
+  '[[a||]]',
+  '[[||b]]',
+  '[[|||]]',
+  '[[a|]]',
+  '[[|a]]',
+  '[[|]]',
+  '[[||]]',
+  '[[abc#x#y]]',
+  '[[abc#x#y#z]]',
+  '[[abc#]]',
+  '[[#xyz]]',
+  '[[#]]',
+  '[[A|]]',
+  '[[A||B]]',
+  '[[FOO|BAR|BAZ]]',
+  '[[X|Y|Z|W]]',
+  '[[1|2|3]]',
+  '[[a|b|c|d|e|f|g]]',
+  '[[abc|def|ghi]]',
+  '[[abc|def|ghi|jkl]]',
+  '[[Foo Bar|Baz Qux]]',
+  '[[Foo Bar||Baz]]',
 ];
 const HUGE_LEADS: string[] = [
-  '', 'a ', 'lead ', 'sentence text ', 'foo bar ', '"quoted" ',
-  '(parens) ', 'inline pool#1 ',
+  '',
+  'a ',
+  'lead ',
+  'sentence text ',
+  'foo bar ',
+  '"quoted" ',
+  '(parens) ',
+  'inline pool#1 ',
 ];
 const HUGE_TAILS: string[] = [
-  '', ' a', ' tail', ' end.', ' end!', ' end?',
-  ' more text', ', tail', '. tail',
+  '',
+  ' a',
+  ' tail',
+  ' end.',
+  ' end!',
+  ' end?',
+  ' more text',
+  ', tail',
+  '. tail',
 ];
 for (const w of WIKI_MALF_HUGE) {
   for (const lead of HUGE_LEADS) {
@@ -1990,13 +2461,31 @@ for (const w of WIKI_MALF_HUGE) {
 
 // ===== Wave 122: stray spoiler MEGA leads × tails =====
 const HUGE_SP_LEADS: string[] = [
-  '', 'a ', 'word ', 'lead ', 'hello ', 'one two ',
-  'sentence. ', '"quoted" ', '(parens) ', '[bracketed] ',
-  '[b]bold[/b] ', '[i]ital[/i] ',
+  '',
+  'a ',
+  'word ',
+  'lead ',
+  'hello ',
+  'one two ',
+  'sentence. ',
+  '"quoted" ',
+  '(parens) ',
+  '[bracketed] ',
+  '[b]bold[/b] ',
+  '[i]ital[/i] ',
 ];
 const HUGE_SP_TAILS: string[] = [
-  '', ' a', ' tail', ' end.', '!', '?',
-  ' more', ', end', ' ".."', '\n', '\nnext',
+  '',
+  ' a',
+  ' tail',
+  ' end.',
+  '!',
+  '?',
+  ' more',
+  ', end',
+  ' ".."',
+  '\n',
+  '\nnext',
 ];
 for (const lead of HUGE_SP_LEADS) {
   for (const tail of HUGE_SP_TAILS) {
@@ -2009,16 +2498,40 @@ for (const lead of HUGE_SP_LEADS) {
 
 // ===== Wave 123: anchor-ws MEGA bases × frags =====
 const HUGE_BASES: string[] = [
-  'a', 'b', 'wiki', 'mammal', 'foo', 'bar', 'baz',
-  'A', 'B', 'WIKI', 'Foo', 'Bar', 'Baz',
-  'snake_case', 'CamelCase', 'lowercase',
-  'page', 'article', 'topic', 'guide', 'help',
+  'a',
+  'b',
+  'wiki',
+  'mammal',
+  'foo',
+  'bar',
+  'baz',
+  'A',
+  'B',
+  'WIKI',
+  'Foo',
+  'Bar',
+  'Baz',
+  'snake_case',
+  'CamelCase',
+  'lowercase',
+  'page',
+  'article',
+  'topic',
+  'guide',
+  'help',
 ];
 const HUGE_FRAGS: string[] = [
-  'a b', 'A B', 'one two', 'foo bar',
-  'multi word', 'three word anchor',
-  'tab\tsep', '  leading', 'trailing  ',
-  'mixed Case', 'snake_with space',
+  'a b',
+  'A B',
+  'one two',
+  'foo bar',
+  'multi word',
+  'three word anchor',
+  'tab\tsep',
+  '  leading',
+  'trailing  ',
+  'mixed Case',
+  'snake_with space',
 ];
 for (const base of HUGE_BASES) {
   for (const frag of HUGE_FRAGS) {
@@ -2031,13 +2544,29 @@ for (const base of HUGE_BASES) {
 
 // ===== Wave 124: textile MEGA labels × paths =====
 const HUGE_LABELS: string[] = [
-  'a', 'X', 'link', 'click', 'see', 'docs', 'help',
-  'A', 'go', 'view', 'open',
+  'a',
+  'X',
+  'link',
+  'click',
+  'see',
+  'docs',
+  'help',
+  'A',
+  'go',
+  'view',
+  'open',
 ];
 const HUGE_PATHS: string[] = [
-  '/a b', '/x y', '/p q', '/path space',
-  '/a\tb', '/  ws', '/multi word',
-  '/x y z', '/a/b c', '/p q/r s',
+  '/a b',
+  '/x y',
+  '/p q',
+  '/path space',
+  '/a\tb',
+  '/  ws',
+  '/multi word',
+  '/x y z',
+  '/a/b c',
+  '/p q/r s',
 ];
 for (const l of HUGE_LABELS) {
   for (const p of HUGE_PATHS) {
@@ -2050,16 +2579,39 @@ for (const l of HUGE_LABELS) {
 
 // ===== Wave 125: stray spoiler GIGA amplification (16x16) =====
 const GIGA_SP_LEADS: string[] = [
-  '', 'a', 'b', 'c', 'lead', 'word',
-  'A', 'X', 'foo', 'bar',
-  'inline post #1', '"quoted"', '(paren)', '[bracket]',
-  '[b]bold[/b]', '[i]ital[/i]',
+  '',
+  'a',
+  'b',
+  'c',
+  'lead',
+  'word',
+  'A',
+  'X',
+  'foo',
+  'bar',
+  'inline post #1',
+  '"quoted"',
+  '(paren)',
+  '[bracket]',
+  '[b]bold[/b]',
+  '[i]ital[/i]',
 ];
 const GIGA_SP_TAILS: string[] = [
-  '', 'a', 'b', 'c', 'tail',
-  '. end', ', end', '! end', '? end',
-  ' [b]bold[/b]', ' [i]ital[/i]',
-  ' more', ' ext', ' text', ' word',
+  '',
+  'a',
+  'b',
+  'c',
+  'tail',
+  '. end',
+  ', end',
+  '! end',
+  '? end',
+  ' [b]bold[/b]',
+  ' [i]ital[/i]',
+  ' more',
+  ' ext',
+  ' text',
+  ' word',
   ' tail period.',
 ];
 for (const lead of GIGA_SP_LEADS) {
@@ -2073,16 +2625,40 @@ for (const lead of GIGA_SP_LEADS) {
 
 // ===== Wave 126: anchor-ws GIGA amplification (16x16) =====
 const GIGA_BASES: string[] = [
-  'a', 'b', 'c', 'wiki', 'mammal', 'foo', 'bar', 'baz',
-  'A', 'B', 'WIKI', 'Foo', 'Bar', 'page', 'topic', 'help',
+  'a',
+  'b',
+  'c',
+  'wiki',
+  'mammal',
+  'foo',
+  'bar',
+  'baz',
+  'A',
+  'B',
+  'WIKI',
+  'Foo',
+  'Bar',
+  'page',
+  'topic',
+  'help',
 ];
 const GIGA_FRAGS: string[] = [
-  'a b', 'A B', 'foo bar', 'one two',
-  'three word', 'four word here',
-  'mixed Case', 'snake space',
-  'tab\there', '  leading', 'trailing  ',
-  'a  b', 'multi  ws',
-  'q r s', 'p q', 'x y z',
+  'a b',
+  'A B',
+  'foo bar',
+  'one two',
+  'three word',
+  'four word here',
+  'mixed Case',
+  'snake space',
+  'tab\there',
+  '  leading',
+  'trailing  ',
+  'a  b',
+  'multi  ws',
+  'q r s',
+  'p q',
+  'x y z',
 ];
 for (const base of GIGA_BASES) {
   for (const frag of GIGA_FRAGS) {
@@ -2221,11 +2797,20 @@ for (const [n, input] of LTABLE_VARIANTS) {
 
 // ===== Wave 134: search syntax edge cases =====
 const SEARCH_PROBES: string[] = [
-  '{{}}', '{{|}}', '{{|x}}', '{{tag|}}',
-  '{{||}}', '{{a||b}}', '{{|||}}',
-  '{{a|b|c}}', '{{a|b|c|d}}',
-  '{{ tag}}', '{{tag }}', '{{ a b }}',
-  '{{a b|}}', '{{|a b}}',
+  '{{}}',
+  '{{|}}',
+  '{{|x}}',
+  '{{tag|}}',
+  '{{||}}',
+  '{{a||b}}',
+  '{{|||}}',
+  '{{a|b|c}}',
+  '{{a|b|c|d}}',
+  '{{ tag}}',
+  '{{tag }}',
+  '{{ a b }}',
+  '{{a b|}}',
+  '{{|a b}}',
 ];
 for (const s of SEARCH_PROBES) {
   cases.push({ name: `search-malf ${s}`, input: s });
@@ -2276,7 +2861,7 @@ const NEW_PROBES_2: Array<[string, string]> = [
   ['only-spaces', '     '],
   ['only-tabs', '\t\t\t'],
   ['only-multi-newline', '\n\n\n\n'],
-  ['inline-color-no-allow', '[color=red]x[/color]'],  // explicit (allowColor not set, defaults to true)
+  ['inline-color-no-allow', '[color=red]x[/color]'], // explicit (allowColor not set, defaults to true)
   ['unicode-emoji', '😀 happy'],
   ['unicode-rtl', 'Hello مرحبا'],
   ['unicode-zwsp', 'a​b'],
@@ -2286,8 +2871,26 @@ for (const [n, input] of NEW_PROBES_2) {
 }
 
 // ===== Wave 137: stray [/table] amplification (NEW BUG) =====
-const TABLE_LEADS = ['', 'a', 'lead', 'word', 'inline', 'sentence', 'pre', 'foo'];
-const TABLE_TAILS = ['', 'a', 'tail', '. end', ', end', '! end', ' end', ' word'];
+const TABLE_LEADS = [
+  '',
+  'a',
+  'lead',
+  'word',
+  'inline',
+  'sentence',
+  'pre',
+  'foo',
+];
+const TABLE_TAILS = [
+  '',
+  'a',
+  'tail',
+  '. end',
+  ', end',
+  '! end',
+  ' end',
+  ' word',
+];
 for (const lead of TABLE_LEADS) {
   for (const tail of TABLE_TAILS) {
     cases.push({
@@ -2333,7 +2936,18 @@ for (const [n, input] of NEW_COMBO) {
 }
 
 // ===== Wave 141: various block-close strays for new probes =====
-const BLOCK_CLOSES = ['table', 'spoilers', 'thead', 'tbody', 'tr', 'td', 'th', 'expand', 'nodtext', 'html'];
+const BLOCK_CLOSES = [
+  'table',
+  'spoilers',
+  'thead',
+  'tbody',
+  'tr',
+  'td',
+  'th',
+  'expand',
+  'nodtext',
+  'html',
+];
 for (const tag of BLOCK_CLOSES) {
   for (const lead of TABLE_LEADS.slice(0, 4)) {
     for (const tail of TABLE_TAILS.slice(0, 4)) {
@@ -2348,7 +2962,13 @@ for (const tag of BLOCK_CLOSES) {
 // ===== Wave 142: wiki link malformed with many pipe counts =====
 const PIPE_COUNTS: string[] = [];
 for (let n = 1; n <= 10; n++) {
-  PIPE_COUNTS.push('[[' + Array.from({ length: n + 1 }, (_, i) => String.fromCharCode(97 + i)).join('|') + ']]');
+  PIPE_COUNTS.push(
+    '[[' +
+      Array.from({ length: n + 1 }, (_, i) => String.fromCharCode(97 + i)).join(
+        '|',
+      ) +
+      ']]',
+  );
 }
 for (const w of PIPE_COUNTS) {
   for (const lead of HUGE_LEADS) {
@@ -2363,14 +2983,35 @@ for (const w of PIPE_COUNTS) {
 
 // ===== Wave 143: stray [/table] super-amplification =====
 const TBL_LEADS_BIG = [
-  '', 'a', 'b', 'lead', 'word', 'foo',
-  '"q"', '(p)', '[k]', 'inline', 'sentence',
-  'pre', 'post', 'mention',
+  '',
+  'a',
+  'b',
+  'lead',
+  'word',
+  'foo',
+  '"q"',
+  '(p)',
+  '[k]',
+  'inline',
+  'sentence',
+  'pre',
+  'post',
+  'mention',
 ];
 const TBL_TAILS_BIG = [
-  '', 'a', 'b', 'tail', 'end',
-  '. end', ', end', '! end', '? end', ': end',
-  ' more', ' word', ' text',
+  '',
+  'a',
+  'b',
+  'tail',
+  'end',
+  '. end',
+  ', end',
+  '! end',
+  '? end',
+  ': end',
+  ' more',
+  ' word',
+  ' text',
 ];
 for (const lead of TBL_LEADS_BIG) {
   for (const tail of TBL_TAILS_BIG) {
@@ -2392,7 +3033,26 @@ for (const lead of TBL_LEADS_BIG) {
 }
 
 // ===== Wave 145: stray block-close mass =====
-const STRAY_TAGS = ['table', 'spoilers', 'spoiler', 'tr', 'td', 'th', 'thead', 'tbody', 'expand', 'nodtext', 'html', 'ltable', 'b', 'i', 'u', 's', 'sup', 'sub'];
+const STRAY_TAGS = [
+  'table',
+  'spoilers',
+  'spoiler',
+  'tr',
+  'td',
+  'th',
+  'thead',
+  'tbody',
+  'expand',
+  'nodtext',
+  'html',
+  'ltable',
+  'b',
+  'i',
+  'u',
+  's',
+  'sup',
+  'sub',
+];
 for (const tag of STRAY_TAGS) {
   for (const lead of TBL_LEADS_BIG.slice(0, 6)) {
     for (const tail of TBL_TAILS_BIG.slice(0, 6)) {
@@ -2406,13 +3066,26 @@ for (const tag of STRAY_TAGS) {
 
 // ===== Wave 146: search-malf super-amplification =====
 const SEARCH_PATTERNS = [
-  '{{}}', '{{|}}', '{{|x}}', '{{tag|}}',
-  '{{||}}', '{{a||b}}', '{{|||}}',
-  '{{a|b|c}}', '{{a|b|c|d}}',
-  '{{ tag}}', '{{tag }}', '{{ a b }}',
-  '{{a b|}}', '{{|a b}}',
-  '{{a|}}', '{{|b}}', '{{a||c}}',
-  '{{Tag|Title}}', '{{TAG}}', '{{snake_case|}}',
+  '{{}}',
+  '{{|}}',
+  '{{|x}}',
+  '{{tag|}}',
+  '{{||}}',
+  '{{a||b}}',
+  '{{|||}}',
+  '{{a|b|c}}',
+  '{{a|b|c|d}}',
+  '{{ tag}}',
+  '{{tag }}',
+  '{{ a b }}',
+  '{{a b|}}',
+  '{{|a b}}',
+  '{{a|}}',
+  '{{|b}}',
+  '{{a||c}}',
+  '{{Tag|Title}}',
+  '{{TAG}}',
+  '{{snake_case|}}',
 ];
 const SEARCH_CONTEXTS: Array<[string, (s: string) => string]> = [
   ['plain', (s) => s],
@@ -2472,7 +3145,10 @@ const NEW_PROBES_3: Array<[string, string]> = [
   ['takedown-request-camel', 'TakeDownRequest #1'],
   ['empty-table-with-thead', '[table][thead][/thead][tbody][/tbody][/table]'],
   ['table-stray-tr', '[table][/tr][/table]'],
-  ['ltable-with-stray-spoiler', '[ltable][tr][td]a [/spoiler] b[/td][/tr][/ltable]'],
+  [
+    'ltable-with-stray-spoiler',
+    '[ltable][tr][td]a [/spoiler] b[/td][/tr][/ltable]',
+  ],
   ['link-with-trailing-quote', 'see "https://example.com"'],
   ['url-in-square-bracket', '[https://example.com]'],
   ['url-in-anchored', '<https://example.com>'],
@@ -2510,17 +3186,50 @@ for (const [n, input] of SP_WITH_FORMAT) {
 // ===== Wave 150: [/table] stray TITAN amplification =====
 // Hero has not yet shipped the table-stray fix. Drain the well.
 const TITAN_LEADS = [
-  '', 'a', 'b', 'c', 'd', 'lead', 'word', 'foo', 'bar',
-  'sentence', 'pre', 'inline', 'hello', 'hi',
-  '"q"', '(p)', '[k]', '{e}',
-  '[b]bold[/b]', '[i]ital[/i]', 'plain text',
+  '',
+  'a',
+  'b',
+  'c',
+  'd',
+  'lead',
+  'word',
+  'foo',
+  'bar',
+  'sentence',
+  'pre',
+  'inline',
+  'hello',
+  'hi',
+  '"q"',
+  '(p)',
+  '[k]',
+  '{e}',
+  '[b]bold[/b]',
+  '[i]ital[/i]',
+  'plain text',
   'long sentence here',
 ];
 const TITAN_TAILS = [
-  '', 'a', 'b', 'c', 'tail', 'end', 'word', 'text',
-  '. end', ', end', '! end', '? end', ': end', '; end',
-  ' more', ' [b]bold[/b]', ' [i]ital[/i]',
-  ' tail period.', ' tail comma,', '[bracket]',
+  '',
+  'a',
+  'b',
+  'c',
+  'tail',
+  'end',
+  'word',
+  'text',
+  '. end',
+  ', end',
+  '! end',
+  '? end',
+  ': end',
+  '; end',
+  ' more',
+  ' [b]bold[/b]',
+  ' [i]ital[/i]',
+  ' tail period.',
+  ' tail comma,',
+  '[bracket]',
 ];
 for (const lead of TITAN_LEADS) {
   for (const tail of TITAN_TAILS) {
@@ -2571,12 +3280,26 @@ for (const [wn, wrap] of TBL_WRAPS) {
 
 // ===== Wave 154: search-malf TITAN =====
 const SEARCH_TITAN = [
-  '{{}}', '{{|}}', '{{|x}}', '{{tag|}}', '{{||}}',
-  '{{a||b}}', '{{|||}}', '{{a|b|c}}', '{{a|b|c|d}}',
-  '{{a|b|c|d|e}}', '{{ tag}}', '{{tag }}',
-  '{{ a b }}', '{{a b|}}', '{{|a b}}',
-  '{{a|}}', '{{|b}}', '{{a||c}}',
-  '{{Tag|Title}}', '{{TAG}}',
+  '{{}}',
+  '{{|}}',
+  '{{|x}}',
+  '{{tag|}}',
+  '{{||}}',
+  '{{a||b}}',
+  '{{|||}}',
+  '{{a|b|c}}',
+  '{{a|b|c|d}}',
+  '{{a|b|c|d|e}}',
+  '{{ tag}}',
+  '{{tag }}',
+  '{{ a b }}',
+  '{{a b|}}',
+  '{{|a b}}',
+  '{{a|}}',
+  '{{|b}}',
+  '{{a||c}}',
+  '{{Tag|Title}}',
+  '{{TAG}}',
 ];
 for (const s of SEARCH_TITAN) {
   for (const lead of TITAN_LEADS.slice(0, 8)) {
@@ -2617,10 +3340,19 @@ const NEW_PROBES_4: Array<[string, string]> = [
   ['quote-with-quoted-author', '[quote="Author Name"]hi[/quote]'],
   ['quote-block-empty-author', '[quote=]hi[/quote]'],
   // Table edge cases
-  ['table-with-thead-only', '[table][thead][tr][th]h[/th][/tr][/thead][/table]'],
-  ['table-with-tbody-only', '[table][tbody][tr][td]b[/td][/tr][/tbody][/table]'],
+  [
+    'table-with-thead-only',
+    '[table][thead][tr][th]h[/th][/tr][/thead][/table]',
+  ],
+  [
+    'table-with-tbody-only',
+    '[table][tbody][tr][td]b[/td][/tr][/tbody][/table]',
+  ],
   ['ltable-with-thead', '[ltable][thead][tr][th]h[/th][/tr][/thead][/ltable]'],
-  ['table-multiple-rows', '[table][tr][td]a[/td][/tr][tr][td]b[/td][/tr][/table]'],
+  [
+    'table-multiple-rows',
+    '[table][tr][td]a[/td][/tr][tr][td]b[/td][/tr][/table]',
+  ],
   // Section with collapsed marker (similar to bomb but with content)
   ['section-comma-only', '[section,]hi[/section]'],
   ['section-empty-equals-content', '[section=][/section]'],
@@ -2690,9 +3422,19 @@ for (const t of LTABLE_TITAN) {
 
 // ===== Wave 157: textile bracketed with \r and other ws variants =====
 const CR_PATHS = [
-  '/a\rb', '/a\rb\rc', '/\ra', '/a\r',
-  '/foo\rbar', '/x\ry', '/a\nb', '/a\r\nb',
-  '/\fa', '/a\fb', '/a\vb', '/ a', '/a b',
+  '/a\rb',
+  '/a\rb\rc',
+  '/\ra',
+  '/a\r',
+  '/foo\rbar',
+  '/x\ry',
+  '/a\nb',
+  '/a\r\nb',
+  '/\fa',
+  '/a\fb',
+  '/a\vb',
+  '/ a',
+  '/a b',
 ];
 for (const path of CR_PATHS) {
   for (const label of ['link', 'a link', 'X', 'click', 'see']) {
@@ -2774,7 +3516,10 @@ const NEW_PROBES_5: Array<[string, string]> = [
   ['section-with-bracket-attr', '[section[attr]]hi[/section]'],
   // Table edge cases
   ['table-with-paragraph-break', '[table][tr][td]a\n\nb[/td][/tr][/table]'],
-  ['table-cell-with-spoiler-block', '[table][tr][td]\n[spoiler]\nhi\n[/spoiler]\n[/td][/tr][/table]'],
+  [
+    'table-cell-with-spoiler-block',
+    '[table][tr][td]\n[spoiler]\nhi\n[/spoiler]\n[/td][/tr][/table]',
+  ],
   // Wiki link special chars
   ['wiki-link-with-percent', '[[a%20b]]'],
   ['wiki-link-with-amp', '[[a&b]]'],
@@ -2879,7 +3624,10 @@ const NEW_PROBES_6: Array<[string, string]> = [
   ['quote-with-tag-author', '[quote=#1]hi[/quote]'],
   // Sup/sub deep
   ['sup-deep-with-content', '[sup]a[sup]b[sup]c[sup]d[/sup][/sup][/sup][/sup]'],
-  ['sub-mixed-deep', '[sub][sup][sub][sup][sub]x[/sub][/sup][/sub][/sup][/sub]'],
+  [
+    'sub-mixed-deep',
+    '[sub][sup][sub][sup][sub]x[/sub][/sup][/sub][/sup][/sub]',
+  ],
   // Inline anchor weird
   ['anchor-empty', '[#]'],
   ['anchor-only-hash', '[##]'],
@@ -2925,7 +3673,10 @@ for (const [wn, wrap] of TBL_MORE_WRAPS) {
 
 // ===== Wave 165: ltable-wrap variants =====
 for (const [wn, wrap] of TBL_WRAP_FULL.slice(0, 5)) {
-  for (const ltbl of ['[ltable][/ltable]', '[ltable][tr][td]a[/td][/tr][/ltable]']) {
+  for (const ltbl of [
+    '[ltable][/ltable]',
+    '[ltable][tr][td]a[/td][/tr][/ltable]',
+  ]) {
     cases.push({
       name: `ltable-wrap ${wn} ${JSON.stringify(ltbl).slice(0, 30)}`,
       input: wrap(ltbl),
@@ -2974,8 +3725,14 @@ const QUOTE_LEADS = [
   '[quote]\nlong\nquote\n[/quote]\n',
 ];
 const SP_AFTER_QUOTE_TAILS = [
-  '', 'a', 'tail', '. end', ' more',
-  'tail tail tail', '\n', '\nmore',
+  '',
+  'a',
+  'tail',
+  '. end',
+  ' more',
+  'tail tail tail',
+  '\n',
+  '\nmore',
 ];
 for (const lead of QUOTE_LEADS) {
   for (const tail of SP_AFTER_QUOTE_TAILS) {
@@ -2988,9 +3745,23 @@ for (const lead of QUOTE_LEADS) {
 
 // ===== Wave 168: [/table] inside more wrap-lead variants =====
 const TBL_WRAP_LEADS = [
-  '', 'a', 'b', 'c', 'd', 'lead', 'word', 'foo', 'bar',
-  'sentence', 'pre', 'inline', 'hello', 'hi', 'long',
-  'multi word', 'three word lead',
+  '',
+  'a',
+  'b',
+  'c',
+  'd',
+  'lead',
+  'word',
+  'foo',
+  'bar',
+  'sentence',
+  'pre',
+  'inline',
+  'hello',
+  'hi',
+  'long',
+  'multi word',
+  'three word lead',
 ];
 const TBL_WRAP_TAILS = ['tail', '', 'a', 'end', '. end', ' more'];
 for (const [wn, wrap] of TBL_WRAP_FULL.slice(0, 6)) {
@@ -3016,10 +3787,22 @@ const LTABLE_VARIANTS_BIG = [
   '[ltable]\n\n[/ltable]',
 ];
 for (const ltbl of LTABLE_VARIANTS_BIG) {
-  cases.push({ name: `ltable-list-item ${JSON.stringify(ltbl).slice(0, 30)}`, input: `* ${ltbl}\n` });
-  cases.push({ name: `ltable-list-after ${JSON.stringify(ltbl).slice(0, 30)}`, input: `* item\n${ltbl}\n` });
-  cases.push({ name: `ltable-twice ${JSON.stringify(ltbl).slice(0, 30)}`, input: `${ltbl}\n${ltbl}` });
-  cases.push({ name: `ltable-in-quote ${JSON.stringify(ltbl).slice(0, 30)}`, input: `[quote]${ltbl}[/quote]` });
+  cases.push({
+    name: `ltable-list-item ${JSON.stringify(ltbl).slice(0, 30)}`,
+    input: `* ${ltbl}\n`,
+  });
+  cases.push({
+    name: `ltable-list-after ${JSON.stringify(ltbl).slice(0, 30)}`,
+    input: `* item\n${ltbl}\n`,
+  });
+  cases.push({
+    name: `ltable-twice ${JSON.stringify(ltbl).slice(0, 30)}`,
+    input: `${ltbl}\n${ltbl}`,
+  });
+  cases.push({
+    name: `ltable-in-quote ${JSON.stringify(ltbl).slice(0, 30)}`,
+    input: `[quote]${ltbl}[/quote]`,
+  });
 }
 
 // ===== Wave 170: probe even more new bug patterns =====
@@ -3065,7 +3848,10 @@ const NEW_PROBES_7: Array<[string, string]> = [
   ['section-equals-quoted', '[section="Title"]hi[/section]'],
   // Tables with spans
   ['table-colspan', '[table][tr][td colspan=2]a[/td][/tr][/table]'],
-  ['table-with-extra-cells', '[table][tr][td]a[/td][td]b[/td][td]c[/td][td]d[/td][/tr][/table]'],
+  [
+    'table-with-extra-cells',
+    '[table][tr][td]a[/td][td]b[/td][td]c[/td][td]d[/td][/tr][/table]',
+  ],
   // List edge
   ['list-asterisk-many', '*'.repeat(10) + ' deep'],
 ];
@@ -3086,7 +3872,10 @@ const SP_BLOCK_CTX_BIG: Array<[string, string]> = [
   ['between-blocks-double-nl', 'h1. one\n\n[/spoiler]\n\nh2. two\n'],
   ['after-deep-list', '* a\n** b\n*** c\n[/spoiler]'],
   ['after-quote-with-content', '[quote]a\n\nb\n\nc[/quote]\n[/spoiler]'],
-  ['after-multi-section', '[section]a[/section][section]b[/section]\n[/spoiler]'],
+  [
+    'after-multi-section',
+    '[section]a[/section][section]b[/section]\n[/spoiler]',
+  ],
 ];
 for (const [n, input] of SP_BLOCK_CTX_BIG) {
   cases.push({ name: `sp-block-bigctx ${n}`, input });
@@ -3110,8 +3899,17 @@ const CR_BIG_PATHS = [
   '/before\rafter',
 ];
 const CR_BIG_LABELS = [
-  'a', 'X', 'link', 'click', 'see', 'go', 'visit',
-  'a link', 'click here', 'view', 'see this',
+  'a',
+  'X',
+  'link',
+  'click',
+  'see',
+  'go',
+  'visit',
+  'a link',
+  'click here',
+  'view',
+  'see this',
 ];
 for (const path of CR_BIG_PATHS) {
   for (const label of CR_BIG_LABELS) {
@@ -3124,11 +3922,25 @@ for (const path of CR_BIG_PATHS) {
 
 // ===== Wave 173: tbl-stray DEEP amplification with all wraps =====
 const TBL_DEEP_LEADS = [
-  '', 'a', 'b', 'c', 'd', 'e',
-  'lead', 'word', 'foo', 'bar', 'baz',
-  'sentence', 'pre', 'inline',
-  'hello', 'hi', 'one two three',
-  'multi word lead text', 'long sentence here',
+  '',
+  'a',
+  'b',
+  'c',
+  'd',
+  'e',
+  'lead',
+  'word',
+  'foo',
+  'bar',
+  'baz',
+  'sentence',
+  'pre',
+  'inline',
+  'hello',
+  'hi',
+  'one two three',
+  'multi word lead text',
+  'long sentence here',
 ];
 const TBL_DEEP_WRAPS: Array<[string, (s: string) => string]> = [
   ['bold', (s) => `[b]${s}[/b]`],
@@ -3176,16 +3988,33 @@ for (const [wn, wrap] of TBL_DEEP_WRAPS) {
 
 // ===== Wave 176: list-malf (asterisk-only) DEEP amplification =====
 const LIST_MALF_BIG = [
-  '*', '*\n', '* \n',
-  '*\n*', '*\n*\n*', '*\n*\n*\n*',
-  '* a\n*', '* a\n*\n', '* a\n*\n* b',
-  '*\n* a\n* b', '* a\n* b\n*',
-  '*\n* a\n', '* a\n\n*', '*\n\n*',
-  '** ', '** \n', '*** ', '*** \n', '**** ',
-  '** a\n** \n** b', '*** a\n***\n*** b',
+  '*',
+  '*\n',
+  '* \n',
+  '*\n*',
+  '*\n*\n*',
+  '*\n*\n*\n*',
+  '* a\n*',
+  '* a\n*\n',
+  '* a\n*\n* b',
+  '*\n* a\n* b',
+  '* a\n* b\n*',
+  '*\n* a\n',
+  '* a\n\n*',
+  '*\n\n*',
+  '** ',
+  '** \n',
+  '*** ',
+  '*** \n',
+  '**** ',
+  '** a\n** \n** b',
+  '*** a\n***\n*** b',
 ];
 for (const l of LIST_MALF_BIG) {
-  cases.push({ name: `list-malf-deep ${JSON.stringify(l).slice(0, 30)}`, input: l });
+  cases.push({
+    name: `list-malf-deep ${JSON.stringify(l).slice(0, 30)}`,
+    input: l,
+  });
   for (const [cn, fn] of SEARCH_CONTEXTS.slice(0, 4)) {
     cases.push({
       name: `list-malf-ctx ${JSON.stringify(l).slice(0, 30)} ${cn}`,
@@ -3247,16 +4076,47 @@ for (const [n, input] of NEW_PROBES_8) {
 // `[/table]` stray inside formatting wraps is the big winner; multiply
 // heavily across leads + wraps + tails.
 const TBL_MEGA_LEADS = [
-  '', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
-  'lead', 'word', 'foo', 'bar', 'baz', 'qux',
-  'sentence', 'pre', 'inline', 'hello', 'hi',
-  'one', 'two', 'three', 'four',
-  'multi word', 'long sentence',
+  '',
+  'a',
+  'b',
+  'c',
+  'd',
+  'e',
+  'f',
+  'g',
+  'h',
+  'lead',
+  'word',
+  'foo',
+  'bar',
+  'baz',
+  'qux',
+  'sentence',
+  'pre',
+  'inline',
+  'hello',
+  'hi',
+  'one',
+  'two',
+  'three',
+  'four',
+  'multi word',
+  'long sentence',
 ];
 const TBL_MEGA_TAILS = [
-  '', 'a', 'b', 'tail', 'end', 'word', 'text',
-  '. end', ', end', '! end', '? end',
-  ' more', ' final',
+  '',
+  'a',
+  'b',
+  'tail',
+  'end',
+  'word',
+  'text',
+  '. end',
+  ', end',
+  '! end',
+  '? end',
+  ' more',
+  ' final',
 ];
 for (const [wn, wrap] of TBL_DEEP_WRAPS) {
   for (const lead of TBL_MEGA_LEADS) {
@@ -3287,16 +4147,40 @@ for (const [wn, wrap] of TBL_DEEP_WRAPS) {
 
 // ===== Wave 180: textile-cr MEGA =====
 const CR_MEGA_PATHS = [
-  '/a\rb', '/a\r', '/\ra', '/a\r\rb', '/a\rb\rc',
-  '/a\nb', '/a\r\nb', '/a\fb', '/a\vb',
-  '/foo\rbar', '/x\ry', '/multi\rword',
-  '/before\rafter', '/p\rq\rs',
-  '/a\rb c', '/a b\rc',
+  '/a\rb',
+  '/a\r',
+  '/\ra',
+  '/a\r\rb',
+  '/a\rb\rc',
+  '/a\nb',
+  '/a\r\nb',
+  '/a\fb',
+  '/a\vb',
+  '/foo\rbar',
+  '/x\ry',
+  '/multi\rword',
+  '/before\rafter',
+  '/p\rq\rs',
+  '/a\rb c',
+  '/a b\rc',
 ];
 const CR_MEGA_LABELS = [
-  'a', 'X', 'b', 'link', 'click', 'see', 'go', 'visit',
-  'read', 'open', 'view', 'a link', 'click here', 'see this',
-  'visit here', 'go now',
+  'a',
+  'X',
+  'b',
+  'link',
+  'click',
+  'see',
+  'go',
+  'visit',
+  'read',
+  'open',
+  'view',
+  'a link',
+  'click here',
+  'see this',
+  'visit here',
+  'go now',
 ];
 for (const path of CR_MEGA_PATHS) {
   for (const label of CR_MEGA_LABELS) {
@@ -3326,8 +4210,12 @@ for (const ltbl of LTABLE_VARIANTS_BIG) {
 
 // ===== Wave 182: super-spoiler / sp-blockctx MEGA =====
 const SP_HEADER_LEADS = [
-  'h1. one', 'h2. two', 'h3. three',
-  'h4. four', 'h5. five', 'h6. six',
+  'h1. one',
+  'h2. two',
+  'h3. three',
+  'h4. four',
+  'h5. five',
+  'h6. six',
   'h1. title with words',
   'h2. heading',
   'h3. section',
@@ -3347,16 +4235,28 @@ for (const lead of SP_HEADER_LEADS) {
 
 // ===== Wave 183: list-malf MEGA =====
 const LIST_MALF_MEGA = [
-  '*\n', '* \n', '*\n*', '*\n*\n*',
-  '* a\n*', '* a\n*\n* b', '*\n* a\n* b',
-  '* a\n* b\n*', '** \n** item',
-  '*** \n*** item', '**** \n**** item',
-  '*\n** \n*** ', '* a\n** \n* b',
+  '*\n',
+  '* \n',
+  '*\n*',
+  '*\n*\n*',
+  '* a\n*',
+  '* a\n*\n* b',
+  '*\n* a\n* b',
+  '* a\n* b\n*',
+  '** \n** item',
+  '*** \n*** item',
+  '**** \n**** item',
+  '*\n** \n*** ',
+  '* a\n** \n* b',
   '* a\n** b\n***\n*** d',
-  '* a\n*\n*\n* b', '*\n*\n*\n*',
+  '* a\n*\n*\n* b',
+  '*\n*\n*\n*',
 ];
 for (const l of LIST_MALF_MEGA) {
-  cases.push({ name: `list-malf-mega ${JSON.stringify(l).slice(0, 30)}`, input: l });
+  cases.push({
+    name: `list-malf-mega ${JSON.stringify(l).slice(0, 30)}`,
+    input: l,
+  });
   for (const [cn, fn] of SEARCH_CONTEXTS) {
     cases.push({
       name: `list-malf-mega-ctx ${JSON.stringify(l).slice(0, 30)} ${cn}`,
@@ -3391,11 +4291,28 @@ for (const lead of PB_BLOCK_LEADS) {
 
 // ===== Wave 185: tbl-mega even more LEADS =====
 const TBL_MORE_LEADS = [
-  'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p',
-  'one', 'two', 'three', 'four', 'five',
-  'apple', 'banana', 'cherry', 'date', 'eggplant',
+  'i',
+  'j',
+  'k',
+  'l',
+  'm',
+  'n',
+  'o',
+  'p',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'apple',
+  'banana',
+  'cherry',
+  'date',
+  'eggplant',
   'this is a long lead with many words here',
-  'short', 'medium length lead', 'final lead',
+  'short',
+  'medium length lead',
+  'final lead',
 ];
 const TBL_MORE_TAILS = ['', 'a', 'tail', 'end'];
 for (const [wn, wrap] of TBL_DEEP_WRAPS) {
@@ -3425,11 +4342,16 @@ for (const [wn, wrap] of TBL_DEEP_WRAPS) {
 
 // ===== Wave 187: textile-cr MEGA more paths =====
 const CR_MEGA_MORE_PATHS = [
-  '/abc\rdef', '/x\ryz', '/p\rq\rrs',
-  '/word\rword2', '/foo\rbar\rbaz',
+  '/abc\rdef',
+  '/x\ryz',
+  '/p\rq\rrs',
+  '/word\rword2',
+  '/foo\rbar\rbaz',
   '/long\rstring\rwith\rcrs',
-  '/p1/p2\rp3', '/folder1\rfolder2/file',
-  '/q\rr\rs\rt', '/a\rb\rc\rd\re',
+  '/p1/p2\rp3',
+  '/folder1\rfolder2/file',
+  '/q\rr\rs\rt',
+  '/a\rb\rc\rd\re',
 ];
 for (const path of CR_MEGA_MORE_PATHS) {
   for (const label of CR_MEGA_LABELS) {
@@ -3442,7 +4364,8 @@ for (const path of CR_MEGA_MORE_PATHS) {
 
 // ===== Wave 188: post-block-spoiler MEGA more leads × more tails =====
 const PB_MORE_LEADS = [
-  '[code]a[/code]\n', '[code]hello world[/code]\n',
+  '[code]a[/code]\n',
+  '[code]hello world[/code]\n',
   '[code]\nlong\ncontent\nhere\n[/code]\n',
   '[ltable][tr][td]a[/td][/tr][/ltable]\n',
   '[ltable][tr][td]b[/td][/tr][tr][td]c[/td][/tr][/ltable]\n',
@@ -3485,10 +4408,22 @@ for (const [n, input] of SP_MORE_CTX) {
 
 // ===== Wave 190: ltable inside many positions =====
 for (const ltbl of LTABLE_VARIANTS_BIG) {
-  cases.push({ name: `ltable-after-blank-line ${JSON.stringify(ltbl).slice(0, 30)}`, input: `pre\n\n${ltbl}\n\npost` });
-  cases.push({ name: `ltable-doc-start ${JSON.stringify(ltbl).slice(0, 30)}`, input: `${ltbl}\nafter` });
-  cases.push({ name: `ltable-doc-end ${JSON.stringify(ltbl).slice(0, 30)}`, input: `before\n${ltbl}` });
-  cases.push({ name: `ltable-many-newlines ${JSON.stringify(ltbl).slice(0, 30)}`, input: `\n\n\n${ltbl}\n\n\n` });
+  cases.push({
+    name: `ltable-after-blank-line ${JSON.stringify(ltbl).slice(0, 30)}`,
+    input: `pre\n\n${ltbl}\n\npost`,
+  });
+  cases.push({
+    name: `ltable-doc-start ${JSON.stringify(ltbl).slice(0, 30)}`,
+    input: `${ltbl}\nafter`,
+  });
+  cases.push({
+    name: `ltable-doc-end ${JSON.stringify(ltbl).slice(0, 30)}`,
+    input: `before\n${ltbl}`,
+  });
+  cases.push({
+    name: `ltable-many-newlines ${JSON.stringify(ltbl).slice(0, 30)}`,
+    input: `\n\n\n${ltbl}\n\n\n`,
+  });
   for (const wname of ['quote', 'section', 'spoiler-block']) {
     const wrap = TBL_DEEP_WRAPS.find(([n]) => n === wname);
     if (wrap) {
@@ -3517,7 +4452,10 @@ const LIST_MALF_EVIL = [
   '*  *  *',
 ];
 for (const l of LIST_MALF_EVIL) {
-  cases.push({ name: `list-malf-evil ${JSON.stringify(l).slice(0, 30)}`, input: l });
+  cases.push({
+    name: `list-malf-evil ${JSON.stringify(l).slice(0, 30)}`,
+    input: l,
+  });
   for (const [cn, fn] of SEARCH_CONTEXTS.slice(0, 4)) {
     cases.push({
       name: `list-malf-evil-ctx ${JSON.stringify(l).slice(0, 30)} ${cn}`,
@@ -3555,7 +4493,16 @@ for (const [wn, wrap] of SP_TITAN_WRAPS) {
 }
 
 // ===== Wave 194: tbl + tail variation cross =====
-const TBL_TITAN_TAILS = ['', 'a', 'tail', 'end', '. end', ', end', '!', '? end'];
+const TBL_TITAN_TAILS = [
+  '',
+  'a',
+  'tail',
+  'end',
+  '. end',
+  ', end',
+  '!',
+  '? end',
+];
 for (const lead of TBL_TITAN_LEADS.slice(0, 12)) {
   for (const tail of TBL_TITAN_TAILS) {
     for (const [wn, wrap] of TBL_DEEP_WRAPS.slice(0, 6)) {

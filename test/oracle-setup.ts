@@ -8,7 +8,11 @@
 // Uses testcontainers' Ryuk reaper, so containers are cleaned up even if
 // the vitest process is killed mid-run.
 
-import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
+import {
+  GenericContainer,
+  Wait,
+  type StartedTestContainer,
+} from 'testcontainers';
 
 const IMAGE = 'dmark-oracle:dev';
 const ORACLE_INTERNAL_PORT = 4567;

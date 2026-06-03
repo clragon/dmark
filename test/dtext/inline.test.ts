@@ -20,11 +20,15 @@ describe('DText Inline Formatting', () => {
     });
 
     it('parses superscript text', () => {
-      expect(parseDText('[sup]Superscript[/sup]')).toBe('<p><sup>Superscript</sup></p>');
+      expect(parseDText('[sup]Superscript[/sup]')).toBe(
+        '<p><sup>Superscript</sup></p>',
+      );
     });
 
     it('parses subscript text', () => {
-      expect(parseDText('[sub]Subscript[/sub]')).toBe('<p><sub>Subscript</sub></p>');
+      expect(parseDText('[sub]Subscript[/sub]')).toBe(
+        '<p><sub>Subscript</sub></p>',
+      );
     });
 
     it('parses inline spoiler', () => {
@@ -32,13 +36,17 @@ describe('DText Inline Formatting', () => {
       // sits at block context (start of document, after \n\n, or after a
       // heading) becomes a <div class="spoiler"><p>...</p></div> block,
       // covered separately under Spoiler Block.
-      expect(parseDText("here is [spoiler]I'm a spoiler![/spoiler] hidden"))
-        .toBe('<p>here is <span class="spoiler">I\'m a spoiler!</span> hidden</p>');
+      expect(
+        parseDText("here is [spoiler]I'm a spoiler![/spoiler] hidden"),
+      ).toBe(
+        '<p>here is <span class="spoiler">I\'m a spoiler!</span> hidden</p>',
+      );
     });
 
     it('parses inline code', () => {
-      expect(parseDText('`inline code`'))
-        .toBe('<p><span class="inline-code">inline code</span></p>');
+      expect(parseDText('`inline code`')).toBe(
+        '<p><span class="inline-code">inline code</span></p>',
+      );
     });
 
     it('parses escaped backtick', () => {
@@ -48,42 +56,49 @@ describe('DText Inline Formatting', () => {
 
   describe('Color Formatting', () => {
     it('parses color by name', () => {
-      expect(parseDText('[color=red]I\'m red![/color]'))
-        .toBe('<p><span class="dtext-color" style="color:red">I\'m red!</span></p>');
+      expect(parseDText("[color=red]I'm red![/color]")).toBe(
+        '<p><span class="dtext-color" style="color:red">I\'m red!</span></p>',
+      );
     });
 
     it('parses color by hex code', () => {
-      expect(parseDText('[color=#ff0000]I\'m red![/color]'))
-        .toBe('<p><span class="dtext-color" style="color:#ff0000">I\'m red!</span></p>');
+      expect(parseDText("[color=#ff0000]I'm red![/color]")).toBe(
+        '<p><span class="dtext-color" style="color:#ff0000">I\'m red!</span></p>',
+      );
     });
 
     it('parses tag category color (artist)', () => {
-      expect(parseDText('[color=artist]I\'m an artist![/color]'))
-        .toBe('<p><span class="dtext-color-artist">I\'m an artist!</span></p>');
+      expect(parseDText("[color=artist]I'm an artist![/color]")).toBe(
+        '<p><span class="dtext-color-artist">I\'m an artist!</span></p>',
+      );
     });
 
     it('parses tag category color (character)', () => {
-      expect(parseDText('[color=character]Character[/color]'))
-        .toBe('<p><span class="dtext-color-character">Character</span></p>');
+      expect(parseDText('[color=character]Character[/color]')).toBe(
+        '<p><span class="dtext-color-character">Character</span></p>',
+      );
     });
   });
 
   describe('Nested Formatting', () => {
     it('parses nested bold and italic', () => {
-      expect(parseDText('[b][i]Bold and Italic[/i][/b]'))
-        .toBe('<p><strong><em>Bold and Italic</em></strong></p>');
+      expect(parseDText('[b][i]Bold and Italic[/i][/b]')).toBe(
+        '<p><strong><em>Bold and Italic</em></strong></p>',
+      );
     });
 
     it('parses multiple inline formats', () => {
-      expect(parseDText('[b]Bold[/b] and [i]Italic[/i]'))
-        .toBe('<p><strong>Bold</strong> and <em>Italic</em></p>');
+      expect(parseDText('[b]Bold[/b] and [i]Italic[/i]')).toBe(
+        '<p><strong>Bold</strong> and <em>Italic</em></p>',
+      );
     });
   });
 
   describe('HTML Escaping', () => {
     it('escapes HTML entities', () => {
-      expect(parseDText('<script>alert("xss")</script>'))
-        .toBe('<p>&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;</p>');
+      expect(parseDText('<script>alert("xss")</script>')).toBe(
+        '<p>&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;</p>',
+      );
     });
 
     it('escapes ampersands', () => {

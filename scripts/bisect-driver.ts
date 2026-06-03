@@ -15,7 +15,10 @@ if (!fixture) {
 const budgetMs = budgetStr ? Number(budgetStr) : 4000;
 const size = statSync(resolve(process.cwd(), fixture)).size;
 
-function run(start: number, end: number): { ok: boolean; ms: number; code: number } {
+function run(
+  start: number,
+  end: number,
+): { ok: boolean; ms: number; code: number } {
   const t0 = Date.now();
   const r = spawnSync(
     'node',
@@ -53,7 +56,9 @@ let firstBadEnd = size;
 while (lo + 1 < hi) {
   const mid = ((lo + hi) / 2) | 0;
   const r = run(0, mid);
-  console.log(`prefix 0..${mid} (${mid}b): ok=${r.ok} code=${r.code} ms=${r.ms}`);
+  console.log(
+    `prefix 0..${mid} (${mid}b): ok=${r.ok} code=${r.code} ms=${r.ms}`,
+  );
   if (r.ok) {
     lo = mid;
   } else {
@@ -70,7 +75,9 @@ let lastBadStart = 0;
 while (slo + 1 < shi) {
   const mid = ((slo + shi) / 2) | 0;
   const r = run(mid, firstBadEnd);
-  console.log(`slice ${mid}..${firstBadEnd} (${firstBadEnd - mid}b): ok=${r.ok} code=${r.code} ms=${r.ms}`);
+  console.log(
+    `slice ${mid}..${firstBadEnd} (${firstBadEnd - mid}b): ok=${r.ok} code=${r.code} ms=${r.ms}`,
+  );
   if (r.ok) {
     shi = mid;
   } else {
@@ -78,4 +85,6 @@ while (slo + 1 < shi) {
     lastBadStart = mid;
   }
 }
-console.log(`narrowest bad slice: ${lastBadStart}..${firstBadEnd} (${firstBadEnd - lastBadStart} bytes)`);
+console.log(
+  `narrowest bad slice: ${lastBadStart}..${firstBadEnd} (${firstBadEnd - lastBadStart} bytes)`,
+);
