@@ -2,7 +2,7 @@
 
 The gold standard for rendering dtext on the web.
 
-Dmark parses [dtext](https://e621.net/help/dtext) at stupid speeds, in TypeScript, on the client. It runs through an intermediary AST and is tested thoroughly against the Ruby/Ragel implementation ([e621ng/dtext](https://github.com/e621ng/dtext)). It also parses a special flavour of Markdown, with a full roundtrip.
+Dmark parses [dtext](https://e621.net/help/dtext) extremely fast, in TypeScript, on the client. It runs through an intermediary AST and is tested thoroughly against the Ruby/Ragel implementation ([e621ng/dtext](https://github.com/e621ng/dtext)). It also parses a special flavour of Markdown, with a full roundtrip.
 
 ## Promises
 
@@ -48,7 +48,7 @@ Measured on the golden corpus (50 fixtures, 16 KB to 108 KB), Node 22 on a devel
 | full-corpus median    | 1.9 ms | 49.2 ms     | 25x   |
 | worst fixture (108 KB)| 7.4 ms | 50.9 ms     | 7x    |
 
-The oracle is the real e621ng/dtext gem in a docker container; both the tests and this benchmark run against it, so docker is required.
+The oracle is the real e621ng/dtext gem in a docker container; both the tests and this benchmark run against it, so docker is required. Its HTTP and docker overhead is ~2 ms; the rest is parsing.
 
 ### Reproducing
 
