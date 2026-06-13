@@ -1,43 +1,31 @@
 // Buffer-pattern markdown formatter (dmark flavour). The inverse of
 // `parseMarkdown`: takes a canonical AST and emits markdown source whose
 // round-trip is deep-equal to the input (subject to documented divergences).
-// Per-construct rules live in `docs/mapping.md`. Each `formatXxx(node, out,
-// ctx)` pushes fragments into the shared `out` array; `out` is created fresh
-// per call so concurrent renders do not interleave.
+// Per-construct rules live in `docs/mapping.md`. Handlers push fragments into
+// the `out` buffer they are given; the top buffer is created fresh per call so
+// concurrent renders do not interleave.
 
 import type {
   ASTNode,
-  BoldNode,
+  BlockNode,
   CodeBlockNode,
-  ColorNode,
   DocumentNode,
-  FragmentNode,
   HeaderNode,
-  InlineCodeNode,
   InlineNode,
-  InlineSpoilerNode,
-  InternalAnchorNode,
-  ItalicNode,
   LTableNode,
   LinkNode,
   ListNode,
   LiteralHtmlNode,
-  ParagraphNode,
   QuoteNode,
   RawBlockTextNode,
   SectionNode,
   SpoilerBlockNode,
-  StrikeoutNode,
-  SubscriptNode,
-  SuperscriptNode,
   TableBodyNode,
   TableCellNode,
   TableHeadNode,
   TableNode,
   TableRowNode,
   TextNode,
-  UnderlineNode,
-  BlockNode,
 } from '../../ast';
 import { ID_SOURCE } from '../../ast/links';
 import { asciiLowercase } from '../../ast/text';
@@ -52,9 +40,26 @@ export interface MarkdownFormatResult {
   diagnostics: Diagnostic[];
 }
 
-interface FormatContext {
-  options: MarkdownFormatterOptions;
-  diagnostics: Diagnostic[];
+// Every node type the formatter dispatches over. `list_item` and
+// `table_literal` are not emitted standalone (the former lives inside
+// `formatList`, the latter is dropped by `formatTable`), so they are absent
+// from the table and fall through to the unknown-type warning.
+type RenderableNode =
+  | DocumentNode
+  | BlockNode
+  | InlineNode
+  | TableHeadNode
+  | TableBodyNode
+  | TableRowNode
+  | TableCellNode;
+
+type NodeByType = {
+  [K in RenderableNode['type']]: Extract<RenderableNode, { type: K }>;
+};
+
+export interface MarkdownFormatContext {
+  readonly options: MarkdownFormatterOptions;
+  readonly diagnostics: Diagnostic[];
   // True when the next emit lands at the start of a line. The text emitter
   // applies the line-start-only escape set only when this is true (ADR-0017).
   // Functions emitting newline-terminated fragments set it back to true.
@@ -62,194 +67,60 @@ interface FormatContext {
   // True when the formatter is inside a `TableCellNode`; flips the
   // line-break handling per ADR-0019.
   inTableCell: boolean;
+  render(node: ASTNode, out: string[]): void;
+  // Spawn a child context sharing this one's handler table, options, and
+  // diagnostics, with its own line state. Used by handlers that format into a
+  // local buffer (quote line-prefixing, inline-link title).
+  sub(atLineStart: boolean, inTableCell: boolean): MarkdownFormatContext;
 }
 
-export function formatMarkdown(
-  ast: ASTNode,
-  options: MarkdownFormatterOptions = {},
-): MarkdownFormatResult {
-  const out: string[] = [];
-  const ctx: FormatContext = {
-    options,
-    diagnostics: [],
-    atLineStart: true,
-    inTableCell: false,
-  };
-  formatNode(ast, out, ctx);
-  return { output: out.join(''), diagnostics: ctx.diagnostics };
-}
+// Renders one node type; `node` is narrowed to its concrete interface.
+export type MarkdownHandler<K extends keyof NodeByType> = (
+  node: NodeByType[K],
+  out: string[],
+  ctx: MarkdownFormatContext,
+) => void;
 
-function formatNode(node: ASTNode, out: string[], ctx: FormatContext): void {
-  switch (node.type) {
-    case 'document':
-      formatBlocks((node as DocumentNode).children, out, ctx);
-      return;
-
-    // Block nodes
-    case 'header':
-      formatHeader(node as HeaderNode, out, ctx);
-      return;
-    case 'paragraph':
-      formatInlines((node as ParagraphNode).children, out, ctx);
-      return;
-    case 'quote':
-      formatQuote(node as QuoteNode, out, ctx);
-      return;
-    case 'spoiler_block':
-      formatSpoilerBlock(node as SpoilerBlockNode, out, ctx);
-      return;
-    case 'section':
-      formatSection(node as SectionNode, out, ctx);
-      return;
-    case 'code_block':
-      formatCodeBlock(node as CodeBlockNode, out, ctx);
-      return;
-    case 'raw_block_text':
-      formatRawBlockText(node as RawBlockTextNode, out, ctx);
-      return;
-    case 'literal_html':
-      formatLiteralHtml(node as LiteralHtmlNode, out, ctx);
-      return;
-    case 'table':
-      formatTable(node as TableNode, out, ctx);
-      return;
-    case 'ltable':
-      formatLTable(node as LTableNode, out, ctx);
-      return;
-    case 'list':
-      formatList(node as ListNode, out, ctx);
-      return;
-
-    // Inline nodes
-    case 'text':
-      emitTextContent((node as TextNode).content, out, ctx);
-      return;
-    case 'bold':
-      out.push('**');
-      ctx.atLineStart = false;
-      formatInlines((node as BoldNode).children, out, ctx);
-      out.push('**');
-      return;
-    case 'italic':
-      out.push('*');
-      ctx.atLineStart = false;
-      formatInlines((node as ItalicNode).children, out, ctx);
-      out.push('*');
-      return;
-    case 'strikeout':
-      out.push('~~');
-      ctx.atLineStart = false;
-      formatInlines((node as StrikeoutNode).children, out, ctx);
-      out.push('~~');
-      return;
-    case 'underline':
-      out.push('__');
-      ctx.atLineStart = false;
-      formatInlines((node as UnderlineNode).children, out, ctx);
-      out.push('__');
-      return;
-    case 'superscript':
-      // BBCode survivor on the markdown side.
-      out.push('[sup]');
-      ctx.atLineStart = false;
-      formatInlines((node as SuperscriptNode).children, out, ctx);
-      out.push('[/sup]');
-      return;
-    case 'subscript':
-      out.push('[sub]');
-      ctx.atLineStart = false;
-      formatInlines((node as SubscriptNode).children, out, ctx);
-      out.push('[/sub]');
-      return;
-    case 'inline_spoiler':
-      out.push('||');
-      ctx.atLineStart = false;
-      formatInlines((node as InlineSpoilerNode).children, out, ctx);
-      out.push('||');
-      return;
-    case 'inline_code':
-      // Verbatim emit; backtick-bearing content is a documented divergence
-      // (ADR-0010).
-      out.push('`', (node as InlineCodeNode).content, '`');
-      ctx.atLineStart = false;
-      return;
-    case 'color':
-      out.push('[color=', (node as ColorNode).color, ']');
-      ctx.atLineStart = false;
-      formatInlines((node as ColorNode).children, out, ctx);
-      out.push('[/color]');
-      return;
-    case 'line_break':
-      formatLineBreak(out, ctx);
-      return;
-    case 'fragment':
-      formatInlines((node as FragmentNode).children, out, ctx);
-      return;
-    case 'link':
-      formatLink(node as LinkNode, out, ctx);
-      return;
-    case 'internal_anchor':
-      out.push('[#', (node as InternalAnchorNode).name, ']');
-      ctx.atLineStart = false;
-      return;
-
-    // Table sub-nodes: standalone emit lands here. The primary path runs
-    // through `formatTable`, which unwraps head/body and emits rows directly
-    // with the header-separator row markdown-it requires.
-    case 'table_head':
-      for (const row of (node as TableHeadNode).rows) formatNode(row, out, ctx);
-      return;
-    case 'table_body':
-      for (const row of (node as TableBodyNode).rows) formatNode(row, out, ctx);
-      return;
-    case 'table_row':
-      formatTableRowFallback(node as TableRowNode, out, ctx);
-      return;
-    case 'table_cell':
-      formatTableCellFallback(node as TableCellNode, out, ctx);
-      return;
-
-    default:
-      // eslint-disable-next-line no-console
-      console.warn(
-        `formatMarkdown: unknown node type: ${(node as ASTNode).type}`,
-      );
-  }
-}
+// The dispatch table: one handler per node type, exhaustive over the union.
+export type MarkdownHandlers = { [K in keyof NodeByType]: MarkdownHandler<K> };
 
 function formatBlocks(
   blocks: BlockNode[],
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   for (let i = 0; i < blocks.length; i++) {
     if (i > 0) {
       out.push('\n\n');
       ctx.atLineStart = true;
     }
-    formatNode(blocks[i], out, ctx);
+    ctx.render(blocks[i], out);
   }
 }
 
 function formatInlines(
   inlines: InlineNode[],
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
-  for (const node of inlines) formatNode(node, out, ctx);
+  for (const node of inlines) ctx.render(node, out);
 }
 
 function formatHeader(
   node: HeaderNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   out.push('#'.repeat(node.level), ' ');
   ctx.atLineStart = false;
   formatInlines(node.children, out, ctx);
 }
 
-function formatQuote(node: QuoteNode, out: string[], ctx: FormatContext): void {
+function formatQuote(
+  node: QuoteNode,
+  out: string[],
+  ctx: MarkdownFormatContext,
+): void {
   // Per ADR-0018: colourless uses `> ` prefix, coloured uses
   // `[quote=<color>]...[/quote]`.
   if (node.color !== undefined) {
@@ -264,12 +135,7 @@ function formatQuote(node: QuoteNode, out: string[], ctx: FormatContext): void {
   // Colourless `>` form. Emit each child block, line-prefix every line
   // (including blank separator lines) with `> `.
   const innerBuf: string[] = [];
-  const innerCtx: FormatContext = {
-    options: ctx.options,
-    diagnostics: ctx.diagnostics,
-    atLineStart: true,
-    inTableCell: ctx.inTableCell,
-  };
+  const innerCtx = ctx.sub(true, ctx.inTableCell);
   formatBlocks(node.children, innerBuf, innerCtx);
   const inner = innerBuf.join('');
   // Prefix every line. Use `\n` split + map to keep blank lines as `>`.
@@ -288,7 +154,7 @@ function formatQuote(node: QuoteNode, out: string[], ctx: FormatContext): void {
 function formatSpoilerBlock(
   node: SpoilerBlockNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   // BBCode-survivor form: `||...||` is the inline spoiler; block spoilers
   // use the bracket form.
@@ -302,7 +168,7 @@ function formatSpoilerBlock(
 function formatSection(
   node: SectionNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   // BBCode form is canonical (ADR-0011). HTML `<details>` form is accepted
   // on parse but not emitted.
@@ -321,7 +187,7 @@ function formatSection(
 function formatCodeBlock(
   node: CodeBlockNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   // Triple-backtick fence; the AST has no slot for language hints. Emit
   // `content` verbatim; ADR-0007 covers the trailing-newline divergence
@@ -336,7 +202,7 @@ function formatCodeBlock(
 function formatRawBlockText(
   node: RawBlockTextNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   // Verbatim passthrough with warning (ADR-0013); content comes from a
   // dtext stray-close salvage path and may not round-trip.
@@ -353,7 +219,7 @@ function formatRawBlockText(
 function formatLiteralHtml(
   node: LiteralHtmlNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   // Verbatim passthrough with warning (ADR-0013).
   ctx.diagnostics.push({
@@ -367,7 +233,11 @@ function formatLiteralHtml(
   formatInlines(node.children, out, ctx);
 }
 
-function formatTable(node: TableNode, out: string[], ctx: FormatContext): void {
+function formatTable(
+  node: TableNode,
+  out: string[],
+  ctx: MarkdownFormatContext,
+): void {
   // Pipe-table form. The header separator row (`|---|---|`) is structurally
   // required by markdown-it; emit one even when no `TableHeadNode` is
   // present (a header-less table still needs the separator to re-parse).
@@ -432,7 +302,7 @@ function formatTable(node: TableNode, out: string[], ctx: FormatContext): void {
 function formatPipeTableRow(
   row: TableRowNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   out.push('|');
   for (const cell of row.cells) {
@@ -450,7 +320,7 @@ function formatPipeTableRow(
 function formatLTable(
   node: LTableNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   // Pipe-table approximation with warning (ADR-0012). First row treated as
   // header, rest as body; the no-head/body distinction is lost.
@@ -458,7 +328,7 @@ function formatLTable(
     code: 'md.ltable_approximated',
     severity: 'warning',
     message:
-      'LTableNode emitted as pipe-table approximation (first row → header, rest → body); the no-head/body distinction is lost.',
+      'LTableNode emitted as pipe-table approximation (first row to header, rest to body); the no-head/body distinction is lost.',
   });
 
   // LTableNode now stores the parsed `[table]` body's children directly
@@ -497,7 +367,7 @@ function formatLTable(
 function formatTableRowFallback(
   node: TableRowNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   // Reached only when a `TableRowNode` is emitted outside a `TableNode` or
   // `LTableNode` context.
@@ -507,7 +377,7 @@ function formatTableRowFallback(
 function formatTableCellFallback(
   node: TableCellNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   // Reached only when a `TableCellNode` is emitted standalone.
   const wasInCell = ctx.inTableCell;
@@ -516,7 +386,11 @@ function formatTableCellFallback(
   ctx.inTableCell = wasInCell;
 }
 
-function formatList(node: ListNode, out: string[], ctx: FormatContext): void {
+function formatList(
+  node: ListNode,
+  out: string[],
+  ctx: MarkdownFormatContext,
+): void {
   // ADR-0016: `- ` marker, two-space indent per nesting level (depth 1 is
   // the top level, so `item.depth - 1` indents).
   for (let i = 0; i < node.items.length; i++) {
@@ -532,7 +406,7 @@ function formatList(node: ListNode, out: string[], ctx: FormatContext): void {
   }
 }
 
-function formatLineBreak(out: string[], ctx: FormatContext): void {
+function formatLineBreak(out: string[], ctx: MarkdownFormatContext): void {
   // Inside a `TableCellNode`, collapse to a single space with a warning
   // (ADR-0019); pipe tables forbid multi-line cells.
   if (ctx.inTableCell) {
@@ -552,7 +426,11 @@ function formatLineBreak(out: string[], ctx: FormatContext): void {
   ctx.atLineStart = true;
 }
 
-function formatLink(node: LinkNode, out: string[], ctx: FormatContext): void {
+function formatLink(
+  node: LinkNode,
+  out: string[],
+  ctx: MarkdownFormatContext,
+): void {
   ctx.atLineStart = false;
   switch (node.linkType) {
     case 'url':
@@ -584,17 +462,12 @@ function formatUrlLink(node: LinkNode, out: string[]): void {
 function formatInlineLink(
   node: LinkNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   // `[<text>](<url>)`. URL escape strategy per ADR-0014: backslash-escape
   // parens; angle-bracket wrap only for whitespace-bearing URLs.
   const titleBuf: string[] = [];
-  const titleCtx: FormatContext = {
-    options: ctx.options,
-    diagnostics: ctx.diagnostics,
-    atLineStart: false,
-    inTableCell: ctx.inTableCell,
-  };
+  const titleCtx = ctx.sub(false, ctx.inTableCell);
   if (node.children) formatInlines(node.children, titleBuf, titleCtx);
   out.push('[', titleBuf.join(''), '](');
   if (/\s/.test(node.href)) {
@@ -686,7 +559,7 @@ function formatIdLink(node: LinkNode, out: string[]): void {
 function emitTextContent(
   content: string,
   out: string[],
-  ctx: FormatContext,
+  ctx: MarkdownFormatContext,
 ): void {
   if (content.length === 0) return;
   let atLineStart = ctx.atLineStart;
@@ -724,4 +597,145 @@ function isLineStartSigil(content: string, pos: number): boolean {
   // Numbered-list marker: `1.` through `9.` (digit followed by `.`).
   if (ch >= '1' && ch <= '9' && content[pos + 1] === '.') return true;
   return false;
+}
+
+// Default handler table. Override or extend by spreading:
+// `{ ...markdownHandlers, link: myLink }`; children render through
+// `ctx.render`, so an override applies wherever its node appears, at any depth.
+export const markdownHandlers: MarkdownHandlers = {
+  document: (node, out, ctx) => formatBlocks(node.children, out, ctx),
+
+  // Block nodes
+  header: formatHeader,
+  paragraph: (node, out, ctx) => formatInlines(node.children, out, ctx),
+  quote: formatQuote,
+  spoiler_block: formatSpoilerBlock,
+  section: formatSection,
+  code_block: formatCodeBlock,
+  raw_block_text: formatRawBlockText,
+  literal_html: formatLiteralHtml,
+  table: formatTable,
+  ltable: formatLTable,
+  list: formatList,
+
+  // Inline nodes
+  text: (node, out, ctx) => emitTextContent(node.content, out, ctx),
+  bold: (node, out, ctx) => {
+    out.push('**');
+    ctx.atLineStart = false;
+    formatInlines(node.children, out, ctx);
+    out.push('**');
+  },
+  italic: (node, out, ctx) => {
+    out.push('*');
+    ctx.atLineStart = false;
+    formatInlines(node.children, out, ctx);
+    out.push('*');
+  },
+  strikeout: (node, out, ctx) => {
+    out.push('~~');
+    ctx.atLineStart = false;
+    formatInlines(node.children, out, ctx);
+    out.push('~~');
+  },
+  underline: (node, out, ctx) => {
+    out.push('__');
+    ctx.atLineStart = false;
+    formatInlines(node.children, out, ctx);
+    out.push('__');
+  },
+  superscript: (node, out, ctx) => {
+    // BBCode survivor on the markdown side.
+    out.push('[sup]');
+    ctx.atLineStart = false;
+    formatInlines(node.children, out, ctx);
+    out.push('[/sup]');
+  },
+  subscript: (node, out, ctx) => {
+    out.push('[sub]');
+    ctx.atLineStart = false;
+    formatInlines(node.children, out, ctx);
+    out.push('[/sub]');
+  },
+  inline_spoiler: (node, out, ctx) => {
+    out.push('||');
+    ctx.atLineStart = false;
+    formatInlines(node.children, out, ctx);
+    out.push('||');
+  },
+  inline_code: (node, out, ctx) => {
+    // Verbatim emit; backtick-bearing content is a documented divergence
+    // (ADR-0010).
+    out.push('`', node.content, '`');
+    ctx.atLineStart = false;
+  },
+  color: (node, out, ctx) => {
+    out.push('[color=', node.color, ']');
+    ctx.atLineStart = false;
+    formatInlines(node.children, out, ctx);
+    out.push('[/color]');
+  },
+  line_break: (_node, out, ctx) => formatLineBreak(out, ctx),
+  fragment: (node, out, ctx) => formatInlines(node.children, out, ctx),
+  link: formatLink,
+  internal_anchor: (node, out, ctx) => {
+    out.push('[#', node.name, ']');
+    ctx.atLineStart = false;
+  },
+
+  // Table sub-nodes: standalone emit lands here. The primary path runs
+  // through `formatTable`, which unwraps head/body and emits rows directly
+  // with the header-separator row markdown-it requires.
+  table_head: (node, out, ctx) => {
+    for (const row of node.rows) ctx.render(row, out);
+  },
+  table_body: (node, out, ctx) => {
+    for (const row of node.rows) ctx.render(row, out);
+  },
+  table_row: formatTableRowFallback,
+  table_cell: formatTableCellFallback,
+};
+
+function createContext(
+  handlers: MarkdownHandlers,
+  options: MarkdownFormatterOptions,
+  diagnostics: Diagnostic[],
+  atLineStart: boolean,
+  inTableCell: boolean,
+): MarkdownFormatContext {
+  const ctx: MarkdownFormatContext = {
+    options,
+    diagnostics,
+    atLineStart,
+    inTableCell,
+    render(node: ASTNode, out: string[]): void {
+      const handler = handlers[node.type as keyof MarkdownHandlers] as
+        | ((n: ASTNode, out: string[], c: MarkdownFormatContext) => void)
+        | undefined;
+      if (handler) handler(node, out, ctx);
+      else console.warn(`formatMarkdown: unknown node type: ${node.type}`);
+    },
+    sub(nextAtLineStart: boolean, nextInTableCell: boolean) {
+      return createContext(
+        handlers,
+        options,
+        diagnostics,
+        nextAtLineStart,
+        nextInTableCell,
+      );
+    },
+  };
+  return ctx;
+}
+
+export function formatMarkdown(
+  ast: ASTNode,
+  options: MarkdownFormatterOptions = {},
+  handlers: MarkdownHandlers = markdownHandlers,
+): MarkdownFormatResult {
+  const out: string[] = [];
+  const diagnostics: Diagnostic[] = [];
+  const ctx = createContext(handlers, options, diagnostics, true, false);
+  ctx.render(ast, out);
+  return { output: out.join(''), diagnostics };
 }

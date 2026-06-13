@@ -36,6 +36,13 @@ export type InlineNode =
   | LineBreakNode
   | FragmentNode;
 
+export type TablePartNode =
+  | TableHeadNode
+  | TableBodyNode
+  | TableRowNode
+  | TableCellNode
+  | TableLiteralNode;
+
 export interface HeaderNode extends ASTNode {
   type: 'header';
   level: number;

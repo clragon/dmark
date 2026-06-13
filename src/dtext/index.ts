@@ -18,7 +18,25 @@ export function parseDText(
 }
 
 export { DTextStateMachineParser } from './parse';
-export { renderToHTML } from './render-html';
-export type { DTextRenderOptions } from './render-html';
-export { formatDText } from './render';
-export type { DTextFormatterOptions, DTextFormatResult } from './render';
+export {
+  renderToHTML,
+  renderHtml,
+  htmlHandlers,
+  htmlEscape,
+  uriEscape,
+} from './render-html';
+export type {
+  DTextRenderOptions,
+  HtmlHandler,
+  HtmlHandlers,
+  HtmlHandlersFor,
+  HtmlRenderContext,
+} from './render-html';
+export { formatDText, dtextHandlers } from './render';
+export type {
+  DTextFormatterOptions,
+  DTextFormatResult,
+  DTextHandler,
+  DTextHandlers,
+  DTextFormatContext,
+} from './render';

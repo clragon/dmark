@@ -1,38 +1,17 @@
 import type {
   ASTNode,
-  BoldNode,
-  CodeBlockNode,
+  BlockNode,
   ColorNode,
   DocumentNode,
-  FragmentNode,
-  HeaderNode,
   IdType,
-  InlineCodeNode,
-  InlineSpoilerNode,
-  InternalAnchorNode,
-  ItalicNode,
+  InlineNode,
   LTableNode,
-  LineBreakNode,
   LinkNode,
   ListItemNode,
   ListNode,
-  LiteralHtmlNode,
-  ParagraphNode,
   QuoteNode,
-  RawBlockTextNode,
   SectionNode,
-  SpoilerBlockNode,
-  StrikeoutNode,
-  SubscriptNode,
-  SuperscriptNode,
-  TableBodyNode,
-  TableCellNode,
-  TableHeadNode,
-  TableLiteralNode,
-  TableNode,
-  TableRowNode,
-  TextNode,
-  UnderlineNode,
+  TablePartNode,
 } from '../../ast';
 
 export interface DTextRenderOptions {
@@ -41,10 +20,49 @@ export interface DTextRenderOptions {
   baseUrl?: string;
 }
 
-interface RenderContext {
-  options: DTextRenderOptions;
+// Every node type the renderer dispatches over. The handler table is keyed off
+// this union, so a missing handler is a compile error.
+type RenderableNode =
+  | DocumentNode
+  | BlockNode
+  | InlineNode
+  | TablePartNode
+  | ListItemNode;
+
+type NodeByType = {
+  [K in RenderableNode['type']]: Extract<RenderableNode, { type: K }>;
+};
+
+// Render state threaded through every handler. `render`/`renderAll` recurse
+// through the active handler table; handlers push fragments into the `out`
+// buffer they are given.
+export interface HtmlRenderContext {
+  readonly options: DTextRenderOptions;
   thumbCount: number;
+  render(node: ASTNode, out: string[]): void;
+  renderAll(nodes: readonly ASTNode[], out: string[]): void;
 }
+
+// Renders one node type; `node` is narrowed to its concrete interface.
+export type HtmlHandler<K extends keyof NodeByType> = (
+  node: NodeByType[K],
+  out: string[],
+  ctx: HtmlRenderContext,
+) => void;
+
+// The dispatch table: one handler per node type, exhaustive over the union.
+export type HtmlHandlers = { [K in keyof NodeByType]: HtmlHandler<K> };
+
+// The handler table extended with a consumer's own node types. Each member of
+// `Extra` gets a precisely-typed handler; the built-in handlers stay available
+// for fallback via spread (`{ ...htmlHandlers, my_node: ... }`).
+export type HtmlHandlersFor<Extra extends ASTNode = never> = HtmlHandlers & {
+  [K in Extra['type']]: (
+    node: Extract<Extra, { type: K }>,
+    out: string[],
+    ctx: HtmlRenderContext,
+  ) => void;
+};
 
 // Tag-category aliases that get a class-name treatment instead of an inline
 // style. Both `renderQuote` and `renderColor` dispatch on this set: a
@@ -101,7 +119,7 @@ const HTML_ESCAPES: Record<string, string> = {
   '>': '&gt;',
   '"': '&quot;',
 };
-function htmlEscape(str: string): string {
+export function htmlEscape(str: string): string {
   if (!HTML_ESCAPE_RE.test(str)) return str;
   return str.replace(HTML_ESCAPE_RE_G, (c) => HTML_ESCAPES[c]);
 }
@@ -115,7 +133,7 @@ function htmlEscape(str: string): string {
 const URI_NEEDS_ESCAPE_RE = /[^a-zA-Z0-9\-_.~]/;
 const URI_NEEDS_ESCAPE_RE_G = /[^a-zA-Z0-9\-_.~]/g;
 
-function uriEscape(str: string, whitelist = ''): string {
+export function uriEscape(str: string, whitelist = ''): string {
   if (!URI_NEEDS_ESCAPE_RE.test(str)) return str;
   return str.replace(URI_NEEDS_ESCAPE_RE_G, (c) => {
     if (c === whitelist) return c;
@@ -123,211 +141,10 @@ function uriEscape(str: string, whitelist = ''): string {
   });
 }
 
-// Buffer-pattern renderer. Each `renderXxx(node, out, ctx)` pushes HTML
-// fragments into a shared `out` array; one `out.join('')` at exit produces
-// the result. The buffer is created fresh per call; promoting it to a
-// module-level singleton would interleave concurrent renders.
-export function renderToHTML(
-  node: ASTNode,
-  options: DTextRenderOptions = {},
-): string {
-  const out: string[] = [];
-  const context: RenderContext = {
-    options,
-    thumbCount: 0,
-  };
-  renderNode(node, out, context);
-  return out.join('');
-}
-
-function renderNode(
-  node: ASTNode,
-  out: string[],
-  context: RenderContext,
-): void {
-  switch (node.type) {
-    case 'document':
-      renderNodes((node as DocumentNode).children, out, context);
-      return;
-
-    // Block nodes
-    case 'header':
-      renderHeader(node as HeaderNode, out, context);
-      return;
-    case 'paragraph':
-      renderParagraph(node as ParagraphNode, out, context);
-      return;
-    case 'quote':
-      renderQuote(node as QuoteNode, out, context);
-      return;
-    case 'spoiler_block':
-      renderSpoilerBlock(node as SpoilerBlockNode, out, context);
-      return;
-    case 'section':
-      renderSection(node as SectionNode, out, context);
-      return;
-    case 'code_block':
-      out.push('<pre>', htmlEscape((node as CodeBlockNode).content), '</pre>');
-      return;
-    case 'raw_block_text':
-      out.push(htmlEscape((node as RawBlockTextNode).content));
-      return;
-    case 'literal_html': {
-      const lit = node as LiteralHtmlNode;
-      out.push(lit.prefix);
-      renderNodes(lit.children, out, context);
-      return;
-    }
-    case 'table':
-      out.push('<table class="striped">');
-      renderNodes((node as TableNode).children, out, context);
-      out.push('</table>');
-      return;
-    case 'ltable':
-      renderLTable(node as LTableNode, out, context);
-      return;
-    case 'table_head':
-      out.push('<thead>');
-      renderNodes((node as TableHeadNode).rows, out, context);
-      out.push('</thead>');
-      return;
-    case 'table_body':
-      out.push('<tbody>');
-      renderNodes((node as TableBodyNode).rows, out, context);
-      out.push('</tbody>');
-      return;
-    case 'table_row':
-      out.push('<tr>');
-      renderNodes((node as TableRowNode).cells, out, context);
-      out.push('</tr>');
-      return;
-    case 'table_cell': {
-      const cell = node as TableCellNode;
-      out.push('<', cell.cellType, '>');
-      renderNodes(cell.children, out, context);
-      out.push('</', cell.cellType, '>');
-      return;
-    }
-    case 'table_literal':
-      out.push((node as TableLiteralNode).content);
-      return;
-    case 'list':
-      renderList(node as ListNode, out, context);
-      return;
-    case 'list_item':
-      out.push('<li>');
-      renderNodes((node as ListItemNode).children, out, context);
-      out.push('</li>');
-      return;
-
-    // Inline nodes
-    case 'text':
-      out.push(htmlEscape((node as TextNode).content));
-      return;
-    case 'bold':
-      out.push('<strong>');
-      renderNodes((node as BoldNode).children, out, context);
-      out.push('</strong>');
-      return;
-    case 'italic':
-      out.push('<em>');
-      renderNodes((node as ItalicNode).children, out, context);
-      out.push('</em>');
-      return;
-    case 'strikeout':
-      out.push('<s>');
-      renderNodes((node as StrikeoutNode).children, out, context);
-      out.push('</s>');
-      return;
-    case 'underline':
-      out.push('<u>');
-      renderNodes((node as UnderlineNode).children, out, context);
-      out.push('</u>');
-      return;
-    case 'superscript':
-      out.push('<sup>');
-      renderNodes((node as SuperscriptNode).children, out, context);
-      out.push('</sup>');
-      return;
-    case 'subscript':
-      out.push('<sub>');
-      renderNodes((node as SubscriptNode).children, out, context);
-      out.push('</sub>');
-      return;
-    case 'inline_spoiler':
-      out.push('<span class="spoiler">');
-      renderNodes((node as InlineSpoilerNode).children, out, context);
-      out.push('</span>');
-      return;
-    case 'inline_code':
-      out.push(
-        '<span class="inline-code">',
-        htmlEscape((node as InlineCodeNode).content),
-        '</span>',
-      );
-      return;
-    case 'color':
-      renderColor(node as ColorNode, out, context);
-      return;
-    case 'line_break':
-      out.push('<br>');
-      return;
-    case 'fragment':
-      renderNodes((node as FragmentNode).children, out, context);
-      return;
-    case 'link':
-      renderLink(node as LinkNode, out, context);
-      return;
-    case 'internal_anchor':
-      out.push(
-        '<a id="',
-        uriEscape((node as InternalAnchorNode).name.toLowerCase()),
-        '"></a>',
-      );
-      return;
-
-    default:
-      console.warn(`Unknown node type: ${node.type}`);
-      return;
-  }
-}
-
-// Walk an array of AST nodes in order, pushing each one's HTML fragments
-// into the shared `out` buffer. Used by every container arm; the contract
-// is "render each element" regardless of the field name (`.children`,
-// `.rows`, etc.).
-function renderNodes(
-  nodes: readonly ASTNode[],
-  out: string[],
-  context: RenderContext,
-): void {
-  for (const node of nodes) renderNode(node, out, context);
-}
-
-function renderHeader(
-  node: HeaderNode,
-  out: string[],
-  context: RenderContext,
-): void {
-  out.push('<h', String(node.level), '>');
-  renderNodes(node.children, out, context);
-  out.push('</h', String(node.level), '>');
-}
-
-function renderParagraph(
-  node: ParagraphNode,
-  out: string[],
-  context: RenderContext,
-): void {
-  out.push('<p>');
-  renderNodes(node.children, out, context);
-  out.push('</p>');
-}
-
 function renderQuote(
   node: QuoteNode,
   out: string[],
-  context: RenderContext,
+  ctx: HtmlRenderContext,
 ): void {
   if (node.color) {
     if (TAG_CATEGORY_RE.test(node.color)) {
@@ -344,36 +161,26 @@ function renderQuote(
   } else {
     out.push('<blockquote>');
   }
-  renderNodes(node.children, out, context);
+  ctx.renderAll(node.children, out);
   out.push('</blockquote>');
-}
-
-function renderSpoilerBlock(
-  node: SpoilerBlockNode,
-  out: string[],
-  context: RenderContext,
-): void {
-  out.push('<div class="spoiler">');
-  renderNodes(node.children, out, context);
-  out.push('</div>');
 }
 
 function renderSection(
   node: SectionNode,
   out: string[],
-  context: RenderContext,
+  ctx: HtmlRenderContext,
 ): void {
   out.push(node.expanded ? '<details open><summary>' : '<details><summary>');
   if (node.title) out.push(htmlEscape(node.title));
   out.push('</summary><div>');
-  renderNodes(node.children, out, context);
+  ctx.renderAll(node.children, out);
   out.push('</div></details>');
 }
 
 function renderLTable(
   node: LTableNode,
   out: string[],
-  context: RenderContext,
+  ctx: HtmlRenderContext,
 ): void {
   // Empty `[ltable]` is an oracle quirk: ruby's `preprocess_for_tables`
   // wraps zero rows in `[table][/tbody][/table]` so the unmatched
@@ -384,14 +191,14 @@ function renderLTable(
     return;
   }
   out.push('<table class="striped">');
-  renderNodes(node.children, out, context);
+  ctx.renderAll(node.children, out);
   out.push('</table>');
 }
 
 function renderList(
   node: ListNode,
   out: string[],
-  context: RenderContext,
+  ctx: HtmlRenderContext,
 ): void {
   let prevDepth = 0;
 
@@ -401,7 +208,7 @@ function renderList(
     } else if (item.depth < prevDepth) {
       for (let i = item.depth; i < prevDepth; i++) out.push('</ul>');
     }
-    renderNode(item, out, context);
+    ctx.render(item, out);
     prevDepth = item.depth;
   }
 
@@ -411,10 +218,10 @@ function renderList(
 function renderColor(
   node: ColorNode,
   out: string[],
-  context: RenderContext,
+  ctx: HtmlRenderContext,
 ): void {
-  if (context.options.allowColor === false) {
-    renderNodes(node.children, out, context);
+  if (ctx.options.allowColor === false) {
+    ctx.renderAll(node.children, out);
     return;
   }
 
@@ -426,17 +233,17 @@ function renderColor(
   } else {
     out.push('<span class="dtext-color" style="color:', node.color, '">');
   }
-  renderNodes(node.children, out, context);
+  ctx.renderAll(node.children, out);
   out.push('</span>');
 }
 
 function renderLink(
   node: LinkNode,
   out: string[],
-  context: RenderContext,
+  ctx: HtmlRenderContext,
 ): void {
-  if (node.idType === 'thumb' && context.options.maxThumbs !== undefined) {
-    if (context.thumbCount >= context.options.maxThumbs) {
+  if (node.idType === 'thumb' && ctx.options.maxThumbs !== undefined) {
+    if (ctx.thumbCount >= ctx.options.maxThumbs) {
       out.push(
         '<span class="thumb-limit-exceeded">',
         htmlEscape(node.title || node.href),
@@ -444,7 +251,7 @@ function renderLink(
       );
       return;
     }
-    context.thumbCount++;
+    ctx.thumbCount++;
   }
 
   // Ruby's dtext renderer omits rel="nofollow" on id_link anchors (post #N,
@@ -460,13 +267,13 @@ function renderLink(
   }
 
   let href = node.href;
-  if (context.options.baseUrl && href.startsWith('/')) {
-    href = context.options.baseUrl.replace(/\/$/, '') + href;
+  if (ctx.options.baseUrl && href.startsWith('/')) {
+    href = ctx.options.baseUrl.replace(/\/$/, '') + href;
   }
   out.push(' href="', htmlEscape(href), '">');
 
   if (node.children) {
-    renderNodes(node.children, out, context);
+    ctx.renderAll(node.children, out);
   } else if (node.title) {
     out.push(htmlEscape(node.title));
   } else {
@@ -504,4 +311,150 @@ function appendLinkClasses(node: LinkNode, out: string[]): void {
       }
       break;
   }
+}
+
+// Default handler table. Override or extend by spreading:
+// `{ ...htmlHandlers, link: myLink }`; children render through `ctx.render`, so
+// an override applies wherever its node appears, at any depth.
+export const htmlHandlers: HtmlHandlers = {
+  document: (node, out, ctx) => ctx.renderAll(node.children, out),
+
+  // Block nodes
+  header: (node, out, ctx) => {
+    out.push('<h', String(node.level), '>');
+    ctx.renderAll(node.children, out);
+    out.push('</h', String(node.level), '>');
+  },
+  paragraph: (node, out, ctx) => {
+    out.push('<p>');
+    ctx.renderAll(node.children, out);
+    out.push('</p>');
+  },
+  quote: renderQuote,
+  spoiler_block: (node, out, ctx) => {
+    out.push('<div class="spoiler">');
+    ctx.renderAll(node.children, out);
+    out.push('</div>');
+  },
+  section: renderSection,
+  code_block: (node, out) =>
+    out.push('<pre>', htmlEscape(node.content), '</pre>'),
+  raw_block_text: (node, out) => out.push(htmlEscape(node.content)),
+  literal_html: (node, out, ctx) => {
+    out.push(node.prefix);
+    ctx.renderAll(node.children, out);
+  },
+  table: (node, out, ctx) => {
+    out.push('<table class="striped">');
+    ctx.renderAll(node.children, out);
+    out.push('</table>');
+  },
+  ltable: renderLTable,
+  table_head: (node, out, ctx) => {
+    out.push('<thead>');
+    ctx.renderAll(node.rows, out);
+    out.push('</thead>');
+  },
+  table_body: (node, out, ctx) => {
+    out.push('<tbody>');
+    ctx.renderAll(node.rows, out);
+    out.push('</tbody>');
+  },
+  table_row: (node, out, ctx) => {
+    out.push('<tr>');
+    ctx.renderAll(node.cells, out);
+    out.push('</tr>');
+  },
+  table_cell: (node, out, ctx) => {
+    out.push('<', node.cellType, '>');
+    ctx.renderAll(node.children, out);
+    out.push('</', node.cellType, '>');
+  },
+  table_literal: (node, out) => out.push(node.content),
+  list: renderList,
+  list_item: (node, out, ctx) => {
+    out.push('<li>');
+    ctx.renderAll(node.children, out);
+    out.push('</li>');
+  },
+
+  // Inline nodes
+  text: (node, out) => out.push(htmlEscape(node.content)),
+  bold: (node, out, ctx) => {
+    out.push('<strong>');
+    ctx.renderAll(node.children, out);
+    out.push('</strong>');
+  },
+  italic: (node, out, ctx) => {
+    out.push('<em>');
+    ctx.renderAll(node.children, out);
+    out.push('</em>');
+  },
+  strikeout: (node, out, ctx) => {
+    out.push('<s>');
+    ctx.renderAll(node.children, out);
+    out.push('</s>');
+  },
+  underline: (node, out, ctx) => {
+    out.push('<u>');
+    ctx.renderAll(node.children, out);
+    out.push('</u>');
+  },
+  superscript: (node, out, ctx) => {
+    out.push('<sup>');
+    ctx.renderAll(node.children, out);
+    out.push('</sup>');
+  },
+  subscript: (node, out, ctx) => {
+    out.push('<sub>');
+    ctx.renderAll(node.children, out);
+    out.push('</sub>');
+  },
+  inline_spoiler: (node, out, ctx) => {
+    out.push('<span class="spoiler">');
+    ctx.renderAll(node.children, out);
+    out.push('</span>');
+  },
+  inline_code: (node, out) =>
+    out.push('<span class="inline-code">', htmlEscape(node.content), '</span>'),
+  color: renderColor,
+  line_break: (_node, out) => out.push('<br>'),
+  fragment: (node, out, ctx) => ctx.renderAll(node.children, out),
+  link: renderLink,
+  internal_anchor: (node, out) =>
+    out.push('<a id="', uriEscape(node.name.toLowerCase()), '"></a>'),
+};
+
+// Renders `node` to HTML through the handler table. The `node.type` lookup is
+// the one untyped seam: the table is heterogeneous and the key is a runtime
+// string.
+export function renderHtml<Extra extends ASTNode = never>(
+  node: ASTNode,
+  options: DTextRenderOptions = {},
+  handlers: HtmlHandlersFor<Extra> = htmlHandlers as HtmlHandlersFor<Extra>,
+): string {
+  const out: string[] = [];
+  const ctx: HtmlRenderContext = {
+    options,
+    thumbCount: 0,
+    render(n: ASTNode, o: string[]): void {
+      const handler = handlers[n.type as keyof HtmlHandlersFor<Extra>] as
+        | ((node: ASTNode, out: string[], ctx: HtmlRenderContext) => void)
+        | undefined;
+      if (handler) handler(n, o, ctx);
+      else console.warn(`Unknown node type: ${n.type}`);
+    },
+    renderAll(nodes: readonly ASTNode[], o: string[]): void {
+      for (const n of nodes) ctx.render(n, o);
+    },
+  };
+  ctx.render(node, out);
+  return out.join('');
+}
+
+export function renderToHTML(
+  node: ASTNode,
+  options: DTextRenderOptions = {},
+): string {
+  return renderHtml(node, options);
 }

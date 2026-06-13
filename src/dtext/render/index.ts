@@ -6,38 +6,24 @@
 
 import type {
   ASTNode,
-  BoldNode,
-  CodeBlockNode,
-  ColorNode,
+  BlockNode,
   DocumentNode,
   FragmentNode,
   HeaderNode,
-  InlineCodeNode,
   InlineNode,
-  InlineSpoilerNode,
-  InternalAnchorNode,
-  ItalicNode,
   LTableNode,
   LinkNode,
   ListNode,
-  LiteralHtmlNode,
-  ParagraphNode,
   QuoteNode,
-  RawBlockTextNode,
   SectionNode,
   SpoilerBlockNode,
-  StrikeoutNode,
-  SubscriptNode,
-  SuperscriptNode,
   TableBodyNode,
   TableCellNode,
   TableHeadNode,
-  TableLiteralNode,
   TableNode,
+  TablePartNode,
   TableRowNode,
   TextNode,
-  UnderlineNode,
-  BlockNode,
 } from '../../ast';
 import { ID_SOURCE } from '../../ast/links';
 import { asciiLowercase } from '../../ast/text';
@@ -54,30 +40,43 @@ export interface DTextFormatResult {
   diagnostics: Diagnostic[];
 }
 
-interface FormatContext {
-  options: DTextFormatterOptions;
-  diagnostics: Diagnostic[];
+// Every node type the formatter dispatches over. The handler table is keyed
+// off this union, so a missing handler is a compile error.
+type RenderableNode = DocumentNode | BlockNode | InlineNode | TablePartNode;
+
+type NodeByType = {
+  [K in RenderableNode['type']]: Extract<RenderableNode, { type: K }>;
+};
+
+// Format state threaded through every handler. `render` recurses through the
+// active handler table. `trailing` is the first byte that will follow the
+// node, used by the URL-link emitters to pick a glue-safe form.
+export interface DTextFormatContext {
+  readonly options: DTextFormatterOptions;
+  readonly diagnostics: Diagnostic[];
   // Set when an inline link's bare emit had `]` inside its href and could
   // therefore re-parse via `\S+` past the surrounding inline container's
   // close. Reset by emitInlineContainer when it inserts the `\n` terminator
   // (or finishes without one).
   unsafeBareUrl?: boolean;
+  render(node: ASTNode, out: string[], trailing?: string): void;
 }
 
-export function formatDText(
-  ast: ASTNode,
-  options: DTextFormatterOptions = {},
-): DTextFormatResult {
-  const out: string[] = [];
-  const ctx: FormatContext = { options, diagnostics: [] };
-  formatNode(ast, out, ctx);
-  return { output: out.join(''), diagnostics: ctx.diagnostics };
-}
+// Renders one node type; `node` is narrowed to its concrete interface.
+export type DTextHandler<K extends keyof NodeByType> = (
+  node: NodeByType[K],
+  out: string[],
+  ctx: DTextFormatContext,
+  trailing?: string,
+) => void;
+
+// The dispatch table: one handler per node type, exhaustive over the union.
+export type DTextHandlers = { [K in keyof NodeByType]: DTextHandler<K> };
 
 // First byte that `node` would emit when formatted. Used by URL-link
 // emitters to detect when a bare form would glue its URL to the next
 // sibling's emit on re-parse. Returns `undefined` for nodes whose emit is
-// effectively empty (or unknown), which signals "no following byte" — the
+// effectively empty (or unknown), which signals "no following byte", the
 // safe default for the bare-form check.
 function firstEmitChar(node: ASTNode): string | undefined {
   switch (node.type) {
@@ -126,185 +125,17 @@ function firstEmitChar(node: ASTNode): string | undefined {
   }
 }
 
-function formatNode(
-  node: ASTNode,
-  out: string[],
-  ctx: FormatContext,
-  trailing?: string,
-): void {
-  switch (node.type) {
-    case 'document':
-      formatBlocks((node as DocumentNode).children, out, ctx);
-      return;
-
-    // Block nodes
-    case 'header':
-      formatHeader(node as HeaderNode, out, ctx);
-      return;
-    case 'paragraph':
-      formatInlines((node as ParagraphNode).children, out, ctx);
-      return;
-    case 'quote':
-      formatQuote(node as QuoteNode, out, ctx);
-      return;
-    case 'spoiler_block':
-      formatSpoilerBlock(node as SpoilerBlockNode, out, ctx);
-      return;
-    case 'section':
-      formatSection(node as SectionNode, out, ctx);
-      return;
-    case 'code_block': {
-      // ADR-0007 emit. Canonical fenced layout when `content` ends with `\n`
-      // (closing `[/code]` sits on its own line, so open it on its own line
-      // too). Also prepend when content starts with whitespace so the
-      // parser's leading-whitespace eat doesn't shorten `content` on
-      // re-parse.
-      const content = (node as CodeBlockNode).content;
-      const needsLeadingNewline =
-        content.length > 0 && (/^\s/.test(content) || content.endsWith('\n'));
-      out.push('[code]');
-      if (needsLeadingNewline) out.push('\n');
-      out.push(content, '[/code]');
-      return;
-    }
-    case 'raw_block_text':
-      // Salvage passthrough: `content` is a stray block-level close captured
-      // verbatim by the parser.
-      out.push((node as RawBlockTextNode).content);
-      return;
-    case 'literal_html': {
-      const lit = node as LiteralHtmlNode;
-      out.push(lit.prefix);
-      formatInlines(lit.children, out, ctx);
-      return;
-    }
-    case 'table':
-      formatTable(node as TableNode, out, ctx);
-      return;
-    case 'ltable':
-      formatLTable(node as LTableNode, out, ctx);
-      return;
-    case 'list':
-      formatList(node as ListNode, out, ctx);
-      return;
-
-    // Table sub-nodes are normally reached via `formatTable`; the dispatch
-    // arms exist for completeness, the table arm owns its own layout.
-    case 'table_head':
-      formatTableHead(node as TableHeadNode, out, ctx);
-      return;
-    case 'table_body':
-      formatTableBody(node as TableBodyNode, out, ctx);
-      return;
-    case 'table_row':
-      formatTableRow(node as TableRowNode, out, ctx);
-      return;
-    case 'table_cell':
-      formatTableCell(node as TableCellNode, out, ctx);
-      return;
-    case 'table_literal':
-      // Stray bracketed close fallout captured by the dtext parser. Reachable
-      // only inside an `[ltable]` (where formatLTable already filters them
-      // out) or a `[table]` that was parsed from dtext source. Emit the
-      // captured tag verbatim so the original source surface re-appears
-      // around any structural rows.
-      out.push((node as TableLiteralNode).content);
-      return;
-
-    // Inline nodes
-    case 'text': {
-      const content = (node as TextNode).content;
-      // A literal backtick in text content would re-parse as the start
-      // of an `[inline_code]` span (parseInlineElement runs the `\`` rule
-      // before falling through to plain text). Emit the parser's
-      // backslash-backtick escape so the round-trip keeps the text node
-      // shape. No other characters need escaping today: the parser only
-      // recognises `\`` as a backslash escape.
-      out.push(content.includes('`') ? content.replace(/`/g, '\\`') : content);
-      if (ctx.unsafeBareUrl && /\s/.test(content)) ctx.unsafeBareUrl = false;
-      return;
-    }
-    case 'bold':
-      emitInlineContainer('b', (node as BoldNode).children, out, ctx);
-      return;
-    case 'italic':
-      emitInlineContainer('i', (node as ItalicNode).children, out, ctx);
-      return;
-    case 'strikeout':
-      emitInlineContainer('s', (node as StrikeoutNode).children, out, ctx);
-      return;
-    case 'underline':
-      emitInlineContainer('u', (node as UnderlineNode).children, out, ctx);
-      return;
-    case 'superscript':
-      emitInlineContainer('sup', (node as SuperscriptNode).children, out, ctx);
-      return;
-    case 'subscript':
-      emitInlineContainer('sub', (node as SubscriptNode).children, out, ctx);
-      return;
-    case 'inline_spoiler':
-      // Same surface form as the block spoiler; the parser disambiguates by
-      // paragraph-boundary context. The `[/spoiler]` unconditional emit can
-      // never reach the parser's `[/spoilers]`-preference gap.
-      emitInlineContainer(
-        'spoiler',
-        (node as InlineSpoilerNode).children,
-        out,
-        ctx,
-      );
-      return;
-    case 'inline_code':
-      // The parser recognises `\`` as an escape sequence for a literal
-      // backtick inside an inline_code span (see parseInlineCode), so
-      // the formatter must emit the same escape for any backtick in
-      // the AST content to keep the round-trip exact. Verbatim emission
-      // would re-parse as two empty inline_code spans bracketing a
-      // text run.
-      out.push('`', (node as InlineCodeNode).content.replace(/`/g, '\\`'), '`');
-      return;
-    case 'color': {
-      const color = node as ColorNode;
-      const open = `[color=${color.color}]`;
-      emitInlineContainer('color', color.children, out, ctx, open);
-      return;
-    }
-    case 'line_break':
-      out.push('\n');
-      ctx.unsafeBareUrl = false;
-      return;
-    case 'fragment': {
-      const frag = node as FragmentNode;
-      if (frag.wrapper) {
-        emitInlineContainer(frag.wrapper, frag.children, out, ctx);
-      } else {
-        formatInlines(frag.children, out, ctx);
-      }
-      return;
-    }
-    case 'link':
-      formatLink(node as LinkNode, out, ctx, trailing);
-      return;
-    case 'internal_anchor':
-      out.push('[#', (node as InternalAnchorNode).name, ']');
-      return;
-
-    default:
-      // eslint-disable-next-line no-console
-      console.warn(`formatDText: unknown node type: ${(node as ASTNode).type}`);
-  }
-}
-
 // Walk an array of block nodes, emitting `\n\n` between blocks. No leading
 // or trailing separator; callers wrap with their own framing (e.g.
 // `[quote]\n...\n[/quote]`). See ADR-0002 for the document-end rule.
 function formatBlocks(
   blocks: BlockNode[],
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
 ): void {
   for (let i = 0; i < blocks.length; i++) {
     if (i > 0) out.push('\n\n');
-    formatNode(blocks[i], out, ctx);
+    ctx.render(blocks[i], out);
   }
 }
 
@@ -322,7 +153,7 @@ function emitInlineContainer(
   tag: string,
   children: InlineNode[],
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
   open?: string,
 ): void {
   const close = `[/${tag}]`;
@@ -334,7 +165,7 @@ function emitInlineContainer(
   out.push(open ?? `[${tag}]`);
   out.push(joined);
   // The unsafe-bare-url flag is only meaningful when no whitespace has been
-  // emitted between the URL and the close — which is exactly when the body
+  // emitted between the URL and the close, which is exactly when the body
   // still ends in non-whitespace. Otherwise the natural separator already
   // bounds the `\S+` capture and the close is reachable.
   if (ctx.unsafeBareUrl && joined.length > 0 && !/\s$/.test(joined)) {
@@ -345,33 +176,37 @@ function emitInlineContainer(
 }
 
 // Walk an array of inline nodes; inline content concatenates with no separator.
-// `trailing` is the first byte that will follow this group — used by the
+// `trailing` is the first byte that will follow this group, used by the
 // URL-link emitters to pick a glue-safe form for the last child. Pass
 // `'['` from a wrapping inline container (its `[/...]` close starts with `[`)
 // or omit when the group ends at a newline / end-of-block (safe).
 function formatInlines(
   inlines: InlineNode[],
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
   trailing?: string,
 ): void {
   for (let i = 0; i < inlines.length; i++) {
     const next = i + 1 < inlines.length ? inlines[i + 1] : undefined;
     const hint = next ? firstEmitChar(next) : trailing;
-    formatNode(inlines[i], out, ctx, hint);
+    ctx.render(inlines[i], out, hint);
   }
 }
 
 function formatHeader(
   node: HeaderNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
 ): void {
   out.push('h', String(node.level), '. ');
   formatInlines(node.children, out, ctx);
 }
 
-function formatQuote(node: QuoteNode, out: string[], ctx: FormatContext): void {
+function formatQuote(
+  node: QuoteNode,
+  out: string[],
+  ctx: DTextFormatContext,
+): void {
   if (node.color !== undefined) {
     out.push('[quote=', node.color, ']\n');
   } else {
@@ -384,7 +219,7 @@ function formatQuote(node: QuoteNode, out: string[], ctx: FormatContext): void {
 function formatSpoilerBlock(
   node: SpoilerBlockNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
 ): void {
   out.push('[spoiler]\n');
   formatBlocks(node.children, out, ctx);
@@ -394,7 +229,7 @@ function formatSpoilerBlock(
 function formatSection(
   node: SectionNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
 ): void {
   // Four canonical forms, mirroring the four matched-string forms in
   // `matchSection`.
@@ -408,12 +243,16 @@ function formatSection(
   out.push('\n[/section]');
 }
 
-function formatTable(node: TableNode, out: string[], ctx: FormatContext): void {
+function formatTable(
+  node: TableNode,
+  out: string[],
+  ctx: DTextFormatContext,
+): void {
   // Pretty layout (ADR-0008): structural tags on their own lines, rows on
   // their own lines, cells inline within the row.
   out.push('[table]\n');
   for (const child of node.children) {
-    formatNode(child, out, ctx);
+    ctx.render(child, out);
     out.push('\n');
   }
   out.push('[/table]');
@@ -422,11 +261,11 @@ function formatTable(node: TableNode, out: string[], ctx: FormatContext): void {
 function formatTableHead(
   node: TableHeadNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
 ): void {
   out.push('[thead]\n');
   for (const row of node.rows) {
-    formatNode(row, out, ctx);
+    ctx.render(row, out);
     out.push('\n');
   }
   out.push('[/thead]');
@@ -435,11 +274,11 @@ function formatTableHead(
 function formatTableBody(
   node: TableBodyNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
 ): void {
   out.push('[tbody]\n');
   for (const row of node.rows) {
-    formatNode(row, out, ctx);
+    ctx.render(row, out);
     out.push('\n');
   }
   out.push('[/tbody]');
@@ -448,17 +287,17 @@ function formatTableBody(
 function formatTableRow(
   node: TableRowNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
 ): void {
   out.push('[tr]');
-  for (const cell of node.cells) formatNode(cell, out, ctx);
+  for (const cell of node.cells) ctx.render(cell, out);
   out.push('[/tr]');
 }
 
 function formatTableCell(
   node: TableCellNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
 ): void {
   out.push('[', node.cellType, ']');
   formatInlines(node.children, out, ctx, '[');
@@ -468,7 +307,7 @@ function formatTableCell(
 function formatLTable(
   node: LTableNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
 ): void {
   // Prefer the captured raw source. `node.children` came from a synthesised
   // `[table]` parse where URL patterns intentionally spill past structural
@@ -507,7 +346,11 @@ function formatLTable(
   out.push('[/ltable]');
 }
 
-function formatList(node: ListNode, out: string[], ctx: FormatContext): void {
+function formatList(
+  node: ListNode,
+  out: string[],
+  ctx: DTextFormatContext,
+): void {
   // Depth maps to asterisk-count, mirroring the parser's `(\*+)[ \t]+` rule.
   // One line per item; no container framing.
   for (let i = 0; i < node.items.length; i++) {
@@ -521,8 +364,8 @@ function formatList(node: ListNode, out: string[], ctx: FormatContext): void {
 function formatLink(
   node: LinkNode,
   out: string[],
-  ctx: FormatContext,
-  trailing: string | undefined,
+  ctx: DTextFormatContext,
+  trailing?: string,
 ): void {
   switch (node.linkType) {
     case 'url':
@@ -587,7 +430,7 @@ function formatUrlLink(
 function formatInlineLink(
   node: LinkNode,
   out: string[],
-  ctx: FormatContext,
+  ctx: DTextFormatContext,
   trailing: string | undefined,
 ): void {
   // ADR-0005: bare "title":url when href has no whitespace, no `]`, no
@@ -661,7 +504,7 @@ function formatWikiLink(node: LinkNode, out: string[]): void {
 
   // Tag normalisation collapses ` ` and `_` into the same href, so either
   // spelling on the children side counts as a no-title match. Comparing both
-  // sides under `space → underscore` keeps `[[animated_png]]` and
+  // sides under `space -> underscore` keeps `[[animated_png]]` and
   // `[[animated png]]` both round-tripping to the no-title form.
   const tagKey = (s: string) => asciiLowercase(s).replace(/ /g, '_');
   const expectedNoTitleKey =
@@ -712,4 +555,114 @@ function formatIdLink(node: LinkNode, out: string[]): void {
   if (!node.idType || !node.id) return;
   const source = ID_SOURCE[node.idType];
   out.push(source, ' #', node.id);
+}
+
+// Default handler table. Override or extend by spreading:
+// `{ ...dtextHandlers, link: myLink }`; children render through `ctx.render`,
+// so an override applies wherever its node appears, at any depth.
+export const dtextHandlers: DTextHandlers = {
+  document: (node, out, ctx) => formatBlocks(node.children, out, ctx),
+
+  // Block nodes
+  header: formatHeader,
+  paragraph: (node, out, ctx) => formatInlines(node.children, out, ctx),
+  quote: formatQuote,
+  spoiler_block: formatSpoilerBlock,
+  section: formatSection,
+  code_block: (node, out) => {
+    // ADR-0007 emit. Canonical fenced layout when `content` ends with `\n`
+    // (closing `[/code]` sits on its own line, so open it on its own line
+    // too). Also prepend when content starts with whitespace so the parser's
+    // leading-whitespace eat doesn't shorten `content` on re-parse.
+    const content = node.content;
+    const needsLeadingNewline =
+      content.length > 0 && (/^\s/.test(content) || content.endsWith('\n'));
+    out.push('[code]');
+    if (needsLeadingNewline) out.push('\n');
+    out.push(content, '[/code]');
+  },
+  raw_block_text: (node, out) => out.push(node.content),
+  literal_html: (node, out, ctx) => {
+    out.push(node.prefix);
+    formatInlines(node.children, out, ctx);
+  },
+  table: formatTable,
+  ltable: formatLTable,
+  list: formatList,
+  table_head: formatTableHead,
+  table_body: formatTableBody,
+  table_row: formatTableRow,
+  table_cell: formatTableCell,
+  table_literal: (node, out) => out.push(node.content),
+
+  // Inline nodes
+  text: (node, out, ctx) => {
+    // A literal backtick in text content would re-parse as the start of an
+    // `[inline_code]` span, so emit the parser's backslash-backtick escape to
+    // keep the text node shape. No other characters need escaping today.
+    const content = node.content;
+    out.push(content.includes('`') ? content.replace(/`/g, '\\`') : content);
+    if (ctx.unsafeBareUrl && /\s/.test(content)) ctx.unsafeBareUrl = false;
+  },
+  bold: (node, out, ctx) => emitInlineContainer('b', node.children, out, ctx),
+  italic: (node, out, ctx) => emitInlineContainer('i', node.children, out, ctx),
+  strikeout: (node, out, ctx) =>
+    emitInlineContainer('s', node.children, out, ctx),
+  underline: (node, out, ctx) =>
+    emitInlineContainer('u', node.children, out, ctx),
+  superscript: (node, out, ctx) =>
+    emitInlineContainer('sup', node.children, out, ctx),
+  subscript: (node, out, ctx) =>
+    emitInlineContainer('sub', node.children, out, ctx),
+  inline_spoiler: (node, out, ctx) =>
+    emitInlineContainer('spoiler', node.children, out, ctx),
+  inline_code: (node, out) =>
+    out.push('`', node.content.replace(/`/g, '\\`'), '`'),
+  color: (node, out, ctx) =>
+    emitInlineContainer(
+      'color',
+      node.children,
+      out,
+      ctx,
+      `[color=${node.color}]`,
+    ),
+  line_break: (_node, out, ctx) => {
+    out.push('\n');
+    ctx.unsafeBareUrl = false;
+  },
+  fragment: (node, out, ctx) => {
+    if (node.wrapper) {
+      emitInlineContainer(node.wrapper, node.children, out, ctx);
+    } else {
+      formatInlines(node.children, out, ctx);
+    }
+  },
+  link: formatLink,
+  internal_anchor: (node, out) => out.push('[#', node.name, ']'),
+};
+
+export function formatDText(
+  ast: ASTNode,
+  options: DTextFormatterOptions = {},
+  handlers: DTextHandlers = dtextHandlers,
+): DTextFormatResult {
+  const out: string[] = [];
+  const ctx: DTextFormatContext = {
+    options,
+    diagnostics: [],
+    render(node: ASTNode, o: string[], trailing?: string): void {
+      const handler = handlers[node.type as keyof DTextHandlers] as
+        | ((
+            n: ASTNode,
+            out: string[],
+            c: DTextFormatContext,
+            t?: string,
+          ) => void)
+        | undefined;
+      if (handler) handler(node, o, ctx, trailing);
+      else console.warn(`formatDText: unknown node type: ${node.type}`);
+    },
+  };
+  ctx.render(ast, out);
+  return { output: out.join(''), diagnostics: ctx.diagnostics };
 }
