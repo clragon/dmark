@@ -36,5 +36,5 @@ export type {
 
 export { parseDTextToMarkdown, parseMarkdownToDText } from './convert';
 
-export type * from './ast';
+export type * from './ast/index.js';
 export type { Diagnostic } from './diagnostics';
