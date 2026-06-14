@@ -1,6 +1,6 @@
 {
   "name": "@clynamic/dmark",
-  "version": "0.0.11",
+  "version": "1.0.0",
   "description": "The gold standard for rendering dtext on the web.",
   "license": "UNLICENSED",
   "author": "binaryfloof",
