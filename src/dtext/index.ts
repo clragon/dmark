@@ -29,7 +29,6 @@ export type {
   DTextRenderOptions,
   HtmlHandler,
   HtmlHandlers,
-  HtmlHandlersFor,
   HtmlRenderContext,
 } from './render-html';
 export { formatDText, dtextHandlers } from './render';

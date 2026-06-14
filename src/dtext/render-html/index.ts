@@ -51,18 +51,9 @@ export type HtmlHandler<K extends keyof NodeByType> = (
 ) => void;
 
 // The dispatch table: one handler per node type, exhaustive over the union.
+// A consumer that adds node types via `InlineNodeMap`/`BlockNodeMap`
+// declaration merging gets a required handler slot here for each one.
 export type HtmlHandlers = { [K in keyof NodeByType]: HtmlHandler<K> };
-
-// The handler table extended with a consumer's own node types. Each member of
-// `Extra` gets a precisely-typed handler; the built-in handlers stay available
-// for fallback via spread (`{ ...htmlHandlers, my_node: ... }`).
-export type HtmlHandlersFor<Extra extends ASTNode = never> = HtmlHandlers & {
-  [K in Extra['type']]: (
-    node: Extract<Extra, { type: K }>,
-    out: string[],
-    ctx: HtmlRenderContext,
-  ) => void;
-};
 
 // Tag-category aliases that get a class-name treatment instead of an inline
 // style. Both `renderQuote` and `renderColor` dispatch on this set: a
@@ -428,17 +419,17 @@ export const htmlHandlers: HtmlHandlers = {
 // Renders `node` to HTML through the handler table. The `node.type` lookup is
 // the one untyped seam: the table is heterogeneous and the key is a runtime
 // string.
-export function renderHtml<Extra extends ASTNode = never>(
+export function renderHtml(
   node: ASTNode,
   options: DTextRenderOptions = {},
-  handlers: HtmlHandlersFor<Extra> = htmlHandlers as HtmlHandlersFor<Extra>,
+  handlers: HtmlHandlers = htmlHandlers,
 ): string {
   const out: string[] = [];
   const ctx: HtmlRenderContext = {
     options,
     thumbCount: 0,
     render(n: ASTNode, o: string[]): void {
-      const handler = handlers[n.type as keyof HtmlHandlersFor<Extra>] as
+      const handler = handlers[n.type as keyof HtmlHandlers] as
         | ((node: ASTNode, out: string[], ctx: HtmlRenderContext) => void)
         | undefined;
       if (handler) handler(n, o, ctx);

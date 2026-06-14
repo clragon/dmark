@@ -7,34 +7,47 @@ export interface DocumentNode extends ASTNode {
   children: BlockNode[];
 }
 
-export type BlockNode =
-  | HeaderNode
-  | ParagraphNode
-  | QuoteNode
-  | SpoilerBlockNode
-  | SectionNode
-  | CodeBlockNode
-  | TableNode
-  | LTableNode
-  | ListNode
-  | RawBlockTextNode
-  | LiteralHtmlNode;
+// Block and inline node sets are declared as interface maps so a consumer can
+// add their own node types with declaration merging:
+//
+//   declare module '@clynamic/dmark' {
+//     interface InlineNodeMap { my_node: MyNode }
+//   }
+//
+// The merged type flows into every `BlockNode[]`/`InlineNode[]` slot and into
+// the renderer/formatter handler tables, so custom nodes need no cast.
+export interface BlockNodeMap {
+  header: HeaderNode;
+  paragraph: ParagraphNode;
+  quote: QuoteNode;
+  spoiler_block: SpoilerBlockNode;
+  section: SectionNode;
+  code_block: CodeBlockNode;
+  table: TableNode;
+  ltable: LTableNode;
+  list: ListNode;
+  raw_block_text: RawBlockTextNode;
+  literal_html: LiteralHtmlNode;
+}
+export type BlockNode = BlockNodeMap[keyof BlockNodeMap];
 
-export type InlineNode =
-  | TextNode
-  | BoldNode
-  | ItalicNode
-  | StrikeoutNode
-  | UnderlineNode
-  | SuperscriptNode
-  | SubscriptNode
-  | InlineSpoilerNode
-  | InlineCodeNode
-  | ColorNode
-  | LinkNode
-  | InternalAnchorNode
-  | LineBreakNode
-  | FragmentNode;
+export interface InlineNodeMap {
+  text: TextNode;
+  bold: BoldNode;
+  italic: ItalicNode;
+  strikeout: StrikeoutNode;
+  underline: UnderlineNode;
+  superscript: SuperscriptNode;
+  subscript: SubscriptNode;
+  inline_spoiler: InlineSpoilerNode;
+  inline_code: InlineCodeNode;
+  color: ColorNode;
+  link: LinkNode;
+  internal_anchor: InternalAnchorNode;
+  line_break: LineBreakNode;
+  fragment: FragmentNode;
+}
+export type InlineNode = InlineNodeMap[keyof InlineNodeMap];
 
 export type TablePartNode =
   | TableHeadNode

@@ -14,7 +14,6 @@ export type {
   DTextRenderOptions,
   HtmlHandler,
   HtmlHandlers,
-  HtmlHandlersFor,
   HtmlRenderContext,
   DTextFormatterOptions,
   DTextFormatResult,
