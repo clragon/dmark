@@ -15,14 +15,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('delimited URL terminates at ASCII whitespace, not just `>`', () => {
   it('breaks `<https://example.com/a\\tb>` at the tab the way ragel does', async () => {
     const input = '<https://example.com/a\tb>';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

@@ -61,7 +61,7 @@ export interface ParserOptions {
 
 // Diagnostic shape lives in `src/diagnostics/` so both parsers and
 // formatters can share it; re-exported here so existing imports of
-// `parseMarkdown`'s sibling type don't break.
+// `parseMarkdownToAst`'s sibling type don't break.
 import type { Diagnostic } from '../../diagnostics';
 export type { Diagnostic };
 
@@ -93,7 +93,7 @@ md.use(sectionsPlugin);
 md.use(quotePlugin);
 md.use(spoilerBlockPlugin);
 
-export function parseMarkdown(
+export function parseMarkdownToAst(
   input: string,
   _options: ParserOptions = {},
 ): ParseResult {

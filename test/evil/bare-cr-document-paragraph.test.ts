@@ -12,14 +12,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('bare CR at document scope opens a paragraph with one space', () => {
   it('produces `<p> </p>` for an input of exactly `\\r`', async () => {
     const input = '\r';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

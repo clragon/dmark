@@ -12,7 +12,7 @@ over-deep `[sup]` / `[sub]` opens). The markdown parser never produces
 them.
 
 The markdown formatter has to handle them anyway, because an AST
-originating from `parseDText` can be fed to either formatter. None of
+originating from `parseDTextToAst` can be fed to either formatter. None of
 the three has a markdown-native surface form.
 
 ## Decision
@@ -31,7 +31,7 @@ salvage node encountered.
 
 - The output is the best the markdown formatter can produce for a node
   that has no native surface form on its target surface.
-- Round-trip through `parseMarkdown` does not preserve the salvage
+- Round-trip through `parseMarkdownToAst` does not preserve the salvage
   shape; the markdown parser runs with `html: false`, so embedded HTML
   in `LiteralHtmlNode.prefix` re-parses as literal text rather than
   markup. The diagnostic flags this.

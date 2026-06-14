@@ -12,14 +12,15 @@
 // round-trip-stability bug; with diagnostics, the divergence is documented
 // and the banner reports it as a known-lossy round-trip.
 
-import { parseDTextToAST, renderToHTML } from '@dmark/dtext';
-import { formatDText } from '@dmark/dtext/render';
-import { parseMarkdown, type ParseResult } from '@dmark/md/parse';
-import { formatMarkdown } from '@dmark/md/render';
+import { parseDTextToAst } from '@dmark/dtext';
+import { renderAstToHtml } from '@dmark/html';
+import { renderAstToDText } from '@dmark/dtext/render';
+import { parseMarkdownToAst, type ParseResult } from '@dmark/md/parse';
+import { renderAstToMarkdown } from '@dmark/md/render';
 import type { Diagnostic } from '@dmark/diagnostics';
-import type { ASTNode, DocumentNode } from '@dmark/ast';
+import type { AstNode, DocumentNode } from '@dmark/ast';
 
-import { renderAST, renderASTError } from './ast-tree';
+import { renderAst, renderAstError } from './ast-tree';
 import { SAMPLES } from './samples';
 
 const DEBOUNCE_MS = 80;
@@ -63,8 +64,8 @@ interface OutputEls {
   metaDiagnostics: HTMLElement;
   banner: HTMLElement;
   bannerMessage: HTMLElement;
-  bannerSourceAST: HTMLElement;
-  bannerReparsedAST: HTMLElement;
+  bannerSourceAst: HTMLElement;
+  bannerReparsedAst: HTMLElement;
 }
 
 function $(id: string): HTMLElement {
@@ -93,8 +94,8 @@ function getOutputEls(): OutputEls {
     metaDiagnostics: $('meta-diagnostics'),
     banner: $('violation-banner'),
     bannerMessage: $('violation-message'),
-    bannerSourceAST: $('violation-ast-source'),
-    bannerReparsedAST: $('violation-ast-reparsed'),
+    bannerSourceAst: $('violation-ast-source'),
+    bannerReparsedAst: $('violation-ast-reparsed'),
   };
 }
 
@@ -174,10 +175,10 @@ function parseSide(
   input: string,
 ): { ast: DocumentNode; diagnostics: Diagnostic[] } {
   if (side === 'dtext') {
-    const ast = parseDTextToAST(input) as DocumentNode;
+    const ast = parseDTextToAst(input) as DocumentNode;
     return { ast, diagnostics: [] };
   }
-  const result: ParseResult = parseMarkdown(input);
+  const result: ParseResult = parseMarkdownToAst(input);
   return { ast: result.document, diagnostics: result.diagnostics };
 }
 
@@ -185,9 +186,9 @@ function parseSide(
 // formatter's `{ output, diagnostics }` shape directly.
 function formatTo(
   side: Side,
-  ast: ASTNode,
+  ast: AstNode,
 ): { output: string; diagnostics: Diagnostic[] } {
-  return side === 'dtext' ? formatDText(ast) : formatMarkdown(ast);
+  return side === 'dtext' ? renderAstToDText(ast) : renderAstToMarkdown(ast);
 }
 
 // Stable structural compare. JSON.stringify is sufficient because every AST
@@ -204,30 +205,30 @@ interface PipelineRun {
   parseDiagnostics: Diagnostic[];
   formatOutput: string;
   formatDiagnostics: Diagnostic[];
-  reparsedAST: DocumentNode | null;
+  reparsedAst: DocumentNode | null;
   reparseDiagnostics: Diagnostic[];
   reparseError: string | null;
   parseMs: number;
 }
 
 // Run the full source-side → AST → outputs → other-side pipeline on a piece
-// of input. Throws only if the source-side parser throws (`parseMarkdown`
-// promises not to; `parseDTextToAST` does for malformed UTF or bugs).
+// of input. Throws only if the source-side parser throws (`parseMarkdownToAst`
+// promises not to; `parseDTextToAst` does for malformed UTF or bugs).
 function runPipeline(side: Side, input: string): PipelineRun {
   const t0 = timeMs();
   const { ast, diagnostics: parseDiagnostics } = parseSide(side, input);
-  const html = renderToHTML(ast);
+  const html = renderAstToHtml(ast);
   const parseMs = timeMs() - t0;
 
   const otherSide: Side = side === 'dtext' ? 'md' : 'dtext';
   const formatted = formatTo(otherSide, ast);
 
-  let reparsedAST: DocumentNode | null = null;
+  let reparsedAst: DocumentNode | null = null;
   let reparseDiagnostics: Diagnostic[] = [];
   let reparseError: string | null = null;
   try {
     const reparsed = parseSide(otherSide, formatted.output);
-    reparsedAST = reparsed.ast;
+    reparsedAst = reparsed.ast;
     reparseDiagnostics = reparsed.diagnostics;
   } catch (e) {
     reparseError = e instanceof Error ? e.message : String(e);
@@ -239,19 +240,19 @@ function runPipeline(side: Side, input: string): PipelineRun {
     parseDiagnostics,
     formatOutput: formatted.output,
     formatDiagnostics: formatted.diagnostics,
-    reparsedAST,
+    reparsedAst,
     reparseDiagnostics,
     reparseError,
     parseMs,
   };
 }
 
-// Workbench-level state. `currentSide` is the source of truth; `lastAST` is
+// Workbench-level state. `currentSide` is the source of truth; `lastAst` is
 // the AST produced by the most recent successful run on the source side and
 // is what `re-translate on focus switch` reads.
-const state: { currentSide: Side | null; lastAST: ASTNode | null } = {
+const state: { currentSide: Side | null; lastAst: AstNode | null } = {
   currentSide: null,
-  lastAST: null,
+  lastAst: null,
 };
 
 const sideEls: Record<Side, SideEls> = {
@@ -270,7 +271,7 @@ function setSourceBadges(): void {
 
 function clearOutputs(message: string): void {
   outputEls.html.innerHTML = '';
-  renderAST(outputEls.ast, null);
+  renderAst(outputEls.ast, null);
   renderDiagnostics(outputEls.diagnostics, []);
   outputEls.metaHtml.textContent = '';
   outputEls.metaAst.textContent = '';
@@ -281,16 +282,16 @@ function clearOutputs(message: string): void {
 
 function showViolation(
   message: string,
-  sourceAST: ASTNode,
-  reparsedAST: ASTNode | null,
+  sourceAst: AstNode,
+  reparsedAst: AstNode | null,
 ): void {
   outputEls.banner.hidden = false;
   outputEls.bannerMessage.textContent = message;
-  renderAST(outputEls.bannerSourceAST, sourceAST);
-  if (reparsedAST) {
-    renderAST(outputEls.bannerReparsedAST, reparsedAST);
+  renderAst(outputEls.bannerSourceAst, sourceAst);
+  if (reparsedAst) {
+    renderAst(outputEls.bannerReparsedAst, reparsedAst);
   } else {
-    renderASTError(outputEls.bannerReparsedAST, '(reparse failed)');
+    renderAstError(outputEls.bannerReparsedAst, '(reparse failed)');
   }
 }
 
@@ -303,7 +304,7 @@ function hideViolation(): void {
 // visible state when round-trip is honest.
 function applyRun(side: Side, run: PipelineRun): void {
   outputEls.html.innerHTML = run.html;
-  renderAST(outputEls.ast, run.ast);
+  renderAst(outputEls.ast, run.ast);
   outputEls.metaHtml.textContent = `${run.html.length} chars`;
   outputEls.metaAst.textContent = `${countNodes(run.ast)} nodes`;
 
@@ -347,19 +348,19 @@ function applyRun(side: Side, run: PipelineRun): void {
     );
     return;
   }
-  if (!astEqual(run.ast, run.reparsedAST)) {
+  if (!astEqual(run.ast, run.reparsedAst)) {
     const formatHasDiagnostics = run.formatDiagnostics.length > 0;
     if (formatHasDiagnostics) {
       showViolation(
         'AST diverged on round-trip; see formatter diagnostics for the documented loss.',
         run.ast,
-        run.reparsedAST,
+        run.reparsedAst,
       );
     } else {
       showViolation(
         'AST diverged on round-trip with no formatter diagnostic — likely a real round-trip-stability bug.',
         run.ast,
-        run.reparsedAST,
+        run.reparsedAst,
       );
     }
     return;
@@ -370,7 +371,7 @@ function applyRun(side: Side, run: PipelineRun): void {
 function applyError(side: Side, error: unknown): void {
   const msg = error instanceof Error ? error.message : String(error);
   outputEls.html.innerHTML = '';
-  renderASTError(outputEls.ast, msg);
+  renderAstError(outputEls.ast, msg);
   outputEls.metaHtml.textContent = '';
   outputEls.metaAst.textContent = '';
   renderDiagnostics(outputEls.diagnostics, []);
@@ -382,7 +383,7 @@ function applyError(side: Side, error: unknown): void {
 function processSourceInput(side: Side, value: string): void {
   sideEls[side].metaInput.textContent = `${value.length} chars`;
   if (!value) {
-    state.lastAST = null;
+    state.lastAst = null;
     // Both sides should appear empty, including the unfocused translation.
     const otherSide: Side = side === 'dtext' ? 'md' : 'dtext';
     sideEls[otherSide].input.value = '';
@@ -392,15 +393,15 @@ function processSourceInput(side: Side, value: string): void {
   }
   try {
     const run = runPipeline(side, value);
-    state.lastAST = run.ast;
+    state.lastAst = run.ast;
     applyRun(side, run);
   } catch (e) {
-    state.lastAST = null;
+    state.lastAst = null;
     applyError(side, e);
   }
 }
 
-// On focus switch: regenerate the newly-focused side's text from `lastAST`
+// On focus switch: regenerate the newly-focused side's text from `lastAst`
 // (the AST of the previously-focused side), then re-run the pipeline as if
 // the user had typed the regenerated text. This is the "ignore unfocused
 // content" rule — whatever was sitting in the field gets replaced.
@@ -408,7 +409,7 @@ function adoptFocus(side: Side): void {
   if (state.currentSide === side) return;
   state.currentSide = side;
   setSourceBadges();
-  if (state.lastAST === null) {
+  if (state.lastAst === null) {
     // No previous truth — process whatever the user has typed so far, which
     // the input handler does anyway. Nothing to retranslate.
     processSourceInput(side, sideEls[side].input.value);
@@ -419,7 +420,7 @@ function adoptFocus(side: Side): void {
   // real bug surfaced as a parse-error-style state.
   let text: string;
   try {
-    text = formatTo(side, state.lastAST).output;
+    text = formatTo(side, state.lastAst).output;
   } catch (e) {
     applyError(side, e);
     return;
@@ -525,7 +526,7 @@ function init(): void {
     sideEls.md.input.value = '';
     sideEls.dtext.metaInput.textContent = '0 chars';
     sideEls.md.metaInput.textContent = '0 chars';
-    state.lastAST = null;
+    state.lastAst = null;
     state.currentSide = null;
     setSourceBadges();
     clearOutputs('idle');

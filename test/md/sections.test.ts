@@ -4,11 +4,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseMarkdown } from '../../src/md/parse';
+import { parseMarkdownToAst } from '../../src/md/parse';
 
 describe('section BBCode form', () => {
   it('lowers a bare `[section]...[/section]` to SectionNode without title or expanded', () => {
-    const result = parseMarkdown('[section]\nhello\n[/section]');
+    const result = parseMarkdownToAst('[section]\nhello\n[/section]');
     expect(result.diagnostics).toEqual([]);
     expect(result.document.children).toEqual([
       {
@@ -24,7 +24,7 @@ describe('section BBCode form', () => {
   });
 
   it('captures the title from `[section=Title]`', () => {
-    const result = parseMarkdown('[section=Notes]\nhello\n[/section]');
+    const result = parseMarkdownToAst('[section=Notes]\nhello\n[/section]');
     expect(result.document.children[0]).toEqual({
       type: 'section',
       title: 'Notes',
@@ -38,7 +38,7 @@ describe('section BBCode form', () => {
   });
 
   it('captures expanded from `[section,expanded]`', () => {
-    const result = parseMarkdown('[section,expanded]\nhello\n[/section]');
+    const result = parseMarkdownToAst('[section,expanded]\nhello\n[/section]');
     expect(result.document.children[0]).toEqual({
       type: 'section',
       expanded: true,
@@ -52,7 +52,9 @@ describe('section BBCode form', () => {
   });
 
   it('captures both title and expanded from `[section,expanded=Title]`', () => {
-    const result = parseMarkdown('[section,expanded=Notes]\nhello\n[/section]');
+    const result = parseMarkdownToAst(
+      '[section,expanded=Notes]\nhello\n[/section]',
+    );
     expect(result.document.children[0]).toEqual({
       type: 'section',
       title: 'Notes',
@@ -67,7 +69,7 @@ describe('section BBCode form', () => {
   });
 
   it('handles nested sections by tracking depth', () => {
-    const result = parseMarkdown(
+    const result = parseMarkdownToAst(
       '[section]\nouter\n[section]\ninner\n[/section]\nouter again\n[/section]',
     );
     expect(result.document.children).toEqual([
@@ -97,7 +99,7 @@ describe('section BBCode form', () => {
   });
 
   it('parses block content (headers, lists) inside a section', () => {
-    const result = parseMarkdown(
+    const result = parseMarkdownToAst(
       '[section]\n# inner header\n\n- item\n[/section]',
     );
     expect(result.document.children[0]).toMatchObject({
@@ -107,7 +109,7 @@ describe('section BBCode form', () => {
   });
 
   it('matches case-insensitively', () => {
-    const result = parseMarkdown('[SECTION=Caps]\nbody\n[/SECTION]');
+    const result = parseMarkdownToAst('[SECTION=Caps]\nbody\n[/SECTION]');
     expect(result.document.children[0]).toMatchObject({
       type: 'section',
       title: 'Caps',
@@ -115,8 +117,8 @@ describe('section BBCode form', () => {
   });
 
   it('does not open a section when the close is missing', () => {
-    expect(() => parseMarkdown('[section]\nno end')).not.toThrow();
-    const result = parseMarkdown('[section]\nno end');
+    expect(() => parseMarkdownToAst('[section]\nno end')).not.toThrow();
+    const result = parseMarkdownToAst('[section]\nno end');
     expect(
       result.document.children.find((c) => c.type === 'section'),
     ).toBeUndefined();
@@ -125,7 +127,7 @@ describe('section BBCode form', () => {
 
 describe('section HTML form `<details>`', () => {
   it('lowers a bare `<details>...</details>` to SectionNode', () => {
-    const result = parseMarkdown('<details>\nhello\n</details>');
+    const result = parseMarkdownToAst('<details>\nhello\n</details>');
     expect(result.diagnostics).toEqual([]);
     expect(result.document.children).toEqual([
       {
@@ -141,7 +143,7 @@ describe('section HTML form `<details>`', () => {
   });
 
   it('captures the `open` attribute as expanded', () => {
-    const result = parseMarkdown('<details open>\nhello\n</details>');
+    const result = parseMarkdownToAst('<details open>\nhello\n</details>');
     expect(result.document.children[0]).toEqual({
       type: 'section',
       expanded: true,
@@ -155,7 +157,7 @@ describe('section HTML form `<details>`', () => {
   });
 
   it('captures the title from `<summary>...</summary>` on the open line', () => {
-    const result = parseMarkdown(
+    const result = parseMarkdownToAst(
       '<details><summary>Notes</summary>\nhello\n</details>',
     );
     expect(result.document.children[0]).toEqual({
@@ -171,7 +173,7 @@ describe('section HTML form `<details>`', () => {
   });
 
   it('captures both open and summary together', () => {
-    const result = parseMarkdown(
+    const result = parseMarkdownToAst(
       '<details open><summary>Notes</summary>\nhello\n</details>',
     );
     expect(result.document.children[0]).toEqual({
@@ -188,7 +190,7 @@ describe('section HTML form `<details>`', () => {
   });
 
   it('handles nested `<details>` by tracking depth', () => {
-    const result = parseMarkdown(
+    const result = parseMarkdownToAst(
       '<details>\nouter\n<details>\ninner\n</details>\nouter again\n</details>',
     );
     expect(result.document.children).toEqual([
@@ -218,16 +220,16 @@ describe('section HTML form `<details>`', () => {
   });
 
   it('produces the same SectionNode for HTML and BBCode forms with the same title', () => {
-    const html = parseMarkdown(
+    const html = parseMarkdownToAst(
       '<details open><summary>X</summary>\nbody\n</details>',
     ).document.children[0];
-    const bbcode = parseMarkdown('[section,expanded=X]\nbody\n[/section]')
+    const bbcode = parseMarkdownToAst('[section,expanded=X]\nbody\n[/section]')
       .document.children[0];
     expect(html).toEqual(bbcode);
   });
 
   it('rejects unsupported attributes (falls through to text)', () => {
-    const result = parseMarkdown('<details class="foo">\nx\n</details>');
+    const result = parseMarkdownToAst('<details class="foo">\nx\n</details>');
     expect(
       result.document.children.find((c) => c.type === 'section'),
     ).toBeUndefined();

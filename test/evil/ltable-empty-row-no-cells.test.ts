@@ -14,14 +14,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('ltable row with only empty cells renders zero cells', () => {
   it('emits `<tr></tr>` for a row that is just a single `|`', async () => {
     const input = '[ltable]\n|\n[/ltable]';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

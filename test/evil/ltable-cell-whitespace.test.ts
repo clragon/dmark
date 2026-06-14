@@ -11,14 +11,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('ltable preserves intra-cell whitespace around the `|` separator', () => {
   it('keeps the trailing/leading spaces in `h1 | h2` cells', async () => {
     const input = '[ltable]\nh1 | h2\nv1 | v2\n[/ltable]';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

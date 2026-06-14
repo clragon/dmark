@@ -15,18 +15,18 @@ Real wiki corpus contains examples like
 text form: *"will be shown as 'JavaScript uses the ` character to
 delimit a templated string literal.'"*.
 
-`formatDText`'s text emit previously pushed `content` to the output
+`renderAstToDText`'s text emit previously pushed `content` to the output
 buffer verbatim. When the AST contained a literal backtick inside a
 text node, the formatter wrote a bare `` ` `` byte to the output and
 the next inline-code opener rule on re-parse claimed it, absorbing the
 rest of the surrounding inline run as inline-code content. The
-round-trip property `parseDText(format(node)) ≡ node` therefore failed
+round-trip property `parseDTextToAst(format(node)) ≡ node` therefore failed
 for any inline run containing a backtick text node, and the failure
 landed on real corpus during the survey added in commit `81dcc3a`.
 
 ## Decision
 
-`formatDText` escapes every literal backtick in `TextNode.content` to
+`renderAstToDText` escapes every literal backtick in `TextNode.content` to
 `` \` `` on emit. The parser's `parseInlineElement` escaped-backtick
 rule recovers the original backtick on re-parse, so the round-trip is
 exact.

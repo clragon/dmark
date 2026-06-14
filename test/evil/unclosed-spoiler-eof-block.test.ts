@@ -21,14 +21,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('unclosed `[spoiler]…<EOF>` is a block, not an inline span', () => {
   it('renders as `<div class="spoiler"><p>body</p></div>`', async () => {
     const input = '[spoiler]body';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

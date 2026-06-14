@@ -15,14 +15,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('inline container keeps the <br> right before its close', () => {
   it('preserves the trailing newline-as-<br> inside `[b]\\nbody\\n[/b]`', async () => {
     const input = '[b]\nbody\n[/b]';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

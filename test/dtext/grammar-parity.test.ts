@@ -1,6 +1,6 @@
 // Targeted oracle-parity probes against specific ragel grammar rules.
 //
-// Each test feeds a tiny input through both `parseDText` and the ruby
+// Each test feeds a tiny input through both `convertDTextToHtml` and the ruby
 // oracle and asserts the HTML matches. Cases are grouped into two classes:
 //
 //  - narrowness: a regex or literal in the TS port accepts less than the
@@ -22,7 +22,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 async function expectMatchesOracle(
@@ -33,7 +33,7 @@ async function expectMatchesOracle(
     allow_color: options.allow_color ?? true,
     max_thumbs: options.max_thumbs ?? 75,
   });
-  const dmark = parseDText(input, {
+  const dmark = convertDTextToHtml(input, {
     allowColor: options.allow_color ?? true,
     maxThumbs: options.max_thumbs ?? 75,
   });

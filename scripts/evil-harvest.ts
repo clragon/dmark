@@ -11,7 +11,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parseDText } from '../src/dtext';
+import { convertDTextToHtml } from '../src/convert';
 import type { Case } from '../test/evil/evil-parser-destroyer/cases';
 import { diskRenderViaOracle } from '../test/evil/evil-parser-destroyer/disk-oracle';
 
@@ -62,7 +62,7 @@ async function run(): Promise<void> {
       });
       let dmark: string;
       try {
-        dmark = parseDText(c.input, { allowColor, maxThumbs });
+        dmark = convertDTextToHtml(c.input, { allowColor, maxThumbs });
       } catch (err) {
         dmark = `__THROW__ ${(err as Error).message}`;
       }

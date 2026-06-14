@@ -1,6 +1,6 @@
 // Repeatable parser benchmark for the dtext side.
 //
-// Loads every fixture under corpus/golden, runs parseDText N times per fixture,
+// Loads every fixture under corpus/golden, runs convertDTextToHtml N times per fixture,
 // and reports per-fixture stats (median/p95) plus an aggregate. Performance
 // guarantee #3 from the README: median <10ms, p95 <25ms on a ≤20KB page.
 //
@@ -11,7 +11,9 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, basename } from 'node:path';
 
-import { parseDText, parseDTextToAST, renderToHTML } from '../src/dtext';
+import { parseDTextToAst } from '../src/dtext';
+import { renderAstToHtml } from '../src/html';
+import { convertDTextToHtml } from '../src/convert';
 
 interface Entry {
   id: number;
@@ -91,8 +93,8 @@ const SPLIT = process.argv.includes('--split');
 
 // Warm V8 by parsing each fixture twice off-record so the optimizer has run.
 for (const f of fixtures) {
-  parseDText(f.text, opts);
-  parseDText(f.text, opts);
+  convertDTextToHtml(f.text, opts);
+  convertDTextToHtml(f.text, opts);
 }
 
 if (SPLIT) {
@@ -111,9 +113,9 @@ if (SPLIT) {
     const totalS: number[] = [];
     for (let i = 0; i < itersArg; i++) {
       const a = performance.now();
-      const ast = parseDTextToAST(f.text, opts);
+      const ast = parseDTextToAst(f.text, opts);
       const b = performance.now();
-      renderToHTML(ast as never, opts);
+      renderAstToHtml(ast as never, opts);
       const c = performance.now();
       parseS.push(b - a);
       renderS.push(c - b);
@@ -161,7 +163,7 @@ for (const f of fixtures) {
   const samples: number[] = [];
   for (let i = 0; i < itersArg; i++) {
     const t0 = performance.now();
-    parseDText(f.text, opts);
+    convertDTextToHtml(f.text, opts);
     const dt = performance.now() - t0;
     samples.push(dt);
     allIters.push(dt);

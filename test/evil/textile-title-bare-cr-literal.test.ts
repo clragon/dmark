@@ -17,14 +17,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('basic_inline preserves a bare CR as literal, no space alias', () => {
   it('renders `"a\\rb":/x` with the CR intact inside the anchor', async () => {
     const input = '"a\rb":/x';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

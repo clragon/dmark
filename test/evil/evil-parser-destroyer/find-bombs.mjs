@@ -1,4 +1,4 @@
-// One-shot bomb detector. Runs each input through parseDText with a hard
+// One-shot bomb detector. Runs each input through convertDTextToHtml with a hard
 // time budget per case, in a child process so an OOM kills only that child.
 // Usage: node test/evil/evil-parser-destroyer/find-bombs.mjs
 

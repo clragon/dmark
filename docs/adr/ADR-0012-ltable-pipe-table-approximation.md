@@ -7,7 +7,7 @@
 
 `LTableNode` is dtext-only. The markdown parser cannot produce one;
 `[ltable]` BBCode in markdown input is rejected at parse with
-`md.legacy_bbcode`. An AST coming from `parseDText` may carry an
+`md.legacy_bbcode`. An AST coming from `parseDTextToAst` may carry an
 `LTableNode` and may then be passed to the markdown formatter, so the
 markdown side has to handle the shape regardless.
 

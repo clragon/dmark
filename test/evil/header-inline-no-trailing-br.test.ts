@@ -26,14 +26,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('header trailing newline closes the header without emitting <br>', () => {
   it('drops the final newline as a header-end signal, not a line break', async () => {
     const input = 'h1. [b]bold[/i]\n';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

@@ -1,40 +1,43 @@
 export {
-  parseDText,
-  parseDTextToAST,
+  parseDTextToAst,
   DTextStateMachineParser,
-  renderToHTML,
-  renderHtml,
-  htmlHandlers,
-  htmlEscape,
-  uriEscape,
-  formatDText,
+  renderAstToDText,
   dtextHandlers,
 } from './dtext';
 export type {
+  DTextParseOptions,
   DTextRenderOptions,
+  DTextRenderResult,
+  DTextHandler,
+  DTextHandlers,
+  DTextRenderContext,
+} from './dtext';
+
+export { renderAstToHtml, htmlHandlers, htmlEscape, uriEscape } from './html';
+export type {
+  HtmlRenderOptions,
   HtmlHandler,
   HtmlHandlers,
   HtmlRenderContext,
-  DTextFormatterOptions,
-  DTextFormatResult,
-  DTextHandler,
-  DTextHandlers,
-  DTextFormatContext,
-} from './dtext';
+} from './html';
 
-export { parseMarkdown } from './md/parse';
+export { parseMarkdownToAst } from './md/parse';
 export type { ParserOptions, ParseResult } from './md/parse';
 
-export { formatMarkdown, markdownHandlers } from './md/render';
+export { renderAstToMarkdown, markdownHandlers } from './md/render';
 export type {
-  MarkdownFormatterOptions,
-  MarkdownFormatResult,
+  MarkdownRenderOptions,
+  MarkdownRenderResult,
   MarkdownHandler,
   MarkdownHandlers,
-  MarkdownFormatContext,
+  MarkdownRenderContext,
 } from './md/render';
 
-export { parseDTextToMarkdown, parseMarkdownToDText } from './convert';
+export {
+  convertDTextToHtml,
+  convertDTextToMarkdown,
+  convertMarkdownToDText,
+} from './convert';
 
 export type * from './ast/index.js';
 export type { Diagnostic } from './diagnostics';

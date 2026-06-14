@@ -7,7 +7,7 @@
 
 type Plain = string | number | boolean | null | undefined;
 
-function isASTNodeLike(
+function isAstNodeLike(
   v: unknown,
 ): v is { type: string } & Record<string, unknown> {
   return (
@@ -18,8 +18,8 @@ function isASTNodeLike(
   );
 }
 
-function isASTNodeArray(v: unknown): v is Array<{ type: string }> {
-  return Array.isArray(v) && v.length > 0 && v.every(isASTNodeLike);
+function isAstNodeArray(v: unknown): v is Array<{ type: string }> {
+  return Array.isArray(v) && v.length > 0 && v.every(isAstNodeLike);
 }
 
 function renderScalar(value: Plain): HTMLElement {
@@ -62,9 +62,9 @@ function renderNode(
 
   for (const [key, raw] of Object.entries(node)) {
     if (key === 'type') continue;
-    if (isASTNodeLike(raw)) {
+    if (isAstNodeLike(raw)) {
       childGroups.push({ key, nodes: [raw] });
-    } else if (isASTNodeArray(raw)) {
+    } else if (isAstNodeArray(raw)) {
       childGroups.push({
         key,
         nodes: raw as Array<{ type: string } & Record<string, unknown>>,
@@ -146,9 +146,9 @@ function renderNode(
   return wrap;
 }
 
-export function renderAST(target: HTMLElement, ast: unknown): void {
+export function renderAst(target: HTMLElement, ast: unknown): void {
   target.replaceChildren();
-  if (!isASTNodeLike(ast)) {
+  if (!isAstNodeLike(ast)) {
     const empty = document.createElement('div');
     empty.classList.add('ast-empty');
     empty.textContent = '(no AST)';
@@ -158,7 +158,7 @@ export function renderAST(target: HTMLElement, ast: unknown): void {
   target.appendChild(renderNode(ast, 0));
 }
 
-export function renderASTError(target: HTMLElement, message: string): void {
+export function renderAstError(target: HTMLElement, message: string): void {
   target.replaceChildren();
   const err = document.createElement('div');
   err.classList.add('ast-error');

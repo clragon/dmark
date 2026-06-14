@@ -22,14 +22,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('anchor-only wiki link encodes internal `#` characters', () => {
   it('renders `[[#a#b]]` with the second hash as `%23`', async () => {
     const input = '[[#a#b]]';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

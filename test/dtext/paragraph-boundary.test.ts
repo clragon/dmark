@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 // Reproduces the "trailing <br><br></p>" bug surfaced by the corpus
@@ -14,28 +14,28 @@ describe('paragraph block-boundary handling', () => {
   it('paragraph followed by header closes cleanly', async () => {
     const input = 'hello\n\nh2. heading';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 
   it('paragraph followed by paragraph splits into two', async () => {
     const input = 'hello\n\nworld';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 
   it('paragraph followed by quote closes cleanly', async () => {
     const input = 'hello\n\n[quote]world[/quote]';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 
   it('inline anchor followed by paragraph splits cleanly', async () => {
     const input = '[#anchor]\n\nhi';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

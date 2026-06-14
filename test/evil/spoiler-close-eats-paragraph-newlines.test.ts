@@ -22,14 +22,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('newline-prefixed stray [/spoiler] eats ALL leading newlines', () => {
   it('keeps two literal newlines plus the close inside an open bold', async () => {
     const input = '[b]a\n\n[/spoiler] b[/b]';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

@@ -5,11 +5,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseMarkdown } from '../../src/md/parse';
+import { parseMarkdownToAst } from '../../src/md/parse';
 import type { BlockNode } from '../../src/ast';
 
 function blocksOf(input: string): BlockNode[] {
-  const result = parseMarkdown(input);
+  const result = parseMarkdownToAst(input);
   expect(result.diagnostics).toEqual([]);
   return result.document.children;
 }
@@ -42,7 +42,7 @@ describe('headers', () => {
   });
 
   it('emits md.setext_header_normalized info for `===` (level 1)', () => {
-    const result = parseMarkdown('big\n===');
+    const result = parseMarkdownToAst('big\n===');
     expect(result.diagnostics).toEqual([
       {
         code: 'md.setext_header_normalized',
@@ -60,7 +60,7 @@ describe('headers', () => {
   });
 
   it('emits md.setext_header_normalized info for `---` (level 2)', () => {
-    const result = parseMarkdown('mid\n---');
+    const result = parseMarkdownToAst('mid\n---');
     expect(result.diagnostics[0]!.code).toBe('md.setext_header_normalized');
     expect(result.document.children[0]).toEqual({
       type: 'header',
@@ -140,7 +140,7 @@ describe('fenced code block', () => {
   });
 
   it('emits md.code_lang_dropped info when a language hint is present', () => {
-    const result = parseMarkdown('```ruby\nputs :hi\n```');
+    const result = parseMarkdownToAst('```ruby\nputs :hi\n```');
     expect(result.diagnostics).toEqual([
       {
         code: 'md.code_lang_dropped',
@@ -157,7 +157,7 @@ describe('fenced code block', () => {
 
 describe('indented code block', () => {
   it('lowers four-space indented code to CodeBlockNode without a diagnostic', () => {
-    const result = parseMarkdown('    let x = 1;');
+    const result = parseMarkdownToAst('    let x = 1;');
     expect(result.diagnostics).toEqual([]);
     expect(result.document.children[0]).toEqual({
       type: 'code_block',
@@ -168,10 +168,10 @@ describe('indented code block', () => {
 
 describe('robustness', () => {
   it('does not throw on an unclosed fence', () => {
-    expect(() => parseMarkdown('```\nunclosed')).not.toThrow();
+    expect(() => parseMarkdownToAst('```\nunclosed')).not.toThrow();
   });
 
   it('does not throw on a deeply nested quote', () => {
-    expect(() => parseMarkdown('> > > > > deep')).not.toThrow();
+    expect(() => parseMarkdownToAst('> > > > > deep')).not.toThrow();
   });
 });

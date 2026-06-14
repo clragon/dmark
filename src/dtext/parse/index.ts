@@ -36,10 +36,15 @@ import {
 import { asciiLowercase, rubyUriEscape } from '../../ast/text';
 import { isBoundaryChar } from '../url';
 
-interface ParserOptions {
+// Public knobs that change how dtext source lowers to the AST. `allowColor`
+// gates the `[color]` span; `maxThumbs` rewrites thumbs over the limit to
+// `post`. `baseUrl` is render-only and lives on `HtmlRenderOptions`, not here.
+export interface DTextParseOptions {
   allowColor?: boolean;
   maxThumbs?: number;
-  baseUrl?: string;
+}
+
+interface ParserOptions extends DTextParseOptions {
   inlineOnly?: boolean;
   // Restrict inline tokenisation to ragel's `parse_basic_inline` machine
   // (lines 188-226): only b/i/s/u/sup/sub formatting is recognised; every
@@ -513,7 +518,6 @@ export class DTextStateMachineParser {
     this.options = {
       allowColor: true,
       maxThumbs: 10,
-      baseUrl: '',
       inlineOnly: false,
       ...options,
     };
@@ -1954,7 +1958,7 @@ export class DTextStateMachineParser {
     // Parse the children either way; the only difference between "colour
     // allowed" and "colour disabled" is whether the colour value survives
     // onto the node. Disabled mode emits an empty-string colour so the
-    // renderer skips the wrapping span (see render-html's allowColor branch).
+    // renderer skips the wrapping span (see the html renderer's allowColor branch).
     const children: InlineNode[] = [];
     while (
       this.pos < this.input.length &&
@@ -2805,9 +2809,9 @@ export class DTextStateMachineParser {
   }
 }
 
-export function parseDText(
+export function parseDTextToAst(
   input: string,
-  options: ParserOptions = {},
+  options: DTextParseOptions = {},
 ): DocumentNode {
   const parser = new DTextStateMachineParser(input, options);
   return parser.parse();

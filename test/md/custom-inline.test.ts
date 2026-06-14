@@ -4,10 +4,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseMarkdown } from '../../src/md/parse';
+import { parseMarkdownToAst } from '../../src/md/parse';
 
 function inlineOf(input: string) {
-  const result = parseMarkdown(input);
+  const result = parseMarkdownToAst(input);
   expect(result.diagnostics).toEqual([]);
   expect(result.document.children).toHaveLength(1);
   const para = result.document.children[0]!;
@@ -230,8 +230,8 @@ describe('inline spoiler `||...||`', () => {
   });
 
   it('does not match an unclosed `||`', () => {
-    expect(() => parseMarkdown('||open and never closed')).not.toThrow();
-    const result = parseMarkdown('||open and never closed');
+    expect(() => parseMarkdownToAst('||open and never closed')).not.toThrow();
+    const result = parseMarkdownToAst('||open and never closed');
     const para = result.document.children[0]!;
     if (para.type !== 'paragraph') throw new Error('expected paragraph');
     expect(

@@ -3,7 +3,7 @@
 // For every fixture under `corpus/golden`, runs the round-trip property
 // from `docs/mapping.md`:
 //
-//   parseDText(formatDText(parseDText(src)).output) ≡ parseDText(src)
+//   convertDTextToHtml(renderAstToDText(convertDTextToHtml(src)).output) ≡ convertDTextToHtml(src)
 //
 // Corpus-scale companion to `test/dtext/round-trip.test.ts`, which
 // exercises the same property on hand-curated fixtures spanning the
@@ -12,7 +12,7 @@
 // paths, edge-case interactions, uncommon constructs).
 //
 // Sibling pattern to `test/golden-baseline.test.ts`:
-//   - golden-baseline checks `parseDText → renderHTML` against the oracle
+//   - golden-baseline checks `convertDTextToHtml` against the oracle
 //     (single-pipeline correctness)
 //   - golden-roundtrip checks `parse → format → parse` AST stability
 //     (formatter-inverse correctness)
@@ -25,8 +25,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { parseDTextToAST } from '@dmark/dtext';
-import { formatDText } from '@dmark/dtext';
+import { parseDTextToAst } from '@dmark/dtext';
+import { renderAstToDText } from '@dmark/dtext';
 import { astEqual } from './md/ast-equal';
 import type { DocumentNode } from '../src/ast';
 
@@ -94,9 +94,9 @@ suite('dtext round-trip across golden corpus', () => {
       // Wiki render options to match `golden-baseline` (so any parser
       // option-sensitive shapes stay consistent across the two harnesses).
       const opts = { allowColor: true, maxThumbs: 75 };
-      const ast1 = parseDTextToAST(dtext, opts) as DocumentNode;
-      const formatted = formatDText(ast1).output;
-      const ast2 = parseDTextToAST(formatted, opts) as DocumentNode;
+      const ast1 = parseDTextToAst(dtext, opts) as DocumentNode;
+      const formatted = renderAstToDText(ast1).output;
+      const ast2 = parseDTextToAst(formatted, opts) as DocumentNode;
       const cmp = astEqual(ast1, ast2);
       if (cmp.equal) {
         passed++;

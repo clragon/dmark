@@ -1,7 +1,7 @@
 // Baseline golden test for the dtext side of dmark.
 //
 // For every fixture under corpus/golden, renders the dtext via dmark
-// (parse → AST → render-html) and via the ruby oracle (DText.parse), and
+// (parse to AST to html render) and via the ruby oracle (DText.parse), and
 // checks the two outputs are dom-equal under the normalization rules in
 // `test/dom-equal.ts`.
 //
@@ -19,7 +19,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { domEqual } from './dom-equal';
 import { renderViaOracle } from './oracle';
 
@@ -83,7 +83,7 @@ suite('dtext baseline against ruby oracle', () => {
       // (app/views/wiki_pages/show.html.erb). Both sides match that.
       const renderOpts = { allow_color: true, max_thumbs: 75 };
       const oracleHtml = (await renderViaOracle(dtext, renderOpts)).html;
-      const dmarkHtml = parseDText(dtext, {
+      const dmarkHtml = convertDTextToHtml(dtext, {
         allowColor: renderOpts.allow_color,
         maxThumbs: renderOpts.max_thumbs,
       });

@@ -7,7 +7,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { parseDText, parseDTextToAST, formatDText } from '@dmark/dtext';
+import { parseDTextToAst, renderAstToDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import type { DocumentNode } from '../src/ast';
 import { domEqual } from '../test/dom-equal';
 import { astEqual } from '../test/md/ast-equal';
@@ -29,14 +30,14 @@ async function main(): Promise<void> {
   const dtext = readFileSync(path, 'utf8');
   const opts = { allowColor: true, maxThumbs: 75 };
 
-  const ast1 = parseDTextToAST(dtext, opts) as DocumentNode;
-  const formatted = formatDText(ast1).output;
-  const ast2 = parseDTextToAST(formatted, opts) as DocumentNode;
+  const ast1 = parseDTextToAst(dtext, opts) as DocumentNode;
+  const formatted = renderAstToDText(ast1).output;
+  const ast2 = parseDTextToAst(formatted, opts) as DocumentNode;
   const rt = astEqual(ast1, ast2);
   console.log(`round-trip: ${rt.equal ? 'OK' : 'DIFF'}`);
   if (!rt.equal) console.log(rt.diff?.slice(0, 800));
 
-  const dmarkHtml = parseDText(dtext, {
+  const dmarkHtml = convertDTextToHtml(dtext, {
     allowColor: opts.allowColor,
     maxThumbs: opts.maxThumbs,
   });

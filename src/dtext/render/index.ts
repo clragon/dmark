@@ -1,11 +1,11 @@
-// Buffer-pattern dtext formatter. `formatDText(ast)` is the inverse of
-// `parseDText`: emits dtext source whose round-trip is deep-equal to the
+// Buffer-pattern dtext formatter. `renderAstToDText(ast)` is the inverse of
+// `parseDTextToAst`: emits dtext source whose round-trip is deep-equal to the
 // input. Per-construct canonical forms are in `docs/mapping.md`; the result
 // shape follows ADR-0003. The `out` buffer is created fresh per call;
 // promoting it to module scope would interleave concurrent renders.
 
 import type {
-  ASTNode,
+  AstNode,
   BlockNode,
   DocumentNode,
   FragmentNode,
@@ -30,12 +30,12 @@ import { asciiLowercase } from '../../ast/text';
 import type { Diagnostic } from '../../diagnostics';
 import { isBoundaryChar } from '../url';
 
-export interface DTextFormatterOptions {
+export interface DTextRenderOptions {
   // Reserved for flags; kept as an explicit type so the public contract has a
   // stable shape.
 }
 
-export interface DTextFormatResult {
+export interface DTextRenderResult {
   output: string;
   diagnostics: Diagnostic[];
 }
@@ -51,22 +51,22 @@ type NodeByType = {
 // Format state threaded through every handler. `render` recurses through the
 // active handler table. `trailing` is the first byte that will follow the
 // node, used by the URL-link emitters to pick a glue-safe form.
-export interface DTextFormatContext {
-  readonly options: DTextFormatterOptions;
+export interface DTextRenderContext {
+  readonly options: DTextRenderOptions;
   readonly diagnostics: Diagnostic[];
   // Set when an inline link's bare emit had `]` inside its href and could
   // therefore re-parse via `\S+` past the surrounding inline container's
   // close. Reset by emitInlineContainer when it inserts the `\n` terminator
   // (or finishes without one).
   unsafeBareUrl?: boolean;
-  render(node: ASTNode, out: string[], trailing?: string): void;
+  render(node: AstNode, out: string[], trailing?: string): void;
 }
 
 // Renders one node type; `node` is narrowed to its concrete interface.
 export type DTextHandler<K extends keyof NodeByType> = (
   node: NodeByType[K],
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
   trailing?: string,
 ) => void;
 
@@ -78,7 +78,7 @@ export type DTextHandlers = { [K in keyof NodeByType]: DTextHandler<K> };
 // sibling's emit on re-parse. Returns `undefined` for nodes whose emit is
 // effectively empty (or unknown), which signals "no following byte", the
 // safe default for the bare-form check.
-function firstEmitChar(node: ASTNode): string | undefined {
+function firstEmitChar(node: AstNode): string | undefined {
   switch (node.type) {
     case 'text': {
       const c = (node as TextNode).content;
@@ -131,7 +131,7 @@ function firstEmitChar(node: ASTNode): string | undefined {
 function formatBlocks(
   blocks: BlockNode[],
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   for (let i = 0; i < blocks.length; i++) {
     if (i > 0) out.push('\n\n');
@@ -153,7 +153,7 @@ function emitInlineContainer(
   tag: string,
   children: InlineNode[],
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
   open?: string,
 ): void {
   const close = `[/${tag}]`;
@@ -183,7 +183,7 @@ function emitInlineContainer(
 function formatInlines(
   inlines: InlineNode[],
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
   trailing?: string,
 ): void {
   for (let i = 0; i < inlines.length; i++) {
@@ -196,7 +196,7 @@ function formatInlines(
 function formatHeader(
   node: HeaderNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   out.push('h', String(node.level), '. ');
   formatInlines(node.children, out, ctx);
@@ -205,7 +205,7 @@ function formatHeader(
 function formatQuote(
   node: QuoteNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   if (node.color !== undefined) {
     out.push('[quote=', node.color, ']\n');
@@ -219,7 +219,7 @@ function formatQuote(
 function formatSpoilerBlock(
   node: SpoilerBlockNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   out.push('[spoiler]\n');
   formatBlocks(node.children, out, ctx);
@@ -229,7 +229,7 @@ function formatSpoilerBlock(
 function formatSection(
   node: SectionNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   // Four canonical forms, mirroring the four matched-string forms in
   // `matchSection`.
@@ -246,7 +246,7 @@ function formatSection(
 function formatTable(
   node: TableNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   // Pretty layout (ADR-0008): structural tags on their own lines, rows on
   // their own lines, cells inline within the row.
@@ -261,7 +261,7 @@ function formatTable(
 function formatTableHead(
   node: TableHeadNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   out.push('[thead]\n');
   for (const row of node.rows) {
@@ -274,7 +274,7 @@ function formatTableHead(
 function formatTableBody(
   node: TableBodyNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   out.push('[tbody]\n');
   for (const row of node.rows) {
@@ -287,7 +287,7 @@ function formatTableBody(
 function formatTableRow(
   node: TableRowNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   out.push('[tr]');
   for (const cell of node.cells) ctx.render(cell, out);
@@ -297,7 +297,7 @@ function formatTableRow(
 function formatTableCell(
   node: TableCellNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   out.push('[', node.cellType, ']');
   formatInlines(node.children, out, ctx, '[');
@@ -307,7 +307,7 @@ function formatTableCell(
 function formatLTable(
   node: LTableNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   // Prefer the captured raw source. `node.children` came from a synthesised
   // `[table]` parse where URL patterns intentionally spill past structural
@@ -349,7 +349,7 @@ function formatLTable(
 function formatList(
   node: ListNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
 ): void {
   // Depth maps to asterisk-count, mirroring the parser's `(\*+)[ \t]+` rule.
   // One line per item; no container framing.
@@ -364,7 +364,7 @@ function formatList(
 function formatLink(
   node: LinkNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
   trailing?: string,
 ): void {
   switch (node.linkType) {
@@ -430,7 +430,7 @@ function formatUrlLink(
 function formatInlineLink(
   node: LinkNode,
   out: string[],
-  ctx: DTextFormatContext,
+  ctx: DTextRenderContext,
   trailing: string | undefined,
 ): void {
   // ADR-0005: bare "title":url when href has no whitespace, no `]`, no
@@ -641,26 +641,26 @@ export const dtextHandlers: DTextHandlers = {
   internal_anchor: (node, out) => out.push('[#', node.name, ']'),
 };
 
-export function formatDText(
-  ast: ASTNode,
-  options: DTextFormatterOptions = {},
+export function renderAstToDText(
+  ast: AstNode,
+  options: DTextRenderOptions = {},
   handlers: DTextHandlers = dtextHandlers,
-): DTextFormatResult {
+): DTextRenderResult {
   const out: string[] = [];
-  const ctx: DTextFormatContext = {
+  const ctx: DTextRenderContext = {
     options,
     diagnostics: [],
-    render(node: ASTNode, o: string[], trailing?: string): void {
+    render(node: AstNode, o: string[], trailing?: string): void {
       const handler = handlers[node.type as keyof DTextHandlers] as
         | ((
-            n: ASTNode,
+            n: AstNode,
             out: string[],
-            c: DTextFormatContext,
+            c: DTextRenderContext,
             t?: string,
           ) => void)
         | undefined;
       if (handler) handler(node, o, ctx, trailing);
-      else console.warn(`formatDText: unknown node type: ${node.type}`);
+      else console.warn(`renderAstToDText: unknown node type: ${node.type}`);
     },
   };
   ctx.render(ast, out);

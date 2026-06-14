@@ -9,30 +9,31 @@
 // vitest test by design: the project's vitest globalSetup boots the dtext
 // oracle docker, which is overkill for a preview-side regression check.
 
-import { parseDTextToAST, renderToHTML } from '../dtext';
-import { formatDText } from '../dtext/render';
-import { parseMarkdown } from '../md/parse';
-import { formatMarkdown } from '../md/render';
-import type { ASTNode, DocumentNode } from '../ast';
+import { parseDTextToAst } from '../dtext';
+import { renderAstToHtml } from '../html';
+import { renderAstToDText } from '../dtext/render';
+import { parseMarkdownToAst } from '../md/parse';
+import { renderAstToMarkdown } from '../md/render';
+import type { AstNode, DocumentNode } from '../ast';
 import type { Diagnostic } from '../diagnostics';
 import { SAMPLES } from './samples';
 
 interface SideOps {
   parse: (s: string) => { ast: DocumentNode; diagnostics: Diagnostic[] };
-  format: (ast: ASTNode) => { output: string; diagnostics: Diagnostic[] };
+  format: (ast: AstNode) => { output: string; diagnostics: Diagnostic[] };
 }
 
 const dtext: SideOps = {
-  parse: (s) => ({ ast: parseDTextToAST(s) as DocumentNode, diagnostics: [] }),
-  format: formatDText,
+  parse: (s) => ({ ast: parseDTextToAst(s) as DocumentNode, diagnostics: [] }),
+  format: renderAstToDText,
 };
 
 const md: SideOps = {
   parse: (s) => {
-    const r = parseMarkdown(s);
+    const r = parseMarkdownToAst(s);
     return { ast: r.document, diagnostics: r.diagnostics };
   },
-  format: formatMarkdown,
+  format: renderAstToMarkdown,
 };
 
 function astEqual(a: unknown, b: unknown): boolean {
@@ -46,7 +47,7 @@ for (const sample of SAMPLES) {
   const otherSide = sample.side === 'dtext' ? md : dtext;
   try {
     const { ast } = sourceSide.parse(sample.source);
-    const html = renderToHTML(ast);
+    const html = renderAstToHtml(ast);
     if (!html.length) throw new Error('empty html');
     const formatted = otherSide.format(ast);
     const reparsed = otherSide.parse(formatted.output);

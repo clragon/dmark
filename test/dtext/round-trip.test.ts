@@ -2,7 +2,7 @@
 // source, format it back, re-parse, and assert the two ASTs are deep-equal.
 // Pins the round-trip guarantee from `docs/mapping.md`:
 //
-//   parseDText(formatDText(parseDText(src)).output) ≡ parseDText(src)
+//   parseDTextToAst(renderAstToDText(parseDTextToAst(src)).output) ≡ parseDTextToAst(src)
 //
 // Fixtures span the construct surface; per-construct test files
 // (`blocks.test.ts`, `inline.test.ts`, `links.test.ts`) cover surface-level
@@ -15,8 +15,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseDText } from '../../src/dtext/parse';
-import { formatDText } from '../../src/dtext/render';
+import { parseDTextToAst } from '../../src/dtext/parse';
+import { renderAstToDText } from '../../src/dtext/render';
 import { astEqual } from '../md/ast-equal';
 
 interface Fixture {
@@ -25,9 +25,9 @@ interface Fixture {
 }
 
 function assertRoundTrip(fix: Fixture): void {
-  const ast1 = parseDText(fix.dtext);
-  const formatted = formatDText(ast1).output;
-  const ast2 = parseDText(formatted);
+  const ast1 = parseDTextToAst(fix.dtext);
+  const formatted = renderAstToDText(ast1).output;
+  const ast2 = parseDTextToAst(formatted);
   const result = astEqual(ast1, ast2);
   if (!result.equal) {
     throw new Error(
@@ -166,13 +166,13 @@ describe('dtext round-trip — documented divergences (skipped)', () => {
   // unrepresentable in dtext source. The dtext parser cannot produce such
   // a node from any source string, so this divergence is unreachable from
   // a parser-side test fixture; surfaces only when an AST is fed to
-  // `formatDText` from the markdown side (CommonMark's multi-backtick
+  // `renderAstToDText` from the markdown side (CommonMark's multi-backtick
   // fence rule). The markdown round-trip harness pins this case.
   it.skip('inline code with backtick (ADR-0010; markdown-only producer)', () => {});
 
   // `LiteralHtmlNode` and `RawBlockTextNode` are dtext salvage artifacts.
   // The formatter emits `prefix` / `content` verbatim; re-parsing through
-  // `parseDText` may not produce the same node shape because the salvage
+  // `parseDTextToAst` may not produce the same node shape because the salvage
   // path is triggered by stray-close fallout, not by the verbatim text the
   // formatter emits. Salvage paths are passthrough, not canonical dtext;
   // see `docs/mapping.md`.

@@ -24,14 +24,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('two stray `[/spoiler]` closes around a paragraph break stay literal', () => {
   it('keeps both `[/spoiler]` tokens and leaves the trailing text unwrapped', async () => {
     const input = 'a\n[/spoiler]\n\n[/spoiler] tail';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

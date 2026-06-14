@@ -34,7 +34,7 @@ on the dtext side, not just on the markdown side.
 
 ## Decision
 
-`formatDText` emits `` `<escaped>` `` where `<escaped>` is the AST
+`renderAstToDText` emits `` `<escaped>` `` where `<escaped>` is the AST
 `content` with every literal backtick replaced by `` \` ``. The
 matching escape rule in `parseInlineCode` recovers the original
 backtick on re-parse, so the round-trip is exact for any

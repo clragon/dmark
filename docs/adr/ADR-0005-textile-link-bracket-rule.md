@@ -16,7 +16,7 @@ surrounding text. The bracketed form survives whitespace and any
 character that would be trimmed.
 
 To round-trip through the parser, the formatter has to pick the form
-that makes `parseDText(format(node))` recover the same `href`.
+that makes `parseDTextToAst(format(node))` recover the same `href`.
 
 ## Decision
 
@@ -53,7 +53,7 @@ parser uses `[^\]]+` and so cannot encode a `]` inside the URL). The
 formatter falls back to bare even when the trailing byte is not
 whitespace. If that trailing byte is alphanumeric (not a boundary
 character `trimUrlBoundaries` would peel), the URL regex on re-parse
-absorbs it, so `parseDText(format(node))` recovers an extended `href`.
+absorbs it, so `parseDTextToAst(format(node))` recovers an extended `href`.
 
 The only corpus instance is `12086-the_great_mouse_detective.dtext`,
 where the parser's in-container URL stop yields

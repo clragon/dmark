@@ -18,14 +18,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('inline-from-header exits when [code] opens mid-content', () => {
   it('breaks the header on `[code]` and emits a real <pre> block', async () => {
     const input = 'h1. heading [code]not code[/code]\n';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

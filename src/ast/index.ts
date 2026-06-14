@@ -1,8 +1,8 @@
-export interface ASTNode {
+export interface AstNode {
   type: string;
 }
 
-export interface DocumentNode extends ASTNode {
+export interface DocumentNode extends AstNode {
   type: 'document';
   children: BlockNode[];
 }
@@ -56,18 +56,18 @@ export type TablePartNode =
   | TableCellNode
   | TableLiteralNode;
 
-export interface HeaderNode extends ASTNode {
+export interface HeaderNode extends AstNode {
   type: 'header';
   level: number;
   children: InlineNode[];
 }
 
-export interface ParagraphNode extends ASTNode {
+export interface ParagraphNode extends AstNode {
   type: 'paragraph';
   children: InlineNode[];
 }
 
-export interface QuoteNode extends ASTNode {
+export interface QuoteNode extends AstNode {
   type: 'quote';
   children: BlockNode[];
   // Optional color from [quote=COLOR]. Value is the raw token as typed
@@ -75,26 +75,26 @@ export interface QuoteNode extends ASTNode {
   color?: string;
 }
 
-export interface SpoilerBlockNode extends ASTNode {
+export interface SpoilerBlockNode extends AstNode {
   type: 'spoiler_block';
   children: BlockNode[];
 }
 
-export interface SectionNode extends ASTNode {
+export interface SectionNode extends AstNode {
   type: 'section';
   title?: string;
   expanded?: boolean;
   children: BlockNode[];
 }
 
-export interface CodeBlockNode extends ASTNode {
+export interface CodeBlockNode extends AstNode {
   type: 'code_block';
   content: string;
 }
 
 // Stray block-level closing tags ([/code], [/table]) that ruby renders as
 // literal text without paragraph wrapping when no matching open is in scope.
-export interface RawBlockTextNode extends ASTNode {
+export interface RawBlockTextNode extends AstNode {
   type: 'raw_block_text';
   content: string;
 }
@@ -104,7 +104,7 @@ export interface RawBlockTextNode extends ASTNode {
 // inter-block whitespace plus the close tag itself; `children` is the inline
 // tail (so `Topic #1` after a stray close still becomes an `<a>`). Newlines
 // inside `children` render as `<br>` via the LineBreakNode path.
-export interface LiteralHtmlNode extends ASTNode {
+export interface LiteralHtmlNode extends AstNode {
   type: 'literal_html';
   prefix: string;
   children: InlineNode[];
@@ -115,17 +115,17 @@ export interface LiteralHtmlNode extends ASTNode {
 // which appends `{ ts, te }` when the close type doesn't match the top). Used
 // to capture orphan `[/tr]` / `[/thead]` / `[/td]` / etc seen inside a
 // `[table]` body so they re-emit verbatim between structural elements.
-export interface TableLiteralNode extends ASTNode {
+export interface TableLiteralNode extends AstNode {
   type: 'table_literal';
   content: string;
 }
 
-export interface TableNode extends ASTNode {
+export interface TableNode extends AstNode {
   type: 'table';
   children: (TableHeadNode | TableBodyNode | TableRowNode | TableLiteralNode)[];
 }
 
-export interface LTableNode extends ASTNode {
+export interface LTableNode extends AstNode {
   type: 'ltable';
   // Children of the synthesised `[table]` produced by ruby's
   // `preprocess_for_tables`. Storing the full structure (instead of a flat
@@ -141,12 +141,12 @@ export interface LTableNode extends ASTNode {
   source?: string;
 }
 
-export interface TableHeadNode extends ASTNode {
+export interface TableHeadNode extends AstNode {
   type: 'table_head';
   rows: (TableRowNode | TableLiteralNode)[];
 }
 
-export interface TableBodyNode extends ASTNode {
+export interface TableBodyNode extends AstNode {
   type: 'table_body';
   // A `[tbody]` body can contain a nested `[thead]...[/thead]` group
   // (some wiki authors use this to interleave header rows mid-table).
@@ -156,80 +156,80 @@ export interface TableBodyNode extends ASTNode {
   rows: (TableRowNode | TableLiteralNode | TableHeadNode)[];
 }
 
-export interface TableRowNode extends ASTNode {
+export interface TableRowNode extends AstNode {
   type: 'table_row';
   cells: TableCellNode[];
 }
 
-export interface TableCellNode extends ASTNode {
+export interface TableCellNode extends AstNode {
   type: 'table_cell';
   cellType: 'th' | 'td';
   children: InlineNode[];
 }
 
-export interface ListNode extends ASTNode {
+export interface ListNode extends AstNode {
   type: 'list';
   items: ListItemNode[];
 }
 
-export interface ListItemNode extends ASTNode {
+export interface ListItemNode extends AstNode {
   type: 'list_item';
   depth: number;
   children: InlineNode[];
 }
 
-export interface TextNode extends ASTNode {
+export interface TextNode extends AstNode {
   type: 'text';
   content: string;
 }
 
-export interface BoldNode extends ASTNode {
+export interface BoldNode extends AstNode {
   type: 'bold';
   children: InlineNode[];
 }
 
-export interface ItalicNode extends ASTNode {
+export interface ItalicNode extends AstNode {
   type: 'italic';
   children: InlineNode[];
 }
 
-export interface StrikeoutNode extends ASTNode {
+export interface StrikeoutNode extends AstNode {
   type: 'strikeout';
   children: InlineNode[];
 }
 
-export interface UnderlineNode extends ASTNode {
+export interface UnderlineNode extends AstNode {
   type: 'underline';
   children: InlineNode[];
 }
 
-export interface SuperscriptNode extends ASTNode {
+export interface SuperscriptNode extends AstNode {
   type: 'superscript';
   children: InlineNode[];
 }
 
-export interface SubscriptNode extends ASTNode {
+export interface SubscriptNode extends AstNode {
   type: 'subscript';
   children: InlineNode[];
 }
 
-export interface InlineSpoilerNode extends ASTNode {
+export interface InlineSpoilerNode extends AstNode {
   type: 'inline_spoiler';
   children: InlineNode[];
 }
 
-export interface InlineCodeNode extends ASTNode {
+export interface InlineCodeNode extends AstNode {
   type: 'inline_code';
   content: string;
 }
 
-export interface ColorNode extends ASTNode {
+export interface ColorNode extends AstNode {
   type: 'color';
   color: string;
   children: InlineNode[];
 }
 
-export interface LineBreakNode extends ASTNode {
+export interface LineBreakNode extends AstNode {
   type: 'line_break';
 }
 
@@ -242,7 +242,7 @@ export interface LineBreakNode extends ASTNode {
 // HTML renderer ignores it (the wrapper was dropped semantically); the
 // dtext formatter uses it to re-emit the source-level open/close so the
 // round-trip preserves the same depth on re-parse.
-export interface FragmentNode extends ASTNode {
+export interface FragmentNode extends AstNode {
   type: 'fragment';
   children: InlineNode[];
   wrapper?: 'sub' | 'sup';
@@ -250,7 +250,7 @@ export interface FragmentNode extends ASTNode {
 
 // id-link kinds the parser emits via `[prefix #N]` syntax (post #123,
 // pool #45, etc.). Metadata tables keyed against this union live in
-// `./links` (parser side) and `render-html/index.ts` (renderer side);
+// `./links` (parser side) and `../html/render/index.ts` (renderer side);
 // every table is exhaustive over `IdType`, so adding a new id type
 // surfaces the missing entry as a compile error. See ADR-0001.
 export type IdType =
@@ -277,7 +277,7 @@ export type IdType =
   | 'takedown'
   | 'ticket';
 
-export interface LinkNode extends ASTNode {
+export interface LinkNode extends AstNode {
   type: 'link';
   linkType: 'url' | 'inline' | 'wiki' | 'post_search' | 'id_link';
   href: string;
@@ -289,7 +289,7 @@ export interface LinkNode extends ASTNode {
   tags?: string;
 }
 
-export interface InternalAnchorNode extends ASTNode {
+export interface InternalAnchorNode extends AstNode {
   type: 'internal_anchor';
   name: string;
 }

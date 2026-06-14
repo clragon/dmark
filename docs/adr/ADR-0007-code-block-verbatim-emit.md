@@ -32,11 +32,11 @@ prepend a single `\n` after `[code]` when either:
 ## Consequences
 
 - A `content` ending with `\n` emits as fenced (`[code]\n...\n[/code]`)
-  and round-trips byte-stable through both `parseDText -> formatDText`
-  and `parseDText -> formatMarkdown -> parseMarkdown -> formatDText`.
+  and round-trips byte-stable through both `parseDTextToAst -> renderAstToDText`
+  and `parseDTextToAst -> renderAstToMarkdown -> parseMarkdownToAst -> renderAstToDText`.
 - A `content` without a trailing newline emits inline
-  (`[code]hi[/code]`) and round-trips byte-stable through `parseDText
-  -> formatDText`. The markdown roundtrip will add a trailing `\n`
+  (`[code]hi[/code]`) and round-trips byte-stable through `parseDTextToAst
+  -> renderAstToDText`. The markdown roundtrip will add a trailing `\n`
   because markdown-it normalises fenced-code content with one, so an
   inline-source becomes fenced after the markdown trip — an unavoidable
   consequence of the markdown format, not a formatter choice.
@@ -52,7 +52,7 @@ prepend a single `\n` after `[code]` when either:
   in `\n` would emit `[code]hi\n[/code]` — legal but visually unfenced
   despite the obvious newline signal.
 - Always emit fenced. Rejected: would inflate inline `[code]hi[/code]`
-  to fenced form on every `parseDText -> formatDText` cycle, churning
+  to fenced form on every `parseDTextToAst -> renderAstToDText` cycle, churning
   the author's layout choice for content that has no newline signal at
   all.
 - Restore the leading newline in the parser to make fenced layout

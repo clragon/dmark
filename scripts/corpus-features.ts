@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { parseDTextToAST } from '@dmark/dtext';
+import { parseDTextToAst } from '@dmark/dtext';
 import type { DocumentNode } from '../src/ast';
 
 interface CorpusEntry {
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
   let processed = 0;
   for (const entry of okEntries) {
     const dtext = readFileSync(resolve(CORPUS_STAGING, entry.file), 'utf8');
-    const ast = parseDTextToAST(dtext, {
+    const ast = parseDTextToAst(dtext, {
       allowColor: true,
       maxThumbs: 75,
     }) as DocumentNode;

@@ -17,14 +17,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('quote_close tail does not eat NBSP either', () => {
   it('keeps a leading NBSP on the paragraph after `[/quote]`', async () => {
     const input = '[quote]hi[/quote] after';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

@@ -2,7 +2,7 @@
 // renderer (e621ng/dtext gem) running inside the oracle docker container.
 //
 // What this measures:
-//   - Dmark: in-process `parseDText` (parse + render in TS).
+//   - Dmark: in-process `convertDTextToHtml` (parse + render in TS).
 //   - Oracle: HTTP POST to the running container's /render endpoint, which
 //     parses + renders via the ruby gem and returns the HTML string. Includes
 //     loopback HTTP overhead.
@@ -26,7 +26,7 @@ import {
   type StartedTestContainer,
 } from 'testcontainers';
 
-import { parseDText } from '../src/dtext';
+import { convertDTextToHtml } from '../src/convert';
 
 interface Entry {
   id: number;
@@ -141,7 +141,7 @@ async function main() {
     // by cold-start: V8 tier-up on the dmark side, ruby/gem warmup on the oracle.
     console.log(`[warm] running each fixture once on both pipelines ...`);
     for (const f of fixtures) {
-      parseDText(f.text, opts);
+      convertDTextToHtml(f.text, opts);
       await oracleRender(oracle.url, f.text);
     }
 
@@ -151,7 +151,7 @@ async function main() {
       const or: number[] = [];
       for (let i = 0; i < iters; i++) {
         const t0 = performance.now();
-        parseDText(f.text, opts);
+        convertDTextToHtml(f.text, opts);
         const t1 = performance.now();
         await oracleRender(oracle.url, f.text);
         const t2 = performance.now();

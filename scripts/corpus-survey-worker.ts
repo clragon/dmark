@@ -22,7 +22,8 @@ import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
 
-import { parseDTextToAST, formatDText, parseDText } from '@dmark/dtext';
+import { parseDTextToAst, renderAstToDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import type { DocumentNode } from '../src/ast';
 import { astEqual } from '../test/md/ast-equal';
 import { domEqual } from '../test/dom-equal';
@@ -100,7 +101,7 @@ async function runOracleCheck(
   }
   let dmarkHtml: string;
   try {
-    dmarkHtml = parseDText(dtext, { allowColor: true, maxThumbs: 75 });
+    dmarkHtml = convertDTextToHtml(dtext, { allowColor: true, maxThumbs: 75 });
   } catch (err) {
     return {
       oracle: 'error',
@@ -119,7 +120,7 @@ async function runOne(job: JobRecord): Promise<DoneEvent> {
 
   let ast1: DocumentNode;
   try {
-    ast1 = parseDTextToAST(dtext, opts) as DocumentNode;
+    ast1 = parseDTextToAst(dtext, opts) as DocumentNode;
   } catch (err) {
     return {
       event: 'done',
@@ -134,7 +135,7 @@ async function runOne(job: JobRecord): Promise<DoneEvent> {
 
   let formatted: string;
   try {
-    formatted = formatDText(ast1).output;
+    formatted = renderAstToDText(ast1).output;
   } catch (err) {
     return {
       event: 'done',
@@ -149,7 +150,7 @@ async function runOne(job: JobRecord): Promise<DoneEvent> {
 
   let ast2: DocumentNode;
   try {
-    ast2 = parseDTextToAST(formatted, opts) as DocumentNode;
+    ast2 = parseDTextToAst(formatted, opts) as DocumentNode;
   } catch (err) {
     return {
       event: 'done',

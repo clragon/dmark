@@ -6,11 +6,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseMarkdown } from '../../src/md/parse';
+import { parseMarkdownToAst } from '../../src/md/parse';
 
 describe('flat unordered list', () => {
   it('produces one ListNode with depth-1 items', () => {
-    const result = parseMarkdown('- a\n- b\n- c');
+    const result = parseMarkdownToAst('- a\n- b\n- c');
     expect(result.diagnostics).toEqual([]);
     expect(result.document.children).toEqual([
       {
@@ -37,13 +37,13 @@ describe('flat unordered list', () => {
   });
 
   it('accepts both `-` and `*` bullet markers', () => {
-    const dashes = parseMarkdown('- one\n- two').document.children[0];
-    const stars = parseMarkdown('* one\n* two').document.children[0];
+    const dashes = parseMarkdownToAst('- one\n- two').document.children[0];
+    const stars = parseMarkdownToAst('* one\n* two').document.children[0];
     expect(dashes).toEqual(stars);
   });
 
   it('parses inline emphasis in item text', () => {
-    const result = parseMarkdown('- **bold item**');
+    const result = parseMarkdownToAst('- **bold item**');
     expect(result.document.children).toEqual([
       {
         type: 'list',
@@ -66,7 +66,7 @@ describe('flat unordered list', () => {
 
 describe('nested unordered list', () => {
   it('emits nested items as siblings with higher depth, in document order', () => {
-    const result = parseMarkdown('- a\n  - nested\n- c');
+    const result = parseMarkdownToAst('- a\n  - nested\n- c');
     expect(result.diagnostics).toEqual([]);
     expect(result.document.children).toEqual([
       {
@@ -93,7 +93,7 @@ describe('nested unordered list', () => {
   });
 
   it('handles three levels deep', () => {
-    const result = parseMarkdown('- l1\n  - l2\n    - l3');
+    const result = parseMarkdownToAst('- l1\n  - l2\n    - l3');
     expect(result.document.children[0]).toEqual({
       type: 'list',
       items: [
@@ -119,7 +119,7 @@ describe('nested unordered list', () => {
 
 describe('ordered list', () => {
   it('demotes to a flat unordered ListNode with one warning per ordered_list_open', () => {
-    const result = parseMarkdown('1. a\n2. b');
+    const result = parseMarkdownToAst('1. a\n2. b');
     expect(result.diagnostics).toEqual([
       {
         code: 'md.ordered_list_demoted',
@@ -147,7 +147,7 @@ describe('ordered list', () => {
   });
 
   it('emits a separate diagnostic for each nested ordered list', () => {
-    const result = parseMarkdown('1. a\n   1. nested\n2. c');
+    const result = parseMarkdownToAst('1. a\n   1. nested\n2. c');
     const warnings = result.diagnostics.filter(
       (d) => d.code === 'md.ordered_list_demoted',
     );
@@ -159,7 +159,7 @@ describe('separate top-level lists', () => {
   it('produces two distinct ListNodes when interrupted by another block', () => {
     // CommonMark treats `- a\n\n- b` as a single loose list; two distinct
     // lists require a non-list block between them (here a paragraph).
-    const result = parseMarkdown('- a\n\nbreak\n\n- b');
+    const result = parseMarkdownToAst('- a\n\nbreak\n\n- b');
     expect(result.document.children).toHaveLength(3);
     expect(result.document.children[0]!.type).toBe('list');
     expect(result.document.children[1]!.type).toBe('paragraph');
@@ -169,7 +169,7 @@ describe('separate top-level lists', () => {
 
 describe('robustness', () => {
   it('does not throw on a list with empty items', () => {
-    expect(() => parseMarkdown('-\n- item')).not.toThrow();
+    expect(() => parseMarkdownToAst('-\n- item')).not.toThrow();
   });
 
   it('does not throw on extreme nesting', () => {
@@ -177,6 +177,6 @@ describe('robustness', () => {
     for (let d = 0; d < 6; d++) {
       s += `${'  '.repeat(d)}- l${d + 1}\n`;
     }
-    expect(() => parseMarkdown(s)).not.toThrow();
+    expect(() => parseMarkdownToAst(s)).not.toThrow();
   });
 });

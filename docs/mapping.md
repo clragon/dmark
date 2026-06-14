@@ -384,7 +384,7 @@ does not produce them; the markdown formatter emits each with a
   fragment in `prefix` (inter-block whitespace + the close tag) and
   continues streaming inline content in `children`.
 - dtext emit: `prefix` verbatim, then inline children. Round-tripping
-  through `parseDText` does not necessarily reproduce the same
+  through `parseDTextToAst` does not necessarily reproduce the same
   `LiteralHtmlNode` shape; the salvage path itself is a divergence from
   canonical dtext.
 - markdown emit: `prefix` verbatim, then inline children, with diagnostic.
@@ -469,12 +469,9 @@ links, `[section]` / `[quote]` BBCode survivors at the block level.
 ## Parser API
 
 ```ts
-parseDText(input: string, options?: ParserOptions): {
-  document: DocumentNode;
-  diagnostics: Diagnostic[];
-};
+parseDTextToAst(input: string, options?: DTextParseOptions): DocumentNode;
 
-parseMarkdown(input: string, options?: ParserOptions): {
+parseMarkdownToAst(input: string, options?: ParserOptions): {
   document: DocumentNode;
   diagnostics: Diagnostic[];
 };
@@ -498,21 +495,21 @@ interface Diagnostic {
 `warning` for lossy mappings that produced an AST node with a known
 caveat; `info` for transparent normalisations the renderer absorbs.
 
-## Formatter API
+## Renderer API
 
 ```ts
-formatDText(ast: ASTNode, options?: FormatterOptions): {
+renderAstToDText(ast: ASTNode, options?: DTextRenderOptions): {
   output: string;
   diagnostics: Diagnostic[];
 };
 
-formatMarkdown(ast: ASTNode, options?: FormatterOptions): {
+renderAstToMarkdown(ast: ASTNode, options?: MarkdownRenderOptions): {
   output: string;
   diagnostics: Diagnostic[];
 };
 ```
 
-Both formatters return `{ output, diagnostics }` (ADR-0003). The shared
+Both renderers return `{ output, diagnostics }` (ADR-0003). The shared
 shape lets callers treat both pipelines identically. The dtext-side
 diagnostic catalog is empty; documented divergences (inline-code
 backticks, salvage-path round-trips) surface in the round-trip harness

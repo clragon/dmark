@@ -9,11 +9,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseMarkdown } from '../../src/md/parse';
+import { parseMarkdownToAst } from '../../src/md/parse';
 
 describe('spoiler-block BBCode form', () => {
   it('lowers a bare `[spoiler]...[/spoiler]` to a SpoilerBlockNode', () => {
-    const result = parseMarkdown('[spoiler]\nhidden body\n[/spoiler]');
+    const result = parseMarkdownToAst('[spoiler]\nhidden body\n[/spoiler]');
     expect(result.diagnostics).toEqual([]);
     expect(result.document.children).toEqual([
       {
@@ -29,7 +29,7 @@ describe('spoiler-block BBCode form', () => {
   });
 
   it('treats the open marker case-insensitively', () => {
-    const result = parseMarkdown('[SPOILER]\nbody\n[/Spoiler]');
+    const result = parseMarkdownToAst('[SPOILER]\nbody\n[/Spoiler]');
     expect(result.document.children[0]).toEqual({
       type: 'spoiler_block',
       children: [
@@ -42,7 +42,7 @@ describe('spoiler-block BBCode form', () => {
   });
 
   it('supports nested spoilers via depth tracking', () => {
-    const result = parseMarkdown(
+    const result = parseMarkdownToAst(
       '[spoiler]\n[spoiler]\ninner\n[/spoiler]\n[/spoiler]',
     );
     expect(result.document.children[0]).toEqual({
@@ -62,7 +62,7 @@ describe('spoiler-block BBCode form', () => {
   });
 
   it('recursively tokenises inner block content', () => {
-    const result = parseMarkdown('[spoiler]\n# Title\n\nbody\n[/spoiler]');
+    const result = parseMarkdownToAst('[spoiler]\n# Title\n\nbody\n[/spoiler]');
     expect(result.document.children[0]).toEqual({
       type: 'spoiler_block',
       children: [
@@ -80,7 +80,7 @@ describe('spoiler-block BBCode form', () => {
   });
 
   it('falls through when the close marker is missing', () => {
-    const result = parseMarkdown('[spoiler]\nno close marker here');
+    const result = parseMarkdownToAst('[spoiler]\nno close marker here');
     expect(
       result.document.children.find((n) => n.type === 'spoiler_block'),
     ).toBeUndefined();
@@ -89,7 +89,7 @@ describe('spoiler-block BBCode form', () => {
   it('does not interfere with the inline `||` spoiler rule', () => {
     // `||x||` mid-paragraph still produces an InlineSpoilerNode; the block
     // plugin only fires on standalone `[spoiler]` lines.
-    const result = parseMarkdown('before ||hidden|| after');
+    const result = parseMarkdownToAst('before ||hidden|| after');
     expect(result.document.children[0]).toEqual({
       type: 'paragraph',
       children: [

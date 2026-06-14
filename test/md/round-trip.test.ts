@@ -2,8 +2,8 @@
 // markdown source, format it back, re-parse, and assert the two ASTs are
 // deep-equal. Pins the round-trip guarantee from `docs/mapping.md`:
 //
-//   parseMarkdown(formatMarkdown(parseMarkdown(src).document).output).document
-//   ≡ parseMarkdown(src).document
+//   parseMarkdownToAst(renderAstToMarkdown(parseMarkdownToAst(src).document).output).document
+//   ≡ parseMarkdownToAst(src).document
 //
 // Fixtures span the construct surface; the per-construct files (`inline`,
 // `blocks`, `lists`, `tables`, `references`, `sections`, `custom-inline`)
@@ -16,8 +16,8 @@
 
 import { describe, it } from 'vitest';
 
-import { parseMarkdown } from '../../src/md/parse';
-import { formatMarkdown } from '../../src/md/render';
+import { parseMarkdownToAst } from '../../src/md/parse';
+import { renderAstToMarkdown } from '../../src/md/render';
 import { astEqual } from './ast-equal';
 
 interface Fixture {
@@ -26,9 +26,9 @@ interface Fixture {
 }
 
 function assertRoundTrip(fix: Fixture): void {
-  const ast1 = parseMarkdown(fix.markdown).document;
-  const formatted = formatMarkdown(ast1).output;
-  const ast2 = parseMarkdown(formatted).document;
+  const ast1 = parseMarkdownToAst(fix.markdown).document;
+  const formatted = renderAstToMarkdown(ast1).output;
+  const ast2 = parseMarkdownToAst(formatted).document;
   const result = astEqual(ast1, ast2);
   if (!result.equal) {
     throw new Error(

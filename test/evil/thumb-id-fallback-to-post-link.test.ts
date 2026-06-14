@@ -19,14 +19,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('thumb-id past max_thumbs falls back to a post-id-link', () => {
   it('renders as a plain `<a … href="/posts/5">post #5</a>` when max_thumbs=0', async () => {
     const input = 'thumb #5';
     const oracle = await renderViaOracle(input, { max_thumbs: 0 });
-    const dmark = parseDText(input, { maxThumbs: 0 });
+    const dmark = convertDTextToHtml(input, { maxThumbs: 0 });
     expect(dmark).toBe(oracle.html);
   });
 });

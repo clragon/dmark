@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'vitest';
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { diskRenderViaOracle } from './disk-oracle';
 import type { Case } from './cases';
 
@@ -44,7 +44,7 @@ export function runSlice(index: number): void {
           allow_color: c.allowColor ?? true,
           max_thumbs: c.maxThumbs ?? 75,
         });
-        const dmark = parseDText(c.input, {
+        const dmark = convertDTextToHtml(c.input, {
           allowColor: c.allowColor ?? true,
           maxThumbs: c.maxThumbs ?? 75,
         });

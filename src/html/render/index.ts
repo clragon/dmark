@@ -1,5 +1,5 @@
 import type {
-  ASTNode,
+  AstNode,
   BlockNode,
   ColorNode,
   DocumentNode,
@@ -14,7 +14,7 @@ import type {
   TablePartNode,
 } from '../../ast';
 
-export interface DTextRenderOptions {
+export interface HtmlRenderOptions {
   allowColor?: boolean;
   maxThumbs?: number;
   baseUrl?: string;
@@ -37,10 +37,10 @@ type NodeByType = {
 // through the active handler table; handlers push fragments into the `out`
 // buffer they are given.
 export interface HtmlRenderContext {
-  readonly options: DTextRenderOptions;
+  readonly options: HtmlRenderOptions;
   thumbCount: number;
-  render(node: ASTNode, out: string[]): void;
-  renderAll(nodes: readonly ASTNode[], out: string[]): void;
+  render(node: AstNode, out: string[]): void;
+  renderAll(nodes: readonly AstNode[], out: string[]): void;
 }
 
 // Renders one node type; `node` is narrowed to its concrete interface.
@@ -419,33 +419,26 @@ export const htmlHandlers: HtmlHandlers = {
 // Renders `node` to HTML through the handler table. The `node.type` lookup is
 // the one untyped seam: the table is heterogeneous and the key is a runtime
 // string.
-export function renderHtml(
-  node: ASTNode,
-  options: DTextRenderOptions = {},
+export function renderAstToHtml(
+  node: AstNode,
+  options: HtmlRenderOptions = {},
   handlers: HtmlHandlers = htmlHandlers,
 ): string {
   const out: string[] = [];
   const ctx: HtmlRenderContext = {
     options,
     thumbCount: 0,
-    render(n: ASTNode, o: string[]): void {
+    render(n: AstNode, o: string[]): void {
       const handler = handlers[n.type as keyof HtmlHandlers] as
-        | ((node: ASTNode, out: string[], ctx: HtmlRenderContext) => void)
+        | ((node: AstNode, out: string[], ctx: HtmlRenderContext) => void)
         | undefined;
       if (handler) handler(n, o, ctx);
       else console.warn(`Unknown node type: ${n.type}`);
     },
-    renderAll(nodes: readonly ASTNode[], o: string[]): void {
+    renderAll(nodes: readonly AstNode[], o: string[]): void {
       for (const n of nodes) ctx.render(n, o);
     },
   };
   ctx.render(node, out);
   return out.join('');
-}
-
-export function renderToHTML(
-  node: ASTNode,
-  options: DTextRenderOptions = {},
-): string {
-  return renderHtml(node, options);
 }

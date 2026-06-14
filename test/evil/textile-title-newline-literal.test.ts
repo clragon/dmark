@@ -15,14 +15,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('textile-link title keeps a literal newline (no <br>)', () => {
   it('`"foo\\nbar":/x` renders the newline as a real byte inside the anchor', async () => {
     const input = '"foo\nbar":/x';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

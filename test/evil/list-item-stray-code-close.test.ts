@@ -20,14 +20,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('stray `[/code]` inside a list item closes the list and resumes', () => {
   it('lets the line after the stray close start a new list', async () => {
     const input = '* item [/code] tail\n* next\n';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

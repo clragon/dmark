@@ -1,6 +1,6 @@
 // Paired-fixture verification: for every supported construct in
-// `docs/mapping.md`, parse the dtext form with `parseDText` and the
-// markdown form with `parseMarkdown` and assert the two ASTs are equal
+// `docs/mapping.md`, parse the dtext form with `parseDTextToAst` and the
+// markdown form with `parseMarkdownToAst` and assert the two ASTs are equal
 // after normalisation. Closes the AST-equivalence promise the project
 // rests on.
 //
@@ -14,8 +14,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseDText } from '../../src/dtext/parse';
-import { parseMarkdown } from '../../src/md/parse';
+import { parseDTextToAst } from '../../src/dtext/parse';
+import { parseMarkdownToAst } from '../../src/md/parse';
 import { astEqual } from './ast-equal';
 
 interface Pair {
@@ -180,8 +180,8 @@ function runPairs(label: string, pairs: Pair[]): void {
   describe(label, () => {
     for (const pair of pairs) {
       it(pair.name, () => {
-        const fromDText = parseDText(pair.dtext);
-        const { document: fromMarkdown, diagnostics } = parseMarkdown(
+        const fromDText = parseDTextToAst(pair.dtext);
+        const { document: fromMarkdown, diagnostics } = parseMarkdownToAst(
           pair.markdown,
         );
         const fatals = diagnostics.filter((d) => d.severity === 'fatal');

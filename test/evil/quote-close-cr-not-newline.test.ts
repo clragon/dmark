@@ -16,14 +16,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('quote_close tail eats `ws*` only, not bare CR', () => {
   it('leaves bare CR after `[/quote]` for the inline-scanner space conversion', async () => {
     const input = '[quote]hi[/quote]\rafter';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

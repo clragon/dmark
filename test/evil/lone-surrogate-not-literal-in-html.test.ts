@@ -6,7 +6,7 @@
 // oracle responds with `{ error, html: undefined }`.
 //
 // dmark currently passes the lone surrogate straight through:
-//   parseDText('a\uDC00b')  ->  '<p>a\uDC00b</p>'
+//   convertDTextToHtml('a\uDC00b')  ->  '<p>a\uDC00b</p>'
 // That output cannot be re-encoded to a valid HTTP body or written to a
 // file with `writeFileSync(..., 'utf-8')` without `WriteError`. Same
 // shape as the NUL byte fix: the parser must never embed an invalid
@@ -14,11 +14,11 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 
 describe('lone surrogate must not appear literally in rendered HTML', () => {
   it('does not emit a bare low surrogate in the output of `a\\uDC00b`', () => {
-    const html = parseDText('a\uDC00b');
+    const html = convertDTextToHtml('a\uDC00b');
     expect(/[\uD800-\uDFFF]/.test(html)).toBe(false);
   });
 });

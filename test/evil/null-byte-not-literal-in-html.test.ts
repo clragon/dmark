@@ -5,7 +5,7 @@
 //   { error: "dtext_error", message: "invalid byte sequence in UTF-8" }
 // (no `html` field at all).
 //
-// dmark passes the NUL through verbatim, so `parseDText("a\x00b")` is
+// dmark passes the NUL through verbatim, so `convertDTextToHtml("a\x00b")` is
 // `"<p>a\x00b</p>"` with the NUL inside `<p>`. That output is unsafe to
 // emit in any real consumer (browser, JSON encoder, log file) and
 // trivially divergent from the oracle's reject behaviour.
@@ -17,11 +17,11 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 
 describe('null byte must not appear literally in rendered HTML', () => {
   it('does not emit U+0000 in the output of `a\\x00b`', () => {
-    const html = parseDText('a\x00b');
+    const html = convertDTextToHtml('a\x00b');
     expect(html.includes('\x00')).toBe(false);
   });
 });

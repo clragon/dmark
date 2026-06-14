@@ -8,11 +8,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseMarkdown } from '../../src/md/parse';
+import { parseMarkdownToAst } from '../../src/md/parse';
 
 describe('quote `>` line-prefix form', () => {
   it('lowers a single-line `>` to a colourless QuoteNode', () => {
-    const result = parseMarkdown('> a single line of quote');
+    const result = parseMarkdownToAst('> a single line of quote');
     expect(result.diagnostics).toEqual([]);
     expect(result.document.children).toEqual([
       {
@@ -28,7 +28,7 @@ describe('quote `>` line-prefix form', () => {
   });
 
   it('preserves multi-line content via line breaks', () => {
-    const result = parseMarkdown('> first\n> second');
+    const result = parseMarkdownToAst('> first\n> second');
     expect(result.document.children[0]).toEqual({
       type: 'quote',
       children: [
@@ -47,7 +47,7 @@ describe('quote `>` line-prefix form', () => {
 
 describe('quote BBCode form', () => {
   it('lowers a bare `[quote]...[/quote]` to a colourless QuoteNode', () => {
-    const result = parseMarkdown('[quote]\nbody text\n[/quote]');
+    const result = parseMarkdownToAst('[quote]\nbody text\n[/quote]');
     expect(result.diagnostics).toEqual([]);
     expect(result.document.children).toEqual([
       {
@@ -63,7 +63,7 @@ describe('quote BBCode form', () => {
   });
 
   it('captures named colour from `[quote=red]`', () => {
-    const result = parseMarkdown('[quote=red]\nin red\n[/quote]');
+    const result = parseMarkdownToAst('[quote=red]\nin red\n[/quote]');
     expect(result.document.children[0]).toEqual({
       type: 'quote',
       color: 'red',
@@ -77,7 +77,7 @@ describe('quote BBCode form', () => {
   });
 
   it('captures hex colour with case preserved', () => {
-    const result = parseMarkdown('[quote=#ABCdef]\nhue\n[/quote]');
+    const result = parseMarkdownToAst('[quote=#ABCdef]\nhue\n[/quote]');
     expect(result.document.children[0]).toEqual({
       type: 'quote',
       color: '#ABCdef',
@@ -91,7 +91,7 @@ describe('quote BBCode form', () => {
   });
 
   it('captures tag-category colour with case preserved', () => {
-    const result = parseMarkdown('[quote=Character]\nhi\n[/quote]');
+    const result = parseMarkdownToAst('[quote=Character]\nhi\n[/quote]');
     expect(result.document.children[0]).toEqual({
       type: 'quote',
       color: 'Character',
@@ -105,7 +105,7 @@ describe('quote BBCode form', () => {
   });
 
   it('treats the open marker case-insensitively', () => {
-    const result = parseMarkdown('[QUOTE]\nbody\n[/Quote]');
+    const result = parseMarkdownToAst('[QUOTE]\nbody\n[/Quote]');
     expect(result.document.children[0]).toEqual({
       type: 'quote',
       children: [
@@ -118,7 +118,7 @@ describe('quote BBCode form', () => {
   });
 
   it('supports nested `[quote]` blocks via depth tracking', () => {
-    const result = parseMarkdown(
+    const result = parseMarkdownToAst(
       '[quote]\n[quote=red]\ninner\n[/quote]\n[/quote]',
     );
     expect(result.document.children[0]).toEqual({
@@ -139,7 +139,7 @@ describe('quote BBCode form', () => {
   });
 
   it('recursively tokenises inner block content (header inside quote)', () => {
-    const result = parseMarkdown('[quote=red]\n# Title\n\nbody\n[/quote]');
+    const result = parseMarkdownToAst('[quote=red]\n# Title\n\nbody\n[/quote]');
     expect(result.document.children[0]).toEqual({
       type: 'quote',
       color: 'red',
@@ -158,7 +158,7 @@ describe('quote BBCode form', () => {
   });
 
   it('falls through to text when the close marker is missing', () => {
-    const result = parseMarkdown('[quote]\nno close marker here');
+    const result = parseMarkdownToAst('[quote]\nno close marker here');
     // Open didn't pair; markdown-it absorbs the bracket lines as paragraph
     // text. The exact AST shape depends on tokenisation, but the contract
     // is "no QuoteNode emitted, no throw."

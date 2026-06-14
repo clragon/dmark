@@ -20,14 +20,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('color span exits when [code] opens mid-content', () => {
   it('promotes the inline `[code]` to a real <pre> block', async () => {
     const input = '[color=red]a [code]x[/code] b[/color]';
     const oracle = await renderViaOracle(input, { allow_color: true });
-    const dmark = parseDText(input, { allowColor: true });
+    const dmark = convertDTextToHtml(input, { allowColor: true });
     expect(dmark).toBe(oracle.html);
   });
 });

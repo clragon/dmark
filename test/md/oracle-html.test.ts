@@ -2,7 +2,7 @@
 //
 // Closes the loop: the markdown adapter produces the same AST shape as
 // the dtext side (verified by `ast-equivalence.test.ts`), and that AST
-// rendered through `renderToHTML` produces html that is dom-equal to what
+// rendered through `renderAstToHtml` produces html that is dom-equal to what
 // the ruby reference emits for the equivalent dtext source. Verification
 // that any markdown payload reaching production rendering matches what
 // users expect from the dtext gem.
@@ -13,8 +13,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { renderToHTML } from '../../src/dtext/render-html';
-import { parseMarkdown } from '../../src/md/parse';
+import { renderAstToHtml } from '../../src/html';
+import { parseMarkdownToAst } from '../../src/md/parse';
 import { domEqual } from '../dom-equal';
 import { renderViaOracle } from '../oracle';
 
@@ -25,7 +25,7 @@ interface Pair {
 }
 
 // Representative payloads. Each row asserts:
-//   renderToHTML(parseMarkdown(markdown).document) DOM-equals oracle(dtext)
+//   renderAstToHtml(parseMarkdownToAst(markdown).document) DOM-equals oracle(dtext)
 const PAIRS: Pair[] = [
   { name: 'plain text', markdown: 'hello world', dtext: 'hello world' },
   {
@@ -79,10 +79,10 @@ const RENDER_OPTS = { allow_color: true, max_thumbs: 75 };
 describe('markdown -> AST -> html matches the ruby oracle on equivalent dtext', () => {
   for (const pair of PAIRS) {
     it(pair.name, async () => {
-      const { document, diagnostics } = parseMarkdown(pair.markdown);
+      const { document, diagnostics } = parseMarkdownToAst(pair.markdown);
       const fatals = diagnostics.filter((d) => d.severity === 'fatal');
       expect(fatals).toEqual([]);
-      const ourHtml = renderToHTML(document, {
+      const ourHtml = renderAstToHtml(document, {
         allowColor: RENDER_OPTS.allow_color,
         maxThumbs: RENDER_OPTS.max_thumbs,
       });

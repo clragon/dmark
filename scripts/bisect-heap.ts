@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { parseDText } from '../src/dtext';
+import { convertDTextToHtml } from '../src/convert';
 
 const [, , fixture, startStr, endStr, budgetStr] = process.argv;
 if (!fixture || !startStr || !endStr) {
@@ -29,7 +29,7 @@ const timer = setTimeout(() => {
 }, budgetMs);
 
 try {
-  parseDText(text, { allowColor: true, maxThumbs: 75 });
+  convertDTextToHtml(text, { allowColor: true, maxThumbs: 75 });
   const ms = Date.now() - t0;
   clearTimeout(timer);
   console.log(`OK ${ms}ms (slice ${start}..${end} = ${text.length} bytes)`);

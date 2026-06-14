@@ -6,10 +6,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseMarkdown } from '../../src/md/parse';
+import { parseMarkdownToAst } from '../../src/md/parse';
 
 function inlineOf(input: string) {
-  const result = parseMarkdown(input);
+  const result = parseMarkdownToAst(input);
   expect(result.diagnostics).toEqual([]);
   expect(result.document.children).toHaveLength(1);
   const para = result.document.children[0]!;
@@ -152,13 +152,13 @@ describe('nested emphasis', () => {
 
 describe('robustness', () => {
   it('does not throw on a stray closing delimiter', () => {
-    expect(() => parseMarkdown('foo **')).not.toThrow();
-    expect(() => parseMarkdown('foo __')).not.toThrow();
-    expect(() => parseMarkdown('foo ~~')).not.toThrow();
+    expect(() => parseMarkdownToAst('foo **')).not.toThrow();
+    expect(() => parseMarkdownToAst('foo __')).not.toThrow();
+    expect(() => parseMarkdownToAst('foo ~~')).not.toThrow();
   });
 
   it('emits no diagnostics for a well-formed inline document', () => {
-    const result = parseMarkdown(
+    const result = parseMarkdownToAst(
       'a **b** _c_ ~~d~~ `e` [f](g) <https://h.example>',
     );
     expect(result.diagnostics).toEqual([]);

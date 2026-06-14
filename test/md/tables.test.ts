@@ -5,11 +5,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { parseMarkdown } from '../../src/md/parse';
+import { parseMarkdownToAst } from '../../src/md/parse';
 
 describe('pipe table', () => {
   it('lowers a header + one body row to TableNode with head and body wrappers', () => {
-    const result = parseMarkdown('| a | b |\n|---|---|\n| 1 | 2 |');
+    const result = parseMarkdownToAst('| a | b |\n|---|---|\n| 1 | 2 |');
     expect(result.diagnostics).toEqual([]);
     expect(result.document.children).toEqual([
       {
@@ -61,7 +61,7 @@ describe('pipe table', () => {
   });
 
   it('handles multiple body rows', () => {
-    const result = parseMarkdown('| h1 |\n|----|\n| r1 |\n| r2 |\n| r3 |');
+    const result = parseMarkdownToAst('| h1 |\n|----|\n| r1 |\n| r2 |\n| r3 |');
     const body = (
       result.document.children[0] as {
         children: { type: string; rows?: unknown[] }[];
@@ -71,7 +71,7 @@ describe('pipe table', () => {
   });
 
   it('parses inline emphasis inside cell content', () => {
-    const result = parseMarkdown('| h |\n|---|\n| **bold** cell |');
+    const result = parseMarkdownToAst('| h |\n|---|\n| **bold** cell |');
     const bodyRows = (
       result.document.children[0] as {
         children: { type: string; rows?: { cells: unknown[] }[] }[];
@@ -93,7 +93,7 @@ describe('pipe table', () => {
   });
 
   it('drops alignment from `:---:` separator without a diagnostic', () => {
-    const result = parseMarkdown('| a | b |\n|:--|:-:|\n| x | y |');
+    const result = parseMarkdownToAst('| a | b |\n|:--|:-:|\n| x | y |');
     expect(result.diagnostics).toEqual([]);
     // No alignment field on cells; the AST has no slot.
     const body = (
@@ -107,6 +107,8 @@ describe('pipe table', () => {
 
 describe('robustness', () => {
   it('does not throw on a malformed table', () => {
-    expect(() => parseMarkdown('| a | b |\n| no-separator |')).not.toThrow();
+    expect(() =>
+      parseMarkdownToAst('| a | b |\n| no-separator |'),
+    ).not.toThrow();
   });
 });

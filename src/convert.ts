@@ -1,39 +1,54 @@
 import {
-  parseDTextToAST,
-  formatDText,
+  parseDTextToAst,
+  renderAstToDText,
   dtextHandlers,
+  type DTextParseOptions,
   type DTextRenderOptions,
-  type DTextFormatterOptions,
-  type DTextFormatResult,
+  type DTextRenderResult,
   type DTextHandlers,
 } from './dtext';
-import { parseMarkdown, type ParserOptions } from './md/parse';
 import {
-  formatMarkdown,
+  renderAstToHtml,
+  htmlHandlers,
+  type HtmlRenderOptions,
+  type HtmlHandlers,
+} from './html';
+import { parseMarkdownToAst, type ParserOptions } from './md/parse';
+import {
+  renderAstToMarkdown,
   markdownHandlers,
-  type MarkdownFormatterOptions,
-  type MarkdownFormatResult,
+  type MarkdownRenderOptions,
+  type MarkdownRenderResult,
   type MarkdownHandlers,
 } from './md/render';
 
-export function parseDTextToMarkdown(
+export function convertDTextToHtml(
   input: string,
-  parseOptions: DTextRenderOptions = {},
-  formatOptions: MarkdownFormatterOptions = {},
-  handlers: MarkdownHandlers = markdownHandlers,
-): MarkdownFormatResult {
-  const ast = parseDTextToAST(input, parseOptions);
-  return formatMarkdown(ast, formatOptions, handlers);
+  options: HtmlRenderOptions = {},
+  handlers: HtmlHandlers = htmlHandlers,
+): string {
+  const ast = parseDTextToAst(input, options);
+  return renderAstToHtml(ast, options, handlers);
 }
 
-export function parseMarkdownToDText(
+export function convertDTextToMarkdown(
+  input: string,
+  parseOptions: DTextParseOptions = {},
+  formatOptions: MarkdownRenderOptions = {},
+  handlers: MarkdownHandlers = markdownHandlers,
+): MarkdownRenderResult {
+  const ast = parseDTextToAst(input, parseOptions);
+  return renderAstToMarkdown(ast, formatOptions, handlers);
+}
+
+export function convertMarkdownToDText(
   input: string,
   parseOptions: ParserOptions = {},
-  formatOptions: DTextFormatterOptions = {},
+  formatOptions: DTextRenderOptions = {},
   handlers: DTextHandlers = dtextHandlers,
-): DTextFormatResult {
-  const { document, diagnostics } = parseMarkdown(input, parseOptions);
-  const { output, diagnostics: formatDiagnostics } = formatDText(
+): DTextRenderResult {
+  const { document, diagnostics } = parseMarkdownToAst(input, parseOptions);
+  const { output, diagnostics: formatDiagnostics } = renderAstToDText(
     document,
     formatOptions,
     handlers,

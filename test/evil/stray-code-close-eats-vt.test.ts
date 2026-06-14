@@ -16,14 +16,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('inline stray [/code] eats POSIX space (incl. VT) after the close', () => {
   it('strips a VT immediately after `[/code]`', async () => {
     const input = 'before [/code]\x0bafter';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });

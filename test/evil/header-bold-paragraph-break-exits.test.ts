@@ -19,14 +19,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseDText } from '@dmark/dtext';
+import { convertDTextToHtml } from '@dmark/convert';
 import { renderViaOracle } from '../oracle';
 
 describe('paragraph break inside a header-mode inline tag closes the header', () => {
   it('exits the `<h1>` on `\\n\\n` even inside an open `[b]`', async () => {
     const input = 'h1. [b]bold\n\nmore[/b]\n';
     const oracle = await renderViaOracle(input);
-    const dmark = parseDText(input);
+    const dmark = convertDTextToHtml(input);
     expect(dmark).toBe(oracle.html);
   });
 });
