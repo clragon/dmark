@@ -1,11 +1,11 @@
-import type { ASTNode } from '../ast';
+import type { DocumentNode } from '../ast';
 import { DTextStateMachineParser } from './parse';
 import { renderToHTML, type DTextRenderOptions } from './render-html';
 
 export function parseDTextToAST(
   input: string,
   options: DTextRenderOptions = {},
-): ASTNode {
+): DocumentNode {
   return new DTextStateMachineParser(input, options).parse();
 }
 
