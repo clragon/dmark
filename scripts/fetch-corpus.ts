@@ -17,7 +17,7 @@ import { createGunzip } from 'node:zlib';
 import { parse as parseCsv } from 'csv-parse';
 
 const USER_AGENT = 'dmark-corpus-fetch/v1 (binaryfloof)';
-const DB_EXPORT_INDEX = 'https://e621.net/db_export/';
+const DB_EXPORTS_INDEX = 'https://e621.net/db_exports.json';
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const CORPUS_DB_EXPORT = resolve(REPO_ROOT, 'corpus', 'db_export');
 const CORPUS_STAGING = resolve(REPO_ROOT, 'corpus', 'staging');
@@ -46,17 +46,22 @@ async function fetchText(url: string): Promise<string> {
   return await res.text();
 }
 
+interface DbExport {
+  name: string;
+  file_name: string;
+  file_size: number;
+  updated_at: string;
+  url: string;
+}
+
 async function findLatestDumpUrl(): Promise<{ url: string; filename: string }> {
-  const html = await fetchText(DB_EXPORT_INDEX);
-  const matches = [
-    ...new Set(html.match(/wiki_pages-\d{4}-\d{2}-\d{2}\.csv\.gz/g) ?? []),
-  ];
-  if (matches.length === 0) {
-    throw new Error('no wiki_pages dumps found at ' + DB_EXPORT_INDEX);
+  const exports = JSON.parse(await fetchText(DB_EXPORTS_INDEX)) as DbExport[];
+  const dump = exports.find((e) => e.name === 'wiki_pages');
+  if (!dump) {
+    throw new Error('no wiki_pages dump found at ' + DB_EXPORTS_INDEX);
   }
-  matches.sort();
-  const filename = matches[matches.length - 1];
-  return { url: DB_EXPORT_INDEX + filename, filename };
+  const date = dump.updated_at.slice(0, 10);
+  return { url: dump.url, filename: `wiki_pages-${date}.csv.gz` };
 }
 
 async function downloadDump(url: string, dest: string): Promise<void> {
