@@ -9,5 +9,5 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "src/preview", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "src/preview", "src/full.ts", "**/*.test.ts"]
 }

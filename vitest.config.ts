@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 export default defineConfig({
   resolve: {
     alias: {
+      '@clynamic/dmark': resolve(__dirname, 'src/index.ts'),
       '@dmark': resolve(__dirname, 'src'),
     },
   },

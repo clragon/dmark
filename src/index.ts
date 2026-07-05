@@ -21,23 +21,7 @@ export type {
   HtmlRenderContext,
 } from './html';
 
-export { parseMarkdownToAst } from './md/parse';
-export type { ParserOptions, ParseResult } from './md/parse';
-
-export { renderAstToMarkdown, markdownHandlers } from './md/render';
-export type {
-  MarkdownRenderOptions,
-  MarkdownRenderResult,
-  MarkdownHandler,
-  MarkdownHandlers,
-  MarkdownRenderContext,
-} from './md/render';
-
-export {
-  convertDTextToHtml,
-  convertDTextToMarkdown,
-  convertMarkdownToDText,
-} from './convert';
+export { convertDTextToHtml } from './convert';
 
 export type * from './ast/index.js';
 export type { Diagnostic } from './diagnostics';

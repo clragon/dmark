@@ -18,6 +18,12 @@
       "require": "./dist/dmark.cjs",
       "default": "./dist/dmark.js"
     },
+    "./md": {
+      "types": "./dist/types/md/index.d.ts",
+      "import": "./dist/dmark-md.js",
+      "require": "./dist/dmark-md.cjs",
+      "default": "./dist/dmark-md.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

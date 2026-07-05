@@ -17,6 +17,7 @@
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "types": ["node", "vitest/globals"],
     "paths": {
+      "@clynamic/dmark": ["./src/index.ts"],
       "@dmark/*": ["./src/*"]
     }
   },
